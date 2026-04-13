@@ -23,6 +23,43 @@
 
 ## 设计决策
 
+### 为什么需要如此深入的工程化解析
+
+初看之下，13 个阶段的管线似乎过度设计——为什么不直接把源码文件丢给 LLM，让它自己分析？
+
+答案藏在 LLM 的工作模型中。当前 Agent 架构的核心模式是 **Tool-Augmented Pull**：LLM 本身不主动"看"代码，而是通过调用工具（Tool）来获取信息。系统提供一组工具，LLM 在推理循环中决定"用哪个工具、传什么参数"，然后根据工具返回的结果继续推理。
+
+这意味着一个根本性的约束：**LLM 的推理质量，直接受限于工具返回结果的质量**。
+
+如果 `query_call_graph` 工具返回的调用关系是错的，LLM 会基于错误的依赖关系做出错误的架构判断。如果 `get_class_hierarchy` 工具返回的继承链缺失了中间层，LLM 会遗漏关键的设计模式。LLM 的推理能力再强，也无法弥补输入数据的缺陷——这就是计算机科学中经典的 **Garbage In, Garbage Out** 原则在 Agent 时代的重现。
+
+所以 Bootstrap 的 13 个阶段，本质上是在**打造每一个 Tool 的数据基础**：
+
+| 工程阶段 | 对应工具 | 如果跳过会怎样 |
+|:---|:---|:---|
+| Phase 1.5 AST 解析 | `get_class_info`、`get_method_info` | LLM 只能看到原始文本，无法精确查询类和方法的结构 |
+| Phase 1.6 实体图 | `query_code_entities` | LLM 无法查询跨文件的类型引用关系 |
+| Phase 1.7 调用图 | `query_call_graph` | LLM 无法回答"谁调用了这个方法"这类问题 |
+| Phase 2 依赖图 | `query_dependency_graph` | LLM 无法理解模块间的依赖方向和层次 |
+| Phase 2.2 全景图 | `panorama` | LLM 无法回答"项目的整体架构是什么"这类宏观问题 |
+| Phase 3 Guard 审计 | `guard_check` | LLM 无法判断代码是否符合项目规范 |
+
+每多做一步工程化分析，LLM 就多获得一个高质量的工具。每个工具返回的结果越结构化、越准确，LLM 的推理链就越可靠。这不是过度设计——这是为 AI Agent 构建可靠工作环境的必要投资。
+
+换一个角度理解：Phase 1–4 做的事情，相当于在 LLM "上班"之前，把它的"办公桌"整理好——文件分类归档、组织架构图绘制完毕、规章制度整理就位。一个拿到整理好的材料的 LLM，和一个面对杂乱文件堆的 LLM，工作效率和产出质量是天壤之别。
+
+这个认知并非 AutoSnippet 独创。Anthropic 在 *Building effective agents*（2024.12）一文中明确提出了同样的观点：
+
+> "Agents can handle sophisticated tasks, but their implementation is often straightforward. They are typically just LLMs using tools based on environmental feedback in a loop. **It is therefore crucial to design toolsets and their documentation clearly and thoughtfully.**"
+
+文章进一步提出了 **ACI（Agent-Computer Interface）** 的概念——类比人机交互领域的 HCI（Human-Computer Interface），强调为 Agent 设计工具接口需要投入与设计用户界面同等的精力：
+
+> "One rule of thumb is to think about how much effort goes into human-computer interfaces (HCI), and plan to invest just as much effort in creating good **agent-computer interfaces (ACI)**."
+
+更值得注意的是 Anthropic 在 SWE-bench 实践中的经验：**他们花在优化工具上的时间，比花在优化整体提示词上的时间还多**。例如他们发现模型在使用相对路径时会频繁出错，于是将工具改为强制使用绝对路径——模型随即表现完美。这个细节印证了一个核心洞察：Agent 的表现瓶颈往往不在 LLM 的推理能力，而在工具的设计质量。
+
+AutoSnippet 的 Bootstrap 管线正是这一理念的工程实践——13 个阶段的深度解析，本质上是在精心打造每一个 ACI，让 LLM 在后续的知识提取阶段能够高效、准确地工作。
+
 ### 管线阶段总览
 
 Bootstrap 管线分为**同步阶段**（~1–3 秒，纯工程计算）和**异步阶段**（后台 AI 填充），共 13 个逻辑阶段：

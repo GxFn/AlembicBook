@@ -21,15 +21,14 @@
 | 环境项 | 值 |
 |--------|-----|
 | **LLM 模型** | `gemini-3-flash-preview` |
-| **API 接口** | Google AI Studio（免费配额） |
+| **API 接口** | Google AI Studio（付费层级 1） |
 | **上下文窗口** | 1,048,576 input tokens / 65,536 output tokens |
 | **模型知识截止** | 2025 年 1 月 |
 | **运行时** | Node.js ≥ 22，macOS |
 | **两轮间隔** | 当天连续运行（无重启清库） |
-| **实际 Token 费用** | $0（Google AI Studio 免费配额） |
-| **预估付费价格（参考）** | 第一轮：Input 8.26M × $0.50/M = $4.13，Output 0.138M × $3.00/M = $0.41，**合计 $4.54**；第二轮：Input 11.15M × $0.50/M = $5.57，Output 0.178M × $3.00/M = $0.53，**合计 $6.10** |
+| **实际 Token 费用** | 第一轮：Input 8.26M × $0.10/M = $0.83，Output 0.138M × $0.40/M = $0.06，**合计 $0.89**；第二轮：Input 11.15M × $0.10/M = $1.12，Output 0.178M × $0.40/M = $0.07，**合计 $1.19** |
 
-> **关于免费配额的说明**：免费配额下 `gemini-3-flash-preview` 的速率限制比付费层级更严格，这可能是部分维度出现 hard timeout（330s 等待后 0 tool calls）的因素之一。两轮中观察到的 LLM "冻结" 现象在付费层级下未必重现。
+> **关于 hard timeout 的说明**：两轮中偶发出现 LLM "冻结" 现象（330s 等待后 0 tool calls），这是 `gemini-3-flash-preview` 预览版模型的已知不稳定行为，与付费层级无关。第一轮 architecture produce 和第二轮 design-patterns analyze 各出现一次——同一维度在另一轮中正常完成，说明这是随机事件而非系统性缺陷。
 
 ### 代码实体图谱
 
