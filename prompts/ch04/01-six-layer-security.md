@@ -95,15 +95,16 @@ Bold title: "ConfidenceRouter — 知识质量门控"
 Second line: "这条知识质量足以自动发布？"
 Right side annotation: "6 级决策 · 置信度 + Grace Period"
 
-Below the box, a fork:
-- Right: "✗ 低置信度 → pending 人工审核" in red text
-- Left/down: downward arrow to EXIT
+Below the box, a fork (SAME layout as all layers above — pass on the left, fail on the right):
+- Left branch: "✓通过" label, downward arrow continues to the green EXIT box below
+- Right branch: "✗" in red, then small text: "低置信度 → pending 人工审核"
 
 ════════════════════════════════════════
 EXIT (bottom)
 ════════════════════════════════════════
 
 A small rounded box with green fill, containing: "操作执行 ✓"
+(This box sits directly below Layer 6's left "✓通过" branch, aligned with the vertical flow of all pass-through arrows above)
 
 ════════════════════════════════════════
 RIGHT MARGIN — Vertical annotation
