@@ -7,7 +7,8 @@ export default defineConfig({
   base: '/',
 
   head: [
-    ['link', { rel: 'icon', href: '/favicon.ico' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
+    ['link', { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }],
   ],
 
   markdown: {
