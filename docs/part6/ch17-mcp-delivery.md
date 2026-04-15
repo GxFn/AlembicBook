@@ -306,19 +306,27 @@ async initialize() {
 }
 ```
 
-**Session 追踪**——MCP Server 为每个连接维护一个 Session 对象，追踪工具调用次数、使用过的工具、意图状态等。`IntentState` 是一个状态机，追踪 Agent 的行为模式：
+**Session 追踪**——MCP Server 为每个连接维护一个 Session 对象，追踪工具调用次数、使用过的工具、意图状态等。`IntentState` 是一个状态机，追踪 Agent 从 Prime 到 Close 的完整行为模式：
 
 ```typescript
 interface IntentState {
-  phase: 'idle' | 'prime' | 'active' | 'closed';
+  phase: 'idle' | 'active' | 'ended';
+  primeQuery: string;
+  primeRecipeIds: string[];
+  primeLanguage: string | null;
+  primeModule: string | null;
+  primeScenario: string;
   taskId?: string;
-  toolCalls: Array<{ tool: string; timestamp: number }>;
+  toolCalls: ToolCallRecord[];
   searchQueries: string[];
-  decisions: Array<{ id: string; title: string }>;
+  mentionedFiles: string[];
+  mentionedModules: Set<string>;
+  decisions: DecisionRecord[];
+  driftEvents: DriftEvent[];
 }
 ```
 
-`prime` 阶段是关键——`autosnippet_task({ operation: 'prime' })` 是每条消息的第一个调用，它让 MCP Server 恢复会话上下文，准备好相关知识。没有 `prime` 的工具调用意味着 Agent 没有上下文，结果质量会下降。
+IntentState 的完整生命周期——从 Prime 初始化到 Close 持久化为 JSONL 信号——在下方 [Task 生命周期](#task-生命周期——意图驱动的-agent-工作流) 一节详细展开。
 
 ### Gateway 四阶段管线
 
@@ -339,6 +347,359 @@ MCP Server 使用 Gateway 的两种模式：
 - **`execute()`**——完整四阶段。用于 HTTP API 请求。
 
 这种设计让 MCP 和 HTTP 共享同一套权限和审计逻辑，但 MCP 的处理函数可以独立于 Gateway 的 Action Handler——因为 MCP 工具的参数格式和 HTTP 路由不同，处理逻辑需要各自适配。
+
+### Task 生命周期——意图驱动的 Agent 工作流
+
+18 个 MCP 工具中，`autosnippet_task` 是最特殊的一个——它不操作知识库，不检查代码，而是**管理 Agent 自身的行为**。当用户说"帮我实现网络缓存中间件"时，Agent 不应该直接开始写代码——它应该先加载相关的项目知识（这个项目怎么写中间件？有没有已有的模式？）、锚定一个任务追踪锚点、编码完成后检查合规性。
+
+![Task 意图生命周期链](/images/ch17/02-task-lifecycle-chain.png)
+
+`autosnippet_task` 的五个 operation 构成了一条完整的意图生命周期链：
+
+```text
+prime → create → (Agent 编码过程) → close → guard
+  │        │           │                │        │
+  │        │           │                │        └─ 代码合规审计
+  │        │           │                └─ 持久化意图链 → SignalBus → JSONL
+  │        │           └─ 行为自动采集（工具调用、搜索查询、文件引用、漂移检测）
+  │        └─ 生成任务 ID，绑定到 IntentState
+  └─ 意图提取 + 知识检索 + IntentState 初始化
+```
+
+整条链路的架构设计是 **Zero DB**——所有状态都在内存的 `IntentState` 状态机中维护，任务结束时通过 SignalBus 一次性持久化为 JSONL 信号。不需要数据库事务，不需要任务表——一个 Agent 会话同一时间只有一个活跃意图。
+
+#### Prime——意图识别与知识预加载
+
+Agent 在**每条用户消息**的第一步必须调用 `autosnippet_task({ operation: 'prime', userQuery, activeFile, language })`。这是整条链路的起点——从用户的自然语言中提取结构化意图，主动检索相关知识。
+
+Prime 的内部实现分为三层——**Intake → Enrichment → Delivery**：
+
+```text
+userQuery + activeFile + language
+    ↓ [IntentExtractor — Intake]
+queries[] + keywordQueries[] + language + module + scenario
+    ↓ [PrimeSearchPipeline — Enrichment]
+relatedKnowledge (≤5) + guardRules (≤3)
+    ↓ [Delivery]
+envelope({ knowledge, searchMeta, _taskRules })
+```
+
+**Intake 层：IntentExtractor**
+
+`IntentExtractor` 是一组纯函数，无副作用、无 DI 依赖。它从用户查询中提取四类信号：
+
+```typescript
+// lib/service/task/IntentExtractor.ts
+export function extract(userQuery, activeFile?, language?): ExtractedIntent {
+  const queries = buildQueries(userQuery, activeFile);    // 多查询集
+  const keywordQueries = buildKeywordQueries(userQuery);  // 跨语言同义词
+  const inferredLang = inferLanguage(activeFile);          // .swift → "swift"
+  const module = inferFileContext(activeFile);              // "Modules/Network Manager"
+  const scenario = classifyScenario(userQuery);            // generate|lint|search|learning
+  return { queries, keywordQueries, language, module, scenario, raw };
+}
+```
+
+**多查询集（Q1–Q4）**是 Prime 搜索质量的关键。单一查询只能匹配一种维度的知识——用户说"帮我加个缓存中间件"，直接搜只命中标题含"缓存中间件"的 Recipe。多查询把同一个意图展开为四个搜索角度：
+
+| 查询 | 内容 | 目的 |
+|:---|:---|:---|
+| Q1 | 原始查询 + 跨语言同义词扩展 | 广度匹配：`"帮我加个缓存中间件 cache 缓存 middleware 中间件"` |
+| Q2 | 提取的技术术语 | 精确匹配：`"CacheMiddleware"` |
+| Q3 | 文件上下文推断 | 模块匹配：`"Modules/Network NetworkManager"` |
+| Q4 | 纯同义词焦点（仅长查询） | 防 BM25 稀释：`"cache 缓存 middleware 中间件"` |
+
+Q1 的跨语言同义词扩展值得展开。AutoSnippet 维护了 40+ 组 EN↔CJK 映射（如 `['inject', 'injection', '注入']`、`['singleton', '单例']`、`['cache', 'caching', '缓存']`），策略是**逐 token 跨脚本扩展**：英文 token 只添加中文同义词，中文 token 只添加英文同义词。这样混合语言查询（"在 module 里用 singleton"）能同时在两个方向上扩展。Q4 在长查询（>50 字符）时单独生成——因为长自然语言句子中，同义词被大量普通词稀释后对 BM25 评分的贡献趋近于零。
+
+**场景分类**用正则匹配用户意图：
+
+```typescript
+export function classifyScenario(userQuery: string): SearchScenario {
+  if (/帮我[加写做实现创建]|implement|add|create|新[增加建]/.test(q)) return 'generate';
+  if (/检查|review|lint|合规|违规|guard/.test(q)) return 'lint';
+  if (/什么是|怎么[用做]|原理|explain|学习/.test(q)) return 'learning';
+  return 'search';
+}
+```
+
+场景标签传递到 `PrimeSearchPipeline`，影响搜索策略的权重分配（`generate` 场景更关注 `code-pattern` 类型的知识，`lint` 场景更关注 `rule` 类型）。
+
+**Enrichment 层：PrimeSearchPipeline**
+
+`PrimeSearchPipeline` 接收 `ExtractedIntent`，执行多查询并行搜索并融合结果：
+
+```typescript
+// lib/service/task/PrimeSearchPipeline.ts
+async search(intent: ExtractedIntent): Promise<PrimeSearchResult | null> {
+  // 1. 三模式并行搜索
+  const autoPromises = intent.queries.map(q =>
+    this.#search.search(q, { mode: 'auto', limit: 8, rank: false })
+  );
+  const semanticPromise = this.#search.search(
+    intent.queries[0], { mode: 'semantic', limit: 6, rank: false }
+  );
+  const kwPromises = intent.keywordQueries.map(q =>
+    this.#search.search(q, { mode: 'keyword', limit: 8, rank: false })
+  );
+
+  // 2. Weighted RRF 融合
+  // RRF(d) = Σ origScore / (K + rank)，保留原始分数量级
+  for (const [rank, item] of items.entries()) {
+    rrfScores.set(item.id, (rrfScores.get(item.id) ?? 0) + origScore / (60 + rank));
+  }
+
+  // 3. 三层质量过滤
+  const filtered = this.#qualityFilter(allResults);
+  //   绝对阈值（0.3）→ 相对比值（最高分的 15%）→ 间隙截断（25% 跌落）
+  
+  // 4. 分类返回
+  return {
+    relatedKnowledge: filtered.filter(r => r.kind !== 'rule').slice(0, 5),
+    guardRules: filtered.filter(r => r.kind === 'rule').slice(0, 3),
+    searchMeta: { queries, scenario, language, module, resultCount, filteredCount }
+  };
+}
+```
+
+为什么 `rank: false`？PrimeSearchPipeline 自己做 RRF 融合，需要原始分数（BM25/FWS）。如果让搜索引擎的 CoarseRanker 先做 max-normalization + 新鲜度/权威度调整，分数会聚集到 0.35–0.41 区间，质量过滤器无法区分好结果和噪声。
+
+三层质量过滤的设计思路：**绝对阈值**过滤明显的噪声（分数 <0.3 的一定不是好结果），**相对比值**适应不同查询的分数分布（搜"singleton"的最高分可能是 0.8，搜"那个什么什么管理器"可能只有 0.4），**间隙截断**检测分数断崖——如果排在前面的结果和后面的质量差距很大，后面的大概率是噪声。
+
+**Delivery 层：返回给 Agent**
+
+Prime 的返回值包含三个部分：
+
+```typescript
+return envelope({
+  data: {
+    knowledge: { relatedKnowledge, guardRules },
+    searchMeta,
+    _taskRules,     // ← 任务协议规则
+  },
+  message: '📋 Found 3 recipe(s), 1 guard rule(s)...'
+});
+```
+
+`_taskRules` 是一个嵌入在返回 JSON 中的指令块——告诉 Agent "你必须按这个协议工作"：
+
+```text
+📋 TASK RULES (MANDATORY):
+🔑 YOU are the task operator — user speaks naturally, you translate to task operations.
+• MUST prime on EVERY message BEFORE anything else
+• MUST create task for non-trivial work (≥2 files OR ≥10 lines)
+• MUST close when done with meaningful reason
+```
+
+这是 AutoSnippet 控制 Agent 行为的核心机制——**MCP 工具通过返回值反向驱动 Agent**。Agent 调用 Prime 获取知识上下文，同时收到了"你接下来该怎么做"的行为指令。通道 F（`AGENTS.md`、`.github/copilot-instructions.md`）的指令是静态注入的，`_taskRules` 是每次动态注入的——双重保障 Agent 遵循任务协议。
+
+#### Create——任务锚点
+
+当 Agent 判断用户需求是非简单操作（≥2 个文件或 ≥10 行修改）时，调用 `autosnippet_task({ operation: 'create', title: '...' })`。
+
+Create 的实现极简——只生成 ID 并绑定到 IntentState：
+
+```typescript
+async function _create(ctx, args) {
+  const taskId = `asd-${Date.now().toString(36)}-${++_taskCounter}`;
+  const intent = ctx.session?.intent;
+  if (intent && intent.phase === 'active') {
+    intent.taskId = taskId;
+    intent.taskTitle = args.title;
+  }
+  return envelope({ data: { id: taskId, title: args.title } });
+}
+```
+
+不写数据库，不创建文件——纯内存状态。任务 ID 是 Prime→Close 链路的追踪锚点，在 Close 时写入 JSONL 信号。
+
+#### 中间过程——行为自动采集
+
+Agent 在 Create 之后开始编码——搜索知识、读取文件结构、调用 Guard 检查片段。**这些中间工具调用都被 McpServer 自动采集**，不需要 Agent 额外上报：
+
+```typescript
+// lib/external/mcp/McpServer.ts — _trackSession()
+_trackSession(toolName: string, result: unknown): void {
+  const intent = this._session.intent;
+  if (intent.phase !== 'active') return;
+
+  // 1. 每次工具调用自动记录
+  intent.toolCalls.push({ tool: toolName, timestamp: Date.now(), args_summary: toolName });
+
+  // 2. 搜索查询自动提取
+  if (toolName === 'autosnippet_search') {
+    const query = this._extractSearchQuery(result);
+    if (query) intent.searchQueries.push(query);
+  }
+
+  // 3. 文件引用自动推断模块
+  const files = this._extractMentionedFiles(toolName, result);
+  for (const f of files) {
+    if (!intent.mentionedFiles.includes(f)) {
+      intent.mentionedFiles.push(f);
+      const mod = this._inferModule(f);
+      if (mod) intent.mentionedModules.add(mod);
+    }
+  }
+
+  // 4. 意图漂移检测
+  this._detectDrift(toolName, intent);
+}
+```
+
+**意图漂移检测**是一个有意思的设计。Prime 时 Agent 说要"实现缓存中间件"，但编码过程中它开始搜索"数据库迁移"——这意味着意图发生了漂移。检测逻辑有两个触发条件：
+
+- **模块漂移**：Agent 提及的文件所属模块不是 Prime 时推断的模块
+- **查询漂移**：搜索关键词与 `primeQuery` 的关键词重叠度 <30%
+
+漂移事件记录在 `DriftEvent[]` 中，Close 时随 IntentChain 一起持久化。这些信号后续被代谢引擎（Ch12）消费——高漂移分数的任务可能揭示知识覆盖的盲区（Agent 搜不到需要的信息才会漂移到其他方向）。
+
+#### Close——意图链持久化
+
+编码完成后，Agent 调用 `autosnippet_task({ operation: 'close', id: 'asd-xxx', reason: '...' })`。Close 做两件事：持久化整条意图链，然后强制触发 Guard。
+
+**IntentChainRecord 持久化**：
+
+```typescript
+function _persistIntentChain(ctx, intent, outcome, reason) {
+  const chain: IntentChainRecord = {
+    sessionId, taskId, outcome,     // 'completed' | 'failed' | 'abandoned'
+    // Prime 基准
+    primeQuery, primeRecipeIds, primeLanguage, primeModule, primeScenario,
+    searchMeta,
+    // 累积数据
+    toolCalls, searchQueries, mentionedFiles, decisions,
+    // 漂移追踪
+    driftEvents, driftScore: _computeDriftScore(intent),
+    // 时间
+    startedAt, endedAt, duration, closeReason
+  };
+
+  // 通过 SignalBus 发射 → SignalTraceWriter 订阅写入 JSONL
+  signalBus.send('intent', 'TaskHandler', driftScore, { target: taskId, metadata: { chain } });
+}
+```
+
+一条 IntentChainRecord 完整记录了"Agent 在这次任务中做了什么"——从 Prime 时的意图到 Close 时的结果，中间用了哪些工具、搜了什么、看了哪些文件、做了什么决策、意图有没有漂移。写入 `.autosnippet/signals/intent.jsonl` 后，代谢引擎用这些数据做知识有效性评估——频繁被 Prime 检索到但 Agent 最终没用的 Recipe 可能需要衰退。
+
+**强制触发 Guard**：
+
+Close 的返回值包含一个 `nextAction` 字段——这不是建议，而是**强制指令**：
+
+```typescript
+return envelope({
+  data: {
+    closed: { id, reason, closedAt: Date.now() },
+    nextAction: {
+      tool: 'autosnippet_guard',
+      args: {},
+      required: true,
+      reason: 'Post-close compliance review — check diff for violations before moving on.'
+    }
+  },
+  message: '✅ Closed: asd-xxx\n⚠️ REQUIRED: You MUST call autosnippet_guard NOW...'
+});
+```
+
+Agent 读到 `nextAction.required: true`，必须在下一步调用 `autosnippet_guard()`。这个设计保证了每次编码后都有质量门禁——不依赖 Agent 的"自觉性"，而是通过协议层强制执行。
+
+#### Guard Review——编码后质量门禁
+
+Guard 被 Close 触发后，进入 **Review 模式**——自动检测变更文件、逐文件审计、内联 Recipe 修复指南：
+
+```typescript
+// lib/external/mcp/handlers/guard.ts — guardReview()
+export async function guardReview(ctx, args) {
+  // 1. 轮次追踪——防无限 fix-review 循环（上限 5 轮）
+  const round = (_reviewRounds.get(projectRoot) || 0) + 1;
+  if (round > MAX_REVIEW_ROUNDS) return { passed: true, maxRoundsReached: true };
+
+  // 2. 文件确定：无参数 → git diff（staged + unstaged + untracked）
+  const filePaths = args.files?.length
+    ? resolveExplicit(args.files)
+    : _detectChangedFiles(projectRoot);
+
+  // 3. 逐文件审计
+  for (const fp of filePaths) {
+    const auditResult = engine.auditFile(fp, code);
+
+    // 4. 内联 Recipe 修复指南——违规项关联对应的 Recipe
+    for (const v of auditResult.violations) {
+      const recipe = recipeMap.get(v.ruleId);
+      if (recipe) {
+        v.recipe = { title, doClause, dontClause, coreCode };
+      }
+    }
+  }
+
+  // 5. 违规 → Agent 按 recipe 修复 → 再次调用 guard → 直到 passed 或 5 轮
+  return { passed, files, totalViolations, reviewRound, capabilityReport };
+}
+```
+
+Guard Review 的几个关键设计：
+
+**自动检测变更文件**：无参数调用时从 `git status` 提取 staged + unstaged + untracked 文件，过滤掉二进制和非源码文件。Agent 不需要告诉 Guard "我改了哪些文件"——Guard 自己知道。
+
+**Violation 内联 Recipe**：每个违规项关联到知识库中对应的 Recipe，返回给 Agent 时带上 `doClause`（该怎么做）和 `coreCode`（代码骨架）。Agent 不需要再搜索怎么修——修复指南就在违规报告里。
+
+**轮次追踪**：Agent 修完后再调 Guard、Guard 又报问题、Agent 又修……这个循环可能无限下去。`MAX_REVIEW_ROUNDS = 5` 设置了上限——5 轮后强制通过，剩余问题标记为 follow-up。这平衡了代码质量和开发效率。
+
+**Capability Report**：Guard 不能检查所有类型的问题——跨文件的架构依赖分析、协议一致性校验等超出了静态检查能力。`capabilityReport` 把这些不确定结果结构化上抛给 Agent，让 Agent 自行判断是否需要人工审查：
+
+```typescript
+capabilityReport: {
+  executedChecks: { swift: { total: 12, executed: 10, skipped: 2 } },
+  uncertainResults: [
+    { ruleId: 'layer-isolation', message: '...', reason: 'requires-cross-file-analysis' }
+  ],
+  boundaries: ['layer-isolation', 'protocol-conformance']
+}
+```
+
+#### 完整交互时序
+
+用户说"帮我实现网络缓存中间件"时，Agent 和 MCP Server 之间的完整交互：
+
+```text
+User: "帮我实现网络缓存中间件"
+  │
+Agent ──── ① autosnippet_task({ operation: "prime", userQuery: "帮我实现网络缓存中间件" })
+  │            IntentExtractor: scenario=generate
+  │            queries=["帮我实现网络缓存中间件 cache 缓存 middleware 中间件", "CacheMiddleware"]
+  │            PrimeSearchPipeline: 3 recipes + 1 guard rule (RRF 融合 + 三层质量过滤)
+  │        ← relatedKnowledge + guardRules + _taskRules
+  │
+Agent ──── ② autosnippet_task({ operation: "create", title: "实现网络缓存中间件" })
+  │        ← { id: "asd-m2x8k-1" }
+  │
+Agent ──── ③ autosnippet_search({ query: "Alamofire middleware" })
+  │            → _trackSession: intent.toolCalls + intent.searchQueries 自动采集
+  │        ← 搜索结果
+  │
+Agent ──── ④ autosnippet_structure({ operation: "files", target: "NetworkKit" })
+  │            → _trackSession: intent.mentionedFiles + intent.mentionedModules 自动采集
+  │        ← 文件列表
+  │
+  │        ... Agent 按 Recipe 指导编写 CacheMiddleware.swift ...
+  │
+Agent ──── ⑤ autosnippet_task({ operation: "close", id: "asd-m2x8k-1", reason: "Implemented" })
+  │            → _persistIntentChain → SignalBus → intent.jsonl
+  │            → IntentState 重置为 idle
+  │        ← nextAction: { tool: "autosnippet_guard", required: true }
+  │
+Agent ──── ⑥ autosnippet_guard({})
+  │            → guardReview: git diff → 审计变更文件 → 内联 Recipe 修复指南
+  │        ← { passed: false, violations: [...], reviewRound: 1 }
+  │
+  │        ... Agent 按 violation.recipe.coreCode 修复 ...
+  │
+Agent ──── ⑦ autosnippet_guard({})
+  │        ← { passed: true, reviewRound: 2 }
+  │
+Agent ──── "Done. 已实现 CacheMiddleware，Guard 审计通过。"
+```
+
+这条链路的设计理念：**用户只说自然语言，Agent 是操作者**。`_taskRules` 通过 Prime 返回值注入行为指令，`nextAction` 通过 Close 返回值强制触发 Guard——两个反向控制点让 MCP 工具驱动 Agent 遵循任务协议，而不是依赖 Agent 自觉记住"我应该在完成后检查代码"。
 
 ### HTTP API——RESTful 路由
 
