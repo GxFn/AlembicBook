@@ -18,7 +18,7 @@
 
 ### 三维正交公式
 
-AutoSnippet 的解法是把 Agent 的构成分解到三个**完全独立**的维度：
+Alembic 的解法是把 Agent 的构成分解到三个**完全独立**的维度：
 
 $$\text{Agent} = \text{Runtime}(\text{Capability} \times \text{Strategy} \times \text{Policy})$$
 
@@ -43,7 +43,7 @@ $$\text{Agent} = \text{Runtime}(\text{Capability} \times \text{Strategy} \times 
 
 边际成本的差距是 12 倍。更重要的是，继承方案的 72 个子类大部分只在组合上不同（比如 `ChatSingleBudgetAgent` 和 `ChatSingleSafetyAgent` 的唯一区别是 Policy）——这种重复不仅浪费代码量，还违反了 DRY 原则。
 
-AutoSnippet 的实际数字：6 个 Capability + 4 个 Strategy + 3 个 Policy = **13 个组件类**，配合 5 个 Preset 覆盖所有生产场景。三个文件（`capabilities.ts`、`strategies.ts`、`policies.ts`）加上一个配置文件（`presets.ts`），总计约 2000 行代码。
+Alembic 的实际数字：6 个 Capability + 4 个 Strategy + 3 个 Policy = **13 个组件类**，配合 5 个 Preset 覆盖所有生产场景。三个文件（`capabilities.ts`、`strategies.ts`、`policies.ts`）加上一个配置文件（`presets.ts`），总计约 2000 行代码。
 
 ## 架构与数据流
 
@@ -65,7 +65,7 @@ export class Capability {
 
 四个核心方法定义了 Capability 与 Runtime 的交互协议：`tools` 声明能用哪些工具（白名单），`promptFragment` 注入角色或领域提示词，`buildContext` 在每一轮循环前动态注入上下文，`onBeforeStep` / `onAfterStep` 提供生命周期钩子。
 
-AutoSnippet 内置 6 个 Capability，通过 `CapabilityRegistry` 工厂统一管理：
+Alembic 内置 6 个 Capability，通过 `CapabilityRegistry` 工厂统一管理：
 
 ```typescript
 // lib/agent/capabilities.ts
@@ -194,7 +194,7 @@ SingleStrategy.execute(runtime, message):
 
 #### PipelineStrategy — 多阶段流水线
 
-最复杂的策略，也是 AutoSnippet 知识生产的核心编排引擎。Pipeline 把一次任务分解为多个阶段（Stage），每个阶段有独立的 Capability、预算、系统提示词、以及**质量门控（Gate）**。
+最复杂的策略，也是 Alembic 知识生产的核心编排引擎。Pipeline 把一次任务分解为多个阶段（Stage），每个阶段有独立的 Capability、预算、系统提示词、以及**质量门控（Gate）**。
 
 ```typescript
 // lib/agent/PipelineStrategy.ts
@@ -497,7 +497,7 @@ Preset 是"经过验证的推荐组合"——防止用户或系统随意拼出�
       timeoutMs: 120_000
     })
   ],
-  persona: { role: 'assistant', description: 'AutoSnippet 知识管理助手' },
+  persona: { role: 'assistant', description: 'Alembic 知识管理助手' },
   memory: { enabled: true, mode: 'user', tiers: ['working', 'episodic', 'semantic'] }
 }
 ```
@@ -580,7 +580,7 @@ Preset 的存在意义就在于此——它是**经过验证的合理组合的�
 JavaScript/TypeScript 的 Mixin 模式看起来也能实现"能力叠加"——`ConversationMixin`、`CodeAnalysisMixin` 混入同一个 Agent 类：
 
 ```typescript
-// Mixin 方案（AutoSnippet 没有采用）
+// Mixin 方案（Alembic 没有采用）
 class MyAgent extends mix(BaseAgent)
   .with(ConversationMixin)
   .with(CodeAnalysisMixin) { }
@@ -597,7 +597,7 @@ class MyAgent extends mix(BaseAgent)
 插件系统（类似 Webpack Plugin 或 Rollup Plugin）用钩子（hook）机制让外部代码注入行为：
 
 ```typescript
-// 插件方案（AutoSnippet 没有采用）
+// 插件方案（Alembic 没有采用）
 runtime.use({
   name: 'conversation',
   onInit(ctx) { ctx.registerTools([...]); },
@@ -620,7 +620,7 @@ runtime.use({
 2. **调试困难**。当 Agent 行为异常时，可能是 Capability 的工具白名单遗漏、Strategy 的阶段配置错误、或 Policy 的阈值不合理——三个维度都要排查。继承方案的调试范围更小。
 3. **概念学习成本**。新加入的开发者需要理解 Capability/Strategy/Policy 三个抽象以及它们如何正交组合，才能读懂一个 Preset 的含义。这比"打开 ChatAgent.ts 看代码"的门槛更高。
 
-AutoSnippet 接受了这些代价，因为收益更大——13 个组件覆盖了 5 个 Preset 和无限种运行时覆盖组合。当 Agent 的行为种类从 5 种增长到 10 种、15 种时，正交组合的优势会越来越明显。
+Alembic 接受了这些代价，因为收益更大——13 个组件覆盖了 5 个 Preset 和无限种运行时覆盖组合。当 Agent 的行为种类从 5 种增长到 10 种、15 种时，正交组合的优势会越来越明显。
 
 ## 小结
 

@@ -1,4 +1,4 @@
-# AutoSnippet 介绍
+# Alembic 介绍
 
 > 将代码库中的模式提取为知识库，供 IDE 中的 AI 编码助手查询——让生成的代码真正符合你们团队的规范。
 
@@ -12,7 +12,7 @@ Copilot 和 Cursor 不知道你们团队怎么写代码。它们生成的东西�
 
 ## 方案：本地化的项目知识引擎
 
-AutoSnippet 在你的代码库和 AI 之间建立一层**本地化的项目记忆**。它扫描你的代码库，通过 AST 分析和 AI 理解提取有价值的模式（需要你批准），然后通过 [MCP](https://modelcontextprotocol.io/) 让所有 AI 工具都能按需查询。
+Alembic 在你的代码库和 AI 之间建立一层**本地化的项目记忆**。它扫描你的代码库，通过 AST 分析和 AI 理解提取有价值的模式（需要你批准），然后通过 [MCP](https://modelcontextprotocol.io/) 让所有 AI 工具都能按需查询。
 
 ```text
 你的代码  →  AST 分析 + AI 提取  →  你来审核  →  知识库（ .md 文件 + 本地 SQLite ）
@@ -24,7 +24,7 @@ AutoSnippet 在你的代码库和 AI 之间建立一层**本地化的项目记�
                                          Guard 引擎自动合规检查
 ```
 
-![AutoSnippet 核心工作流](/images/ch01/01-core-workflow.png)
+![Alembic 核心工作流](/images/ch01/01-core-workflow.png)
 
 这些知识持久化在本地，不占用 LLM 的上下文窗口，而是在 AI 需要时**按需注入**——项目知识积累得越多，生成的代码越符合你们的规范。
 
@@ -34,7 +34,7 @@ AutoSnippet 在你的代码库和 AI 之间建立一层**本地化的项目记�
 
 传统的 AI 编码辅助是**每次对话都从零开始**：你给它上下文，它给你代码。上下文窗口是有限的，你的项目约定却在不断膨胀——200 条规范塞不进 128K token，即使塞进去注意力衰减也会让大部分形同虚设。这是一场你注定输掉的军备竞赛。
 
-AutoSnippet 反转了这个等式。
+Alembic 反转了这个等式。
 
 > **先提交有限的答案，用来回答无限的问题。**
 
@@ -47,7 +47,7 @@ AutoSnippet 反转了这个等式。
 ## 使用速览
 
 ```bash
-npm install -g autosnippet
+npm install -g alembic
 
 cd your-project
 asd setup     # 初始化工作空间 + 数据库 + MCP 配置
@@ -56,9 +56,9 @@ asd ui        # 启动后台服务，IDE 和 MCP 工具依赖此服务运行
 
 > **Trae / Qoder 用户：** `asd setup` 后运行 `asd mirror`，将 `.cursor/` 配置同步到 `.trae/` / `.qoder/`。
 
-安装完成后，打开 IDE 的 **Agent Mode**（Cursor Composer / VS Code Copilot Chat / Trae），跟 Agent 对话即可——`asd setup` 已通过 MCP 协议将 AutoSnippet 注册为工具服务。
+安装完成后，打开 IDE 的 **Agent Mode**（Cursor Composer / VS Code Copilot Chat / Trae），跟 Agent 对话即可——`asd setup` 已通过 MCP 协议将 Alembic 注册为工具服务。
 
-> **首次使用：** 需在 IDE 的 MCP 设置中手动开启 `autosnippet` 服务。
+> **首次使用：** 需在 IDE 的 MCP 设置中手动开启 `alembic` 服务。
 
 > **提示：** IDE Agent 使用的模型越强，效果越好。推荐选择 Claude Opus 4.6 / Sonnet 4.6、GPT-5.4 或 Gemini 3.1 Pro。
 
@@ -87,7 +87,7 @@ Agent 写完代码后，Guard 合规引擎会自动检查 diff——发现违规
 
 ## 进化架构
 
-AutoSnippet 不是静态知识工具，而是一个**知识有机体**。Recipe 是它的细胞——IDE Agent 是外部驱动力，每一次交互都会触发有机体内不同器官的协同响应。
+Alembic 不是静态知识工具，而是一个**知识有机体**。Recipe 是它的细胞——IDE Agent 是外部驱动力，每一次交互都会触发有机体内不同器官的协同响应。
 
 ```
                 IDE Agent (Cursor / Copilot / Trae)
@@ -95,7 +95,7 @@ AutoSnippet 不是静态知识工具，而是一个**知识有机体**。Recipe 
                    │ 沉淀 · 编写 · 搜索 · 偏移 · 完成 · 边界
                    │
   ═════════════════▼══════════════════════════════════════
-  ║              AutoSnippet 知识有机体                    ║
+  ║              Alembic 知识有机体                    ║
   ║                                                       ║
   ║  ┌─ Panorama (骨骼) ────────── 项目结构全貌 ──────┐   ║
   ║  │                                                │   ║
@@ -180,8 +180,8 @@ asd guard:ci --min-score 90   # CI 质量门禁
 
 | 通道 | 路径 | 内容 |
 |------|------|------|
-| **A** | `.cursor/rules/autosnippet-project-rules.mdc` | alwaysApply 一行式规则 |
-| **B** | `.cursor/rules/autosnippet-patterns-{topic}.mdc` | When/Do/Don't 主题规则 |
+| **A** | `.cursor/rules/alembic-project-rules.mdc` | alwaysApply 一行式规则 |
+| **B** | `.cursor/rules/alembic-patterns-{topic}.mdc` | When/Do/Don't 主题规则 |
 | **C · D** | `.cursor/skills/` | Project Skills + 开发文档 |
 | **F** | `AGENTS.md` / `CLAUDE.md` / `.github/copilot-instructions.md` | Agent 指令 |
 | **Mirror** | `.qoder/` / `.trae/` | IDE 镜像 |
@@ -201,7 +201,7 @@ asd guard:ci --min-score 90   # CI 质量门禁
 
 ## 工程规模
 
-![AutoSnippet 工程规模数据卡](/images/ch01/02-engineering-scale.png)
+![Alembic 工程规模数据卡](/images/ch01/02-engineering-scale.png)
 
 | 维度 | 数据 |
 |------|------|
@@ -227,7 +227,7 @@ asd guard:ci --min-score 90   # CI 质量门禁
 
 ### 快速演化项目的知识跟随
 
-AutoSnippet 自身就是一个架构频繁调整的项目，知识库需要设计更稳定的快速跟随方案。SourceRefReconciler 和 DecayDetector 已经解决了"知识过时"的检测问题，下一步是让知识在架构重构时能够自动重组而非逐条衰退。
+Alembic 自身就是一个架构频繁调整的项目，知识库需要设计更稳定的快速跟随方案。SourceRefReconciler 和 DecayDetector 已经解决了"知识过时"的检测问题，下一步是让知识在架构重构时能够自动重组而非逐条衰退。
 
 ### 主项目与子项目的知识共享
 
@@ -243,7 +243,7 @@ AutoSnippet 自身就是一个架构频繁调整的项目，知识库需要设�
 
 ## 本书结构
 
-本书按照 AutoSnippet 的架构层次组织，**每一章对应一个核心模块**，从设计动机到实现细节逐层展开：
+本书按照 Alembic 的架构层次组织，**每一章对应一个核心模块**，从设计动机到实现细节逐层展开：
 
 - **Part 1（起点与哲学）**：本章介绍 → 本地记忆主权 → SOUL 设计原则
 - **Part 2（工程基石）**：架构全景 → 安全管线 → 代码理解

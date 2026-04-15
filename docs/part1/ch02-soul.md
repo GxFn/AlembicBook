@@ -4,13 +4,13 @@
 
 ## 问题场景
 
-AutoSnippet 不是通用 AI 平台，它有明确的边界。但边界在哪？谁来守？
+Alembic 不是通用 AI 平台，它有明确的边界。但边界在哪？谁来守？
 
 一个做知识管理的系统，天然面临这样的张力：AI 想要尽可能多地产出——因为 Agent 的"成就感"来自每次交互都留下点什么；而开发者需要的是高质量的、可信赖的知识积累——一条错误的 Recipe 进入知识库，会让所有团队成员的 AI 助手都学到错误的写法。
 
 如果系统的每个模块各自为政地定义"什么该做、什么不该做"，最终会出现不一致的行为——某个模块允许的操作在另一个模块被拒绝，或者更危险的，某个角落悄悄突破了安全约束，让 AI 绕过审核直接发布了一条未经验证的知识。
 
-SOUL 是 AutoSnippet 的身份宪章，对应仓库根目录的 `SOUL.md` 文件。它回答一个根本问题：**这个系统是什么，不是什么**。
+SOUL 是 Alembic 的身份宪章，对应仓库根目录的 `SOUL.md` 文件。它回答一个根本问题：**这个系统是什么，不是什么**。
 
 ```text
 I am a knowledge base curator — I help developers distill valuable
@@ -112,11 +112,11 @@ async embedAll(items: Array<{ id: string; content: string }>) {
 
 这是最反直觉但最重要的设计决策。
 
-大多数 AI 工具把 LLM 放在关键路径上——每次操作都调用 AI，导致延迟不可预测、结果不可复现、离线不可用。AutoSnippet 反其道而行：**LLM 的角色是"编译器"，不是"运行时"。**
+大多数 AI 工具把 LLM 放在关键路径上——每次操作都调用 AI，导致延迟不可预测、结果不可复现、离线不可用。Alembic 反其道而行：**LLM 的角色是"编译器"，不是"运行时"。**
 
 类比传统软件开发：
 
-| 阶段 | 传统软件 | AutoSnippet |
+| 阶段 | 传统软件 | Alembic |
 |------|----------|-------------|
 | 编译期 | 编译器将源码翻译为机器码 | LLM 将代码模式翻译为 Recipe / Guard 规则 / Evolution 提案 |
 | 运行期 | CPU 执行机器码，不需要编译器 | 搜索、合规检查、交付执行 Recipe，不需要 LLM |
@@ -262,7 +262,7 @@ if (fpRate > 0.4 && triggers > 10) {
 
 ## 设计哲学三：正交组合 > 特化子类
 
-AutoSnippet 的 Agent 系统需要处理多种截然不同的任务：与用户聊天、深度分析代码、批量提取知识、远程执行命令。直觉上应该设计 `ChatAgent`、`AnalysisAgent`、`BootstrapAgent` 三个子类，对吧？
+Alembic 的 Agent 系统需要处理多种截然不同的任务：与用户聊天、深度分析代码、批量提取知识、远程执行命令。直觉上应该设计 `ChatAgent`、`AnalysisAgent`、`BootstrapAgent` 三个子类，对吧？
 
 SOUL 的第三项哲学否决了这个方案。原因不是子类"不好"，而是子类的维度会爆炸。
 
@@ -272,7 +272,7 @@ SOUL 的第三项哲学否决了这个方案。原因不是子类"不好"，而�
 
 ### 正交组合方案
 
-AutoSnippet 用 **Capability × Strategy × Policy** 三维正交组合替代继承树：
+Alembic 用 **Capability × Strategy × Policy** 三维正交组合替代继承树：
 
 ```typescript
 // lib/agent/AgentFactory.ts
@@ -323,7 +323,7 @@ export class Conversation extends Capability {
   get name() { return 'conversation'; }
 
   get promptFragment() {
-    return `## 对话能力\n你是 AutoSnippet 知识管理助手...`;
+    return `## 对话能力\n你是 Alembic 知识管理助手...`;
   }
 
   get tools() {
@@ -343,7 +343,7 @@ export class Conversation extends Capability {
 
 ## 设计哲学四：信号驱动 > 时间驱动
 
-很多系统用定时任务扫描状态变化——每天凌晨跑一遍衰退检测，每小时更新一次质量评分。AutoSnippet 的第四项哲学是：**没有 cron job，一切由使用信号触发。**
+很多系统用定时任务扫描状态变化——每天凌晨跑一遍衰退检测，每小时更新一次质量评分。Alembic 的第四项哲学是：**没有 cron job，一切由使用信号触发。**
 
 ### SignalBus：同步分发、异常隔离
 
@@ -408,7 +408,7 @@ record(recipeId: string, eventType: HitEventType, value = 1) {
 
 ### 信号驱动 vs 时间驱动的对比
 
-| 场景 | 时间驱动 | 信号驱动（AutoSnippet 的做法）|
+| 场景 | 时间驱动 | 信号驱动（Alembic 的做法）|
 |------|----------|------|
 | 知识衰退 | 每天凌晨扫描一次 | 90 天无 `guardHit` / `searchHit` 信号时触发 |
 | 质量更新 | 每小时重算评分 | 采纳信号（`adoption`）触发增量更新 |
@@ -451,7 +451,7 @@ async scanAll(): Promise<DecayScoreResult[]> {
 
 ## 设计哲学五：纵深防御
 
-AutoSnippet 通过 MCP 协议暴露工具给外部 AI Agent（Cursor、Copilot、Claude Code）。这意味着每个 MCP 调用的发起者本质上是一个你无法完全信任的 AI 模型——它可能被 prompt injection 操纵，可能在多轮对话中逐步试探权限边界。
+Alembic 通过 MCP 协议暴露工具给外部 AI Agent（Cursor、Copilot、Claude Code）。这意味着每个 MCP 调用的发起者本质上是一个你无法完全信任的 AI 模型——它可能被 prompt injection 操纵，可能在多轮对话中逐步试探权限边界。
 
 单层安全检查在这种场景下是不够的。如果权限检查只发生在 API 入口，那么绕过入口的操作（比如 Agent 直接调用内部方法）就没有防护。如果只检查文件路径但不检查操作权限，那么有路径访问权的 Agent 就能执行任意操作。
 
@@ -497,7 +497,7 @@ assertProjectWriteSafe(filePath: string) {
 }
 ```
 
-即使 Agent 有 `external_agent` 角色的写入权限（通过了第 1-3 层），它仍然只能写入 `.autosnippet/`、`.cursor/`、`.vscode/`、`.github/` 等白名单目录。想要写入 `src/` 或任何业务代码目录？PathGuard 会直接抛出异常。
+即使 Agent 有 `external_agent` 角色的写入权限（通过了第 1-3 层），它仍然只能写入 `.asd/`、`.cursor/`、`.vscode/`、`.github/` 等白名单目录。想要写入 `src/` 或任何业务代码目录？PathGuard 会直接抛出异常。
 
 ## SOUL 如何被执行
 

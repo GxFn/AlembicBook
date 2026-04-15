@@ -32,7 +32,7 @@ A branching arrow to the right leads to a small pale pink (#FADBD8) rounded box 
 NODE 4 (white fill):
 A file folder icon labeled "candidates/" with a small document icon labeled "entry.md" being placed inside the folder (suggesting file write).
 Small annotation to the right: "FileWriter 持久化"
-Tiny code path annotation: ".autosnippet/candidates/"
+Tiny code path annotation: ".asd/candidates/"
 
 ↓ arrow
 

@@ -4,11 +4,11 @@
 
 ## 问题场景
 
-AutoSnippet 是一个本地化工具，用户 `npm install -g autosnippet` 后就应该能用。这意味着不能依赖 PostgreSQL、Redis、Elasticsearch 等外部服务。但系统需要：关系型存储（知识条目 · 审计日志 · 14 张表）、向量存储（语义搜索 · HNSW 索引）、缓存（AST 图谱 · 搜索结果 · 跨进程失效）、事件总线（信号分发）、依赖注入（70+ 服务管理）。
+Alembic 是一个本地化工具，用户 `npm install -g alembic` 后就应该能用。这意味着不能依赖 PostgreSQL、Redis、Elasticsearch 等外部服务。但系统需要：关系型存储（知识条目 · 审计日志 · 14 张表）、向量存储（语义搜索 · HNSW 索引）、缓存（AST 图谱 · 搜索结果 · 跨进程失效）、事件总线（信号分发）、依赖注入（70+ 服务管理）。
 
 **核心约束**：所有基础设施必须内嵌，`npm install` 即用——不能要求用户启动 Docker、安装 PostgreSQL 或配置 Redis。
 
-这不是一个"简单的命令行工具"的基础设施需求。它的复杂度接近一个小型 SaaS 后端，但部署形态是一个 npm 包。本章展示 AutoSnippet 如何在这个约束下构建完整的数据基础设施。
+这不是一个"简单的命令行工具"的基础设施需求。它的复杂度接近一个小型 SaaS 后端，但部署形态是一个 npm 包。本章展示 Alembic 如何在这个约束下构建完整的数据基础设施。
 
 ![数据基础设施四层架构图](/images/ch16/01-infrastructure-four-layers.png)
 
@@ -16,17 +16,17 @@ AutoSnippet 是一个本地化工具，用户 `npm install -g autosnippet` 后�
 
 ### SQLite 作为唯一关系存储
 
-AutoSnippet 需要存储带有复杂关系的结构化数据——知识条目之间有图谱关系，Guard 违规需要按文件路径和时间范围查询，Bootstrap 快照需要跨表关联维度和文件。这排除了纯 KV 存储（LevelDB、RocksDB）。
+Alembic 需要存储带有复杂关系的结构化数据——知识条目之间有图谱关系，Guard 违规需要按文件路径和时间范围查询，Bootstrap 快照需要跨表关联维度和文件。这排除了纯 KV 存储（LevelDB、RocksDB）。
 
-为什么不用 PostgreSQL？答案很简单：**安装负担**。一个 `npm install -g autosnippet` 命令不应该要求用户先装数据库服务器。SQLite 作为嵌入式数据库，二进制文件随 npm 包分发，零配置即可使用。
+为什么不用 PostgreSQL？答案很简单：**安装负担**。一个 `npm install -g alembic` 命令不应该要求用户先装数据库服务器。SQLite 作为嵌入式数据库，二进制文件随 npm 包分发，零配置即可使用。
 
-SQLite 的性能特征恰好匹配 AutoSnippet 的工作负载——**读多写少**。知识库建立后，90% 的操作是搜索和查询；写入集中在 Bootstrap 扫描和 Agent 产出阶段。SQLite 的 WAL（Write-Ahead Logging）模式允许一个写者和多个读者并发执行，正好适合"MCP Server 持续读 + Agent 偶尔写"的场景。
+SQLite 的性能特征恰好匹配 Alembic 的工作负载——**读多写少**。知识库建立后，90% 的操作是搜索和查询；写入集中在 Bootstrap 扫描和 Agent 产出阶段。SQLite 的 WAL（Write-Ahead Logging）模式允许一个写者和多个读者并发执行，正好适合"MCP Server 持续读 + Agent 偶尔写"的场景。
 
 具体的数据库引擎选择：**better-sqlite3** 而不是 sql.js。better-sqlite3 是 C++ 原生绑定，提供**同步 API**——这不是性能让步，而是刻意的工程选择。在 Node.js 中，SQLite 查询通常在微秒到毫秒级别完成，同步 API 消除了 Promise 开销，代码也更直观。sql.js 是 Wasm 编译版本，跨平台兼容好但性能明显更低。
 
 **Drizzle ORM + raw SQL 混用策略**：
 
-AutoSnippet 没有采用纯 ORM 或纯 SQL 的极端方案，而是让两者各取所长：
+Alembic 没有采用纯 ORM 或纯 SQL 的极端方案，而是让两者各取所长：
 
 ```typescript
 // Drizzle：schema 定义 + 类型安全 CRUD
@@ -50,7 +50,7 @@ Drizzle 负责 schema 定义（编译期列名检查）、migration 管理和简
 
 ### 向量存储的双引擎策略
 
-语义搜索需要向量索引。AutoSnippet 提供两个引擎——**JsonVectorAdapter** 和 **HnswVectorAdapter**——通过统一的 `VectorStore` 抽象层切换：
+语义搜索需要向量索引。Alembic 提供两个引擎——**JsonVectorAdapter** 和 **HnswVectorAdapter**——通过统一的 `VectorStore` 抽象层切换：
 
 ```typescript
 // VectorStore 基类定义标准接口
@@ -67,11 +67,11 @@ async hybridSearch(queryVector, queryText, options)
 
 ### 自建 DI 容器
 
-AutoSnippet 管理 70+ 服务的依赖关系。为什么不用 InversifyJS 或 TSyringe 这些成熟框架？
+Alembic 管理 70+ 服务的依赖关系。为什么不用 InversifyJS 或 TSyringe 这些成熟框架？
 
-第一个原因是**装饰器兼容性**。InversifyJS 和 TSyringe 都依赖 TypeScript 装饰器和 `reflect-metadata`——这在 ESM 模块系统中有持续的兼容性问题。AutoSnippet 是纯 ESM 项目（`"type": "module"`），装饰器的转义行为在不同构建工具间不一致。
+第一个原因是**装饰器兼容性**。InversifyJS 和 TSyringe 都依赖 TypeScript 装饰器和 `reflect-metadata`——这在 ESM 模块系统中有持续的兼容性问题。Alembic 是纯 ESM 项目（`"type": "module"`），装饰器的转义行为在不同构建工具间不一致。
 
-第二个原因是**体积和控制权**。InversifyJS 大约 10,000 行代码；AutoSnippet 的 ServiceContainer 不到 200 行，却能覆盖实际需要的所有功能——延迟单例、模块化注册、AI Provider 热重载、类型安全的 `get<T>()`。没有装饰器魔法，没有运行时元数据反射，每个服务的注册和解析过程完全透明。
+第二个原因是**体积和控制权**。InversifyJS 大约 10,000 行代码；Alembic 的 ServiceContainer 不到 200 行，却能覆盖实际需要的所有功能——延迟单例、模块化注册、AI Provider 热重载、类型安全的 `get<T>()`。没有装饰器魔法，没有运行时元数据反射，每个服务的注册和解析过程完全透明。
 
 ```typescript
 // 服务注册：工厂函数 + 延迟初始化
@@ -90,7 +90,7 @@ ServiceContainer 唯一的"高级功能"是 **AI Provider 热重载**：用户�
 
 ### 数据库 Schema——14 张表
 
-AutoSnippet 的 SQLite 数据库包含 14 张表，用 Drizzle ORM 定义 schema，编译期保证列名和类型的正确性。以下是核心表的设计：
+Alembic 的 SQLite 数据库包含 14 张表，用 Drizzle ORM 定义 schema，编译期保证列名和类型的正确性。以下是核心表的设计：
 
 **知识存储（3 张表）**：
 
@@ -132,15 +132,15 @@ AutoSnippet 的 SQLite 数据库包含 14 张表，用 Drizzle ORM 定义 schema
 
 数据库迁移在 `DatabaseConnection.connect()` 时自动执行。系统支持三种迁移文件格式——`.sql`、`.js`、`.ts`——通过 `schema_migrations` 表追踪已应用版本。每次迁移在事务中执行，保证原子性：要么全部成功，要么回滚到迁移前状态。
 
-迁移的设计原则是**向后兼容**：新增列使用 `DEFAULT` 值，不会删除已有列。这保证了旧版本产生的数据库文件在新版本中依然可用——用户升级 AutoSnippet 版本后不需要重建知识库。
+迁移的设计原则是**向后兼容**：新增列使用 `DEFAULT` 值，不会删除已有列。这保证了旧版本产生的数据库文件在新版本中依然可用——用户升级 Alembic 版本后不需要重建知识库。
 
 ### 向量索引体系
 
-向量存储承载语义搜索的基础能力。AutoSnippet 实现了完整的向量索引管线——从文本分块到向量生成，再到索引构建和查询。
+向量存储承载语义搜索的基础能力。Alembic 实现了完整的向量索引管线——从文本分块到向量生成，再到索引构建和查询。
 
 #### HNSW 索引
 
-HNSW 是近似最近邻搜索的主流算法。AutoSnippet 的实现遵循原始论文的参数约定：
+HNSW 是近似最近邻搜索的主流算法。Alembic 的实现遵循原始论文的参数约定：
 
 ```text
 M = 16              # 每层最大邻居数
@@ -194,15 +194,15 @@ maxConcurrency = 2   // 最多 2 个批次并行（p-limit 背压控制）
 
 ### 缓存体系——三层协作
 
-AutoSnippet 的缓存体系由三个组件构成，分别解决不同层次的问题：
+Alembic 的缓存体系由三个组件构成，分别解决不同层次的问题：
 
 **CacheService**——内存 LRU 缓存，处理热数据。默认 TTL 300 秒，每 60 秒自动清理过期项（定时器使用 `unref()` 不阻塞进程退出）。通过 `CacheKeyBuilder` 生成类型化的键（`candidate:{id}`、`recipe:{id}`、`health:status`），避免键冲突。
 
-**GraphCache**——文件持久化缓存，处理重型计算结果。AST 图谱分析耗时较长（大项目可达数秒），结果序列化为 JSON 保存在 `.autosnippet/cache/` 目录下。每次读取时对比 `contentHash`——文件内容没变就复用缓存，变了就失效重算。
+**GraphCache**——文件持久化缓存，处理重型计算结果。AST 图谱分析耗时较长（大项目可达数秒），结果序列化为 JSON 保存在 `.asd/cache/` 目录下。每次读取时对比 `contentHash`——文件内容没变就复用缓存，变了就失效重算。
 
 **CacheCoordinator**——跨进程缓存失效，处理多进程一致性。这是最有趣的组件。
 
-AutoSnippet 可能同时运行多个进程——MCP Server 在后台持续服务 IDE 请求，用户在终端执行 `asd guard` 命令。两个进程共享同一个 SQLite 数据库文件，但内存缓存各自独立。当 CLI 进程写入新的 Guard 规则后，MCP Server 的缓存不知道数据库已经变了。
+Alembic 可能同时运行多个进程——MCP Server 在后台持续服务 IDE 请求，用户在终端执行 `asd guard` 命令。两个进程共享同一个 SQLite 数据库文件，但内存缓存各自独立。当 CLI 进程写入新的 Guard 规则后，MCP Server 的缓存不知道数据库已经变了。
 
 CacheCoordinator 利用 SQLite 内置的 `PRAGMA data_version` 解决这个问题：
 
@@ -223,7 +223,7 @@ CacheCoordinator **仅在长驻进程中启动**（HTTP Server / MCP Server）�
 
 ### 审计与日志
 
-AutoSnippet 的审计系统分为两层——**AuditLogger** 负责记录，**AuditStore** 负责持久化和查询。
+Alembic 的审计系统分为两层——**AuditLogger** 负责记录，**AuditStore** 负责持久化和查询。
 
 AuditLogger 兼容两种日志格式。Gateway 调用链产出 `{ actor, action, resource, result, duration }` 结构，Service 层产出 `{ actor, action, resourceType, resourceId, details }` 结构——AuditLogger 统一适配后写入 `audit_logs` 表，同时通过 EventBus 发送 `audit:entry` 事件推送到 Dashboard 实时展示。
 
@@ -255,8 +255,8 @@ DatabaseConnection 是整个数据层的入口——管理唯一的 SQLite 连�
 class DatabaseConnection {
   connect(): Promise<SqliteDatabase> {
     // 1. 开发仓库保护
-    if (isAutoSnippetDevRepo(projectRoot)) {
-      dbPath = path.join(os.tmpdir(), 'autosnippet-dev', 'data.db');
+    if (isAlembicDevRepo(projectRoot)) {
+      dbPath = path.join(os.tmpdir(), 'alembic-dev', 'data.db');
     }
 
     // 2. 打开连接 + 运行时配置
@@ -279,10 +279,10 @@ class DatabaseConnection {
 三个 PRAGMA 配置值得解释：
 
 - **`journal_mode = WAL`**：允许读写并发——一个写者 + 多个读者同时操作。传统的 rollback journal 模式下，写操作会阻塞所有读操作。
-- **`foreign_keys = ON`**：SQLite 默认不启用外键约束（历史原因）。AutoSnippet 的 `knowledge_edges` 表引用 `knowledge_entries.id`，没有这个配置，删除知识条目不会级联清理关系边。
+- **`foreign_keys = ON`**：SQLite 默认不启用外键约束（历史原因）。Alembic 的 `knowledge_edges` 表引用 `knowledge_entries.id`，没有这个配置，删除知识条目不会级联清理关系边。
 - **`busy_timeout = 3000`**：当另一个进程持有写锁时，不立即返回 `SQLITE_BUSY` 错误，而是等待最多 3 秒。这避免了 MCP Server 和 CLI 同时写入时的频繁失败。
 
-**开发仓库保护**是一个精巧的防护机制：`isAutoSnippetDevRepo()` 检测当前项目是否是 AutoSnippet 源码仓库本身。如果是，数据库文件重定向到 `$TMPDIR/autosnippet-dev/`——防止开发和测试期间的 MCP Server 在源码仓库中产生运行时数据。这个检测配合 PathGuard（阻止创建 `.autosnippet/` 目录）和 SetupService（拒绝执行 setup），形成三重保护。
+**开发仓库保护**是一个精巧的防护机制：`isAlembicDevRepo()` 检测当前项目是否是 Alembic 源码仓库本身。如果是，数据库文件重定向到 `$TMPDIR/alembic-dev/`——防止开发和测试期间的 MCP Server 在源码仓库中产生运行时数据。这个检测配合 PathGuard（阻止创建 `.asd/` 目录）和 SetupService（拒绝执行 setup），形成三重保护。
 
 ### ServiceContainer 启动序列
 
@@ -432,7 +432,7 @@ class AiProviderManager {
 
 ### Token Metering — 用量追踪
 
-AI API 调用是 AutoSnippet 运行中唯一有真实成本的操作。`TokenUsageStore` 追踪每次 AI 调用的 Token 消耗，提供 7 天维度的聚合分析。
+AI API 调用是 Alembic 运行中唯一有真实成本的操作。`TokenUsageStore` 追踪每次 AI 调用的 Token 消耗，提供 7 天维度的聚合分析。
 
 **数据模型**：
 
@@ -517,7 +517,7 @@ async findWithPagination(filters, options) {
 
 SQLite WAL 模式允许并发读，但**写操作仍然是串行的**——同一时刻只有一个写者。`busy_timeout = 3000` 缓解了短时间的写冲突，但如果多个进程持续高频写入，3 秒等待仍可能超时。
 
-这对 AutoSnippet 来说不是实际问题。写入场景集中在两个时刻：Bootstrap 扫描（单进程批量写入）和 Agent 产出（偶发写入）。日常使用中，MCP Server 几乎只做读操作——搜索知识库、获取 Guard 规则、读取配置——写入频率极低。
+这对 Alembic 来说不是实际问题。写入场景集中在两个时刻：Bootstrap 扫描（单进程批量写入）和 Agent 产出（偶发写入）。日常使用中，MCP Server 几乎只做读操作——搜索知识库、获取 Guard 规则、读取配置——写入频率极低。
 
 如果未来需要更高的写并发（例如多个 Agent 同时产出知识），可以考虑**写队列**——把写操作序列化到一个队列中，由单个 writer 进程消费。但当前阶段，3 秒超时足够了。
 
@@ -525,17 +525,17 @@ SQLite WAL 模式允许并发读，但**写操作仍然是串行的**——同�
 
 JsonVectorAdapter 的暴力搜索在 3000 条以上会出现可感知的延迟（>100ms）。HNSW 索引把这个上限推到了数万条。但对于超大规模知识库（10 万+），纯内存的 HNSW 索引会占用大量 RAM。
 
-VectorStore 抽象层预留了扩展点——可以接入外部向量数据库（如 Milvus、Qdrant）。但"零外部依赖"是 AutoSnippet 的核心承诺，所以外部引擎只作为可选的高级配置，不是默认路径。
+VectorStore 抽象层预留了扩展点——可以接入外部向量数据库（如 Milvus、Qdrant）。但"零外部依赖"是 Alembic 的核心承诺，所以外部引擎只作为可选的高级配置，不是默认路径。
 
 ### 自建 DI 的取舍
 
 自建 ServiceContainer 的好处在前面已经讨论——轻量、无装饰器、类型安全。代价是：**没有自动依赖解析**。每个模块的注册顺序需要手动维护——如果 GuardModule 依赖 KnowledgeModule，就必须确保 KnowledgeModule 先注册。15 步启动序列的顺序是人工确定的，新增模块需要开发者理解依赖关系图。
 
-InversifyJS 这类框架可以自动解析依赖顺序（基于装饰器声明），但代价是运行时反射和装饰器兼容问题。对于 AutoSnippet 当前 9 个模块的规模，手动排序的维护成本完全可接受。如果模块数增长到 20 以上，可能需要在 ServiceContainer 中加入拓扑排序。
+InversifyJS 这类框架可以自动解析依赖顺序（基于装饰器声明），但代价是运行时反射和装饰器兼容问题。对于 Alembic 当前 9 个模块的规模，手动排序的维护成本完全可接受。如果模块数增长到 20 以上，可能需要在 ServiceContainer 中加入拓扑排序。
 
 ### Drizzle vs Prisma
 
-Drizzle 和 Prisma 是 TypeScript 生态中两个主流 ORM。AutoSnippet 选择 Drizzle 的原因：
+Drizzle 和 Prisma 是 TypeScript 生态中两个主流 ORM。Alembic 选择 Drizzle 的原因：
 
 - **运行时零依赖**：Drizzle 是纯 TypeScript，不需要生成代理文件（Prisma Client 需要 `npx prisma generate`）
 - **SQL 亲和**：Drizzle 的查询构建器几乎 1:1 映射 SQL 语法，不引入新的查询语言
@@ -545,7 +545,7 @@ Drizzle 和 Prisma 是 TypeScript 生态中两个主流 ORM。AutoSnippet 选择
 
 ## 小结
 
-AutoSnippet 在"npm 包"的部署约束下构建了一套完整的数据基础设施：
+Alembic 在"npm 包"的部署约束下构建了一套完整的数据基础设施：
 
 - **SQLite + WAL** 提供关系存储，14 张表覆盖知识、分析、审计、会话四个领域
 - **HNSW + SQ8 量化** 提供高性能向量搜索，BatchEmbedder 50× 加速索引构建

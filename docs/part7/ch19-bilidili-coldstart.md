@@ -1,7 +1,7 @@
 # 真实数据：BiliDili 冷启动全记录
 
 > 本章记录的是两次**真实测试数据**，两轮执行之间对调度和容错做了微调，所有数值均为原始日志直出，未做任何修正。
-> AutoSnippet 的核心能力在于知识管理与 Guard 引擎，AgentRuntime 只是其中的自动化采集层。本章的目的不是宣传 Agent 有多强，而是**如实展示当前冷启动的工程现状**——哪些环节已经可用，哪些还有明显短板——为后续章节的 Recipe 审核和 Guard 规则生成提供数据基础。
+> Alembic 的核心能力在于知识管理与 Guard 引擎，AgentRuntime 只是其中的自动化采集层。本章的目的不是宣传 Agent 有多强，而是**如实展示当前冷启动的工程现状**——哪些环节已经可用，哪些还有明显短板——为后续章节的 Recipe 审核和 Guard 规则生成提供数据基础。
 
 ## 19.1 项目画像
 
@@ -11,7 +11,7 @@
 | 语言 | Swift |
 | 源文件 | 124 个 |
 | SPM Packages | 4 个本地包 |
-| AutoSnippet 版本 | 3.3.9（两轮之间微调了调度与容错参数） |
+| Alembic 版本 | 3.3.9（两轮之间微调了调度与容错参数） |
 | 执行方式 | `asd coldstart --wait --json` |
 
 ### 测试环境
@@ -619,21 +619,21 @@ design-patterns             0        0         0        12
 
 | 交付物 | 路径 | 数量 | 第一轮对照 |
 |--------|------|------|---------|
-| 候选知识 | `AutoSnippet/candidates/*/` | 98 | 101 |
-| Cursor Rules (A) | `.cursor/rules/autosnippet-project-rules.mdc` | 13 rules | 12 |
-| Cursor Patterns (B) | `.cursor/rules/autosnippet-patterns-*.mdc` | 6 topics (23 patterns + 9 facts + 18 insights) | — |
-| Project Skills (C) | `AutoSnippet/skills/` | 5 | 5 |
+| 候选知识 | `Alembic/candidates/*/` | 98 | 101 |
+| Cursor Rules (A) | `.cursor/rules/alembic-project-rules.mdc` | 13 rules | 12 |
+| Cursor Patterns (B) | `.cursor/rules/alembic-patterns-*.mdc` | 6 topics (23 patterns + 9 facts + 18 insights) | — |
+| Project Skills (C) | `Alembic/skills/` | 5 | 5 |
 | Agent 指令 (F) | `AGENTS.md` + `copilot-instructions` | 2,165 tokens | 1 file |
-| Wiki | `AutoSnippet/wiki/` | 8 articles (8 AI-enhanced) | 8 |
-| 语义记忆 | `.autosnippet/memory/` | 220 | 166 |
-| Bootstrap 报告 | `.autosnippet/bootstrap-report.json` | 1 | 1 |
+| Wiki | `Alembic/wiki/` | 8 articles (8 AI-enhanced) | 8 |
+| 语义记忆 | `.asd/memory/` | 220 | 166 |
+| Bootstrap 报告 | `.asd/bootstrap-report.json` | 1 | 1 |
 
 ### Cursor Delivery 通道明细（第二轮新增）
 
 第二轮新增了 Channel B 的多主题 pattern 分发：
 
 ```
-Channel A: 13 rules → autosnippet-project-rules.mdc          (785 tokens)
+Channel A: 13 rules → alembic-project-rules.mdc          (785 tokens)
 Channel B: networking  — 5 patterns + 2 facts                 
          : ui         — 5 patterns + 0 facts                 
          : architecture — 5 patterns + 5 facts               
@@ -647,7 +647,7 @@ Total delivery: 26ms
 
 ### 真实样本：一个高质量 Candidate 如何变成交付产物
 
-这里先做一个必要说明：**本轮还停留在 Candidate 阶段，尚未进入人工审核后的正式 Recipe 阶段**，因此 `AutoSnippet/recipes/` 目录为空。所以下面展示的不是“已审核 Recipe”，而是**最接近最终 Recipe 的高质量 Candidate**，以及它进入交付通道后的真实输出形态。
+这里先做一个必要说明：**本轮还停留在 Candidate 阶段，尚未进入人工审核后的正式 Recipe 阶段**，因此 `Alembic/recipes/` 目录为空。所以下面展示的不是“已审核 Recipe”，而是**最接近最终 Recipe 的高质量 Candidate**，以及它进入交付通道后的真实输出形态。
 
 同时也要强调，下面这批结果**并不是由当前最强大的 LLM 生成**。两轮测试使用的是 `gemini-3-flash-preview`，目标是观察当前工程链路在较低成本、偏速度优先模型上的真实表现，而不是展示高配模型的上限。
 

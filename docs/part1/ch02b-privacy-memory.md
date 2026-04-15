@@ -26,21 +26,21 @@
 
 ## 设计决策：知识和记忆都属于项目
 
-AutoSnippet 做了两件事，它们服务于不同目的，但共享同一个原则——**本地优先，零数据上传**。
+Alembic 做了两件事，它们服务于不同目的，但共享同一个原则——**本地优先，零数据上传**。
 
-**Recipe 是本职。** 经过 AST 验证、质量评分、人工审核的项目知识——编码规范、架构模式、最佳实践——以 Markdown 文件存储在 `AutoSnippet/recipes/`，跟代码一起 Git 管理。这是确定性资产，团队共享，可审计、可迁移。
+**Recipe 是本职。** 经过 AST 验证、质量评分、人工审核的项目知识——编码规范、架构模式、最佳实践——以 Markdown 文件存储在 `Alembic/recipes/`，跟代码一起 Git 管理。这是确定性资产，团队共享，可审计、可迁移。
 
-**记忆同样在本地。** Agent 的行为信号、对话历史、跨会话事实——这些帮助 Agent 记住你的习惯和项目上下文的"软知识"——存储在 `.autosnippet/` 目录下，不提交 Git，不上传到任何服务器。记忆是个人的——每个开发者的 Agent 独立积累对你行为和偏好的理解。
+**记忆同样在本地。** Agent 的行为信号、对话历史、跨会话事实——这些帮助 Agent 记住你的习惯和项目上下文的"软知识"——存储在 `.asd/` 目录下，不提交 Git，不上传到任何服务器。记忆是个人的——每个开发者的 Agent 独立积累对你行为和偏好的理解。
 
 ```text
 ┌─────────────────────────────────────────────────┐
 │  知识（本职·团队共享）         Git 版本控制          │
-│  AutoSnippet/recipes/      正式 Recipe            │
-│  AutoSnippet/candidates/   候选知识               │
-│  AutoSnippet/skills/       项目技能               │
+│  Alembic/recipes/      正式 Recipe            │
+│  Alembic/candidates/   候选知识               │
+│  Alembic/skills/       项目技能               │
 ├─────────────────────────────────────────────────┤
-│  记忆（个人·不提交 Git）       .autosnippet/       │
-│    ├── autosnippet.db      关系数据 + 向量索引     │
+│  记忆（个人·不提交 Git）       .asd/       │
+│    ├── alembic.db      关系数据 + 向量索引     │
 │    ├── signals/            行为信号 JSONL          │
 │    ├── conversations/      对话历史                │
 │    └── session-store/      会话快照                │
@@ -54,18 +54,18 @@ AutoSnippet 做了两件事，它们服务于不同目的，但共享同一个�
 
 换 IDE 只是换了一个交付通道。换模型只是换了一个推理引擎。底层的 Recipe 和记忆——全部留在本地，不因任何外部变动而损失。
 
-这和 Git 的故事有深层的相似性。Git 之前，代码版本历史被锁在 SourceSafe、Perforce 等集中式平台里——服务器挂了历史就没了，换平台历史带不走。Git 把版本历史变成了**本地优先的、可移植的资产**。AutoSnippet 正在对 AI 编程的"项目记忆"做同样的事。
+这和 Git 的故事有深层的相似性。Git 之前，代码版本历史被锁在 SourceSafe、Perforce 等集中式平台里——服务器挂了历史就没了，换平台历史带不走。Git 把版本历史变成了**本地优先的、可移植的资产**。Alembic 正在对 AI 编程的"项目记忆"做同样的事。
 
 ## 知识与记忆的四层架构
 
-Recipe 是 AutoSnippet 的本职——结构化的项目知识。记忆则帮助 Agent 记住你的行为习惯和项目上下文。两者服务于不同目的，分布在四个层次上。
+Recipe 是 Alembic 的本职——结构化的项目知识。记忆则帮助 Agent 记住你的行为习惯和项目上下文。两者服务于不同目的，分布在四个层次上。
 
 ### 第一层：知识库（Recipe — 本职）
 
-这不是记忆，而是 AutoSnippet 的核心产出——经过 AST 验证、质量评分、人工审核的项目知识。每条 Recipe 是一个独立的 Markdown 文件，存储在 `AutoSnippet/recipes/` 目录下，跟代码一起 Git 管理。
+这不是记忆，而是 Alembic 的核心产出——经过 AST 验证、质量评分、人工审核的项目知识。每条 Recipe 是一个独立的 Markdown 文件，存储在 `Alembic/recipes/` 目录下，跟代码一起 Git 管理。
 
 ```text
-存储：AutoSnippet/recipes/*.md + SQLite 索引
+存储：Alembic/recipes/*.md + SQLite 索引
 时间尺度：永久（跟项目生命周期一致）
 版本控制：Git 跟踪，团队共享
 迁移方式：git clone 即完成
@@ -80,7 +80,7 @@ Recipe 是 AutoSnippet 的本职——结构化的项目知识。记忆则帮助
 Agent 的每次工具调用、每次知识搜索、每次 Guard 审计、每次意图漂移——都被 SignalBus 捕获并持久化为 JSONL 文件：
 
 ```text
-存储：.autosnippet/signals/{type}.jsonl
+存储：.asd/signals/{type}.jsonl
 时间尺度：持续积累，代谢引擎周期性消费
 类型：guard · search · usage · intent · lifecycle
 迁移方式：文件复制
@@ -110,7 +110,7 @@ Agent 记忆采用三维评分模型——最近使用过的（Recency）、被�
 单次对话中的工作状态——当前正在分析哪个模块、已经调用了哪些工具、做了什么决策。
 
 ```text
-存储：.autosnippet/conversations/{id}.jsonl + session-store/
+存储：.asd/conversations/{id}.jsonl + session-store/
 时间尺度：单次会话（可跨会话恢复）
 预算：12K token 滑动窗口，超限自动摘要
 迁移方式：会话结束后自动整合到第二、三层
@@ -144,18 +144,18 @@ Agent 记忆采用三维评分模型——最近使用过的（Recency）、被�
 
 ## 隐私的工程实现
 
-"本地存储"不是喊口号——它需要在代码中的每个角落防止数据意外外泄。AutoSnippet 的隐私保护是多层次的工程实现。
+"本地存储"不是喊口号——它需要在代码中的每个角落防止数据意外外泄。Alembic 的隐私保护是多层次的工程实现。
 
 ### PathGuard——文件系统沙箱
 
-PathGuard 是第一道防线——严格限制 AutoSnippet 可以写入的文件路径：
+PathGuard 是第一道防线——严格限制 Alembic 可以写入的文件路径：
 
 ```typescript
 // lib/shared/PathGuard.ts
 // Layer 1: assertSafe() — 不允许写出项目目录
 // Layer 2: assertProjectWriteSafe() — 只允许写入以下前缀：
-//   .autosnippet/     → 运行时数据
-//   AutoSnippet/      → 知识库文件
+//   .asd/     → 运行时数据
+//   Alembic/      → 知识库文件
 //   .cursor/          → IDE 集成
 //   .vscode/          → IDE 集成
 //   .github/          → Copilot 指令
@@ -181,10 +181,10 @@ roles:
 
 ### 零外传架构
 
-AutoSnippet 的 MCP Server 使用 **stdio 传输**——标准输入/输出流，不开网络端口。数据路径是：
+Alembic 的 MCP Server 使用 **stdio 传输**——标准输入/输出流，不开网络端口。数据路径是：
 
 ```text
-IDE Agent ←stdio→ MCP Server ←文件系统→ .autosnippet/ + AutoSnippet/
+IDE Agent ←stdio→ MCP Server ←文件系统→ .asd/ + Alembic/
                        ↑
                    无网络连接
                    无遥测上报
@@ -193,18 +193,18 @@ IDE Agent ←stdio→ MCP Server ←文件系统→ .autosnippet/ + AutoSnippet/
 
 MCP Server 进程没有任何出站网络连接（AI Provider 的 API 调用由 IDE 侧完成，不经过 MCP Server）。知识检索、Guard 审计、信号持久化——所有操作都在本地文件系统内完成。
 
-即使 AI Provider 的模型能从对话上下文中"看到"项目知识（因为 IDE 把搜索结果注入了上下文窗口），模型也无法直接访问知识库。它只能通过 MCP 工具接口获取 AutoSnippet 允许返回的内容——工具的返回值经过 `SlimSearchResult` 投影，只包含标题、触发器、摘要和评分，不包含完整的 Recipe 内容和内部元数据。
+即使 AI Provider 的模型能从对话上下文中"看到"项目知识（因为 IDE 把搜索结果注入了上下文窗口），模型也无法直接访问知识库。它只能通过 MCP 工具接口获取 Alembic 允许返回的内容——工具的返回值经过 `SlimSearchResult` 投影，只包含标题、触发器、摘要和评分，不包含完整的 Recipe 内容和内部元数据。
 
 ### 开发仓库自保护
 
-AutoSnippet 自身的源码仓库有特殊保护——防止开发期间的测试在源码目录中产生垃圾数据：
+Alembic 自身的源码仓库有特殊保护——防止开发期间的测试在源码目录中产生垃圾数据：
 
 ```typescript
 // lib/shared/isOwnDevRepo.ts
-// 检测条件：package.json name === 'autosnippet' && lib/bootstrap.ts 存在 && SOUL.md 存在
+// 检测条件：package.json name === 'alembic' && lib/bootstrap.ts 存在 && SOUL.md 存在
 // 命中时：
-//   DatabaseConnection → 重定向到 $TMPDIR/autosnippet-dev/
-//   PathGuard → 阻止创建 .autosnippet/ 和 AutoSnippet/
+//   DatabaseConnection → 重定向到 $TMPDIR/alembic-dev/
+//   PathGuard → 阻止创建 .asd/ 和 Alembic/
 //   SetupService → 拒绝执行 setup
 ```
 
@@ -218,7 +218,7 @@ AutoSnippet 自身的源码仓库有特殊保护——防止开发期间的测�
 
 一个项目跑完 Bootstrap，产出 50-200 条 Recipe——这是知识层的即时产出。新来的 Agent（无论是 Claude、GPT 还是未来的某个开源模型）直接享用，不需要重新"教"。同时，Agent 的每次交互都在本地积累行为信号和项目记忆，让后续的 Agent 越来越懂你的习惯。
 
-平台方案的问题是：换模型 = 从头开始。AutoSnippet 的设计是：**知识独立于模型，记忆跟着项目走**。
+平台方案的问题是：换模型 = 从头开始。Alembic 的设计是：**知识独立于模型，记忆跟着项目走**。
 
 ### 信号积累
 
@@ -277,11 +277,11 @@ PersistentMemory 已经实现了基于 Recency × Importance × Relevance 的三
 
 ```text
 记忆分层（规划）:
-  └── 全局记忆（~/.autosnippet/global-memories/）
+  └── 全局记忆（~/.asd/global-memories/）
        │  开发者个人偏好 · 通用编码习惯
        │  跨项目共享 · 不跟 Git
        │
-  └── 项目记忆（.autosnippet/）
+  └── 项目记忆（.asd/）
        │  项目特定事实 · 团队共识
        │  跟 Git · 团队共享
        │
@@ -305,9 +305,9 @@ Agent 引用记忆 #42 生成代码 → 用户修改 → 记忆 #42 标记为 ne
 
 ## 与平台方案的本质区别
 
-回到起点。AutoSnippet 和平台方案的区别不是"数据存在哪里"这个技术细节——而是**谁拥有你的知识和记忆**这个根本问题。
+回到起点。Alembic 和平台方案的区别不是"数据存在哪里"这个技术细节——而是**谁拥有你的知识和记忆**这个根本问题。
 
-| 维度 | 平台记忆 | AutoSnippet |
+| 维度 | 平台记忆 | Alembic |
 |:---|:---|:---|
 | **所有权** | 平台拥有 | 项目拥有 |
 | **可审计性** | 用户只能看到摘要条目 | 完整 JSONL / Markdown 可审计 |
@@ -318,11 +318,11 @@ Agent 引用记忆 #42 生成代码 → 用户修改 → 记忆 #42 标记为 ne
 | **进化机制** | 黑盒（平台决定） | 透明（信号驱动 + 人工审核） |
 | **数据用途** | 可能用于模型训练 | 仅供本地消费 |
 
-最深层的区别是**激励对齐**。平台的激励是让你留在平台上——记忆越丰富，迁移成本越高。AutoSnippet 的激励是让你的项目越来越好——知识和记忆增值的受益者是你，不是某个平台。
+最深层的区别是**激励对齐**。平台的激励是让你留在平台上——记忆越丰富，迁移成本越高。Alembic 的激励是让你的项目越来越好——知识和记忆增值的受益者是你，不是某个平台。
 
 > **AI 工具会更新换代，编程语言会推陈出新，但项目的知识和记忆不应该因为任何外部变动而归零。**
 
-这是 AutoSnippet 的第零个设计决策——比 SOUL 原则更底层的存在性选择：知识和记忆属于创造它的人。
+这是 Alembic 的第零个设计决策——比 SOUL 原则更底层的存在性选择：知识和记忆属于创造它的人。
 
 ::: tip 下一章
 [SOUL 原则 — 知识引擎的身份约束](./ch02-soul)

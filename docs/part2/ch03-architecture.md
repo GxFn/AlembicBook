@@ -1,18 +1,18 @@
 # 架构全景 — DDD 分层与模块拓扑
 
-> 从顶层俯瞰 AutoSnippet 的 7 层架构，理解每层的边界与职责。
+> 从顶层俯瞰 Alembic 的 7 层架构，理解每层的边界与职责。
 
 ## 问题场景
 
 一个 12 万行代码的知识引擎，如果不划分清晰的层次，维护者需要理解所有代码才能修改一个功能。更严重的是，循环依赖会让任何重构都变成噩梦——你想修改 Guard 引擎的检测逻辑，却发现它被 Search、Knowledge、Agent 三个模块直接引用，牵一发而动全身。
 
-AutoSnippet 需要一种架构，让每一层只知道它应该知道的事情。这不是过度设计——当系统的消费者是不可控的外部 AI Agent 时，清晰的层次边界就是安全边界。
+Alembic 需要一种架构，让每一层只知道它应该知道的事情。这不是过度设计——当系统的消费者是不可控的外部 AI Agent 时，清晰的层次边界就是安全边界。
 
 ## 7 层分层架构
 
-AutoSnippet 的代码组织在 `lib/` 目录下，形成 7 个逻辑层。每层有严格的单向依赖规则：**上层可以依赖下层，反之不行**。
+Alembic 的代码组织在 `lib/` 目录下，形成 7 个逻辑层。每层有严格的单向依赖规则：**上层可以依赖下层，反之不行**。
 
-![AutoSnippet 七层分层架构图](/images/ch03/01-seven-layer-architecture.png)
+![Alembic 七层分层架构图](/images/ch03/01-seven-layer-architecture.png)
 
 ```text
 ┌─────────────────────────────────────────────────┐
@@ -345,7 +345,7 @@ if (newRoot && existingRoot && newRoot !== existingRoot) {
 
 ## 请求生命周期
 
-一条 MCP 请求（例如 `autosnippet_search({ query: "API 接口" })`）从接收到响应的完整路径：
+一条 MCP 请求（例如 `asd_search({ query: "API 接口" })`）从接收到响应的完整路径：
 
 ```text
 IDE Agent (Cursor / Copilot)
@@ -383,7 +383,7 @@ McpServer → MCP Protocol response → IDE Agent
 
 ### 12 条路径别名
 
-AutoSnippet 使用 Node.js 的 `package.json` `imports` 字段定义路径别名，替代 TypeScript 的 `paths` 配置（后者在运行时不生效）：
+Alembic 使用 Node.js 的 `package.json` `imports` 字段定义路径别名，替代 TypeScript 的 `paths` 配置（后者在运行时不生效）：
 
 ```json
 // package.json
@@ -458,21 +458,21 @@ Service 层（~70 文件）是最大的——这符合 DDD 的预期：业务逻
 
 ## 递归模式
 
-AutoSnippet 有一个独特的特性：**它用自己来开发自己**。
+Alembic 有一个独特的特性：**它用自己来开发自己**。
 
-项目的 `.github/copilot-instructions.md` 和 `AGENTS.md` 由 AutoSnippet 的 Delivery 通道生成——也就是说，开发者在用 Copilot 写 AutoSnippet 代码时，Copilot 读取的编码规范是 AutoSnippet 自己从代码中提取的。这是一个完美的反馈回路：写代码 → 提取规范 → 规范指导写代码 → 提取更好的规范。
+项目的 `.github/copilot-instructions.md` 和 `AGENTS.md` 由 Alembic 的 Delivery 通道生成——也就是说，开发者在用 Copilot 写 Alembic 代码时，Copilot 读取的编码规范是 Alembic 自己从代码中提取的。这是一个完美的反馈回路：写代码 → 提取规范 → 规范指导写代码 → 提取更好的规范。
 
-但这个递归引入了一个危险：如果 MCP 服务器把 AutoSnippet 源码仓库当作用户项目，它会在源码目录里创建 `.autosnippet/` 数据库、`AutoSnippet/candidates/` 候选知识——运行时垃圾污染源码树。
+但这个递归引入了一个危险：如果 MCP 服务器把 Alembic 源码仓库当作用户项目，它会在源码目录里创建 `.asd/` 数据库、`Alembic/candidates/` 候选知识——运行时垃圾污染源码树。
 
 ### isOwnDevRepo() 保护机制
 
-`isOwnDevRepo` 通过三个同时成立的条件检测当前目录是否是 AutoSnippet 自己的开发仓库：
+`isOwnDevRepo` 通过三个同时成立的条件检测当前目录是否是 Alembic 自己的开发仓库：
 
 ```typescript
 // lib/shared/isOwnDevRepo.ts
-export function isAutoSnippetDevRepo(dir: string): boolean {
+export function isAlembicDevRepo(dir: string): boolean {
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
-  if (pkg.name === 'autosnippet') {
+  if (pkg.name === 'alembic') {
     const hasBootstrap = fs.existsSync(path.join(dir, 'lib', 'bootstrap.ts'));
     const hasSoul = fs.existsSync(path.join(dir, 'SOUL.md'));
     return hasBootstrap && hasSoul;  // 三条件同时满足
@@ -487,23 +487,23 @@ export function isAutoSnippetDevRepo(dir: string): boolean {
 
 | 组件 | 行为变化 |
 |------|----------|
-| `DatabaseConnection` | DB 路径重定向到 `$TMPDIR/autosnippet-dev/` |
-| `PathGuard` | 阻止创建 `.autosnippet/` 和知识库目录 |
+| `DatabaseConnection` | DB 路径重定向到 `$TMPDIR/alembic-dev/` |
+| `PathGuard` | 阻止创建 `.asd/` 和知识库目录 |
 | `SetupService` | 拒绝执行 `asd setup` |
 
-这样，开发者可以在 AutoSnippet 源码仓库内正常运行 MCP 服务器（IDE 的 Agent 需要它），但所有运行时数据被隔离到临时目录，不会污染 git 工作树。
+这样，开发者可以在 Alembic 源码仓库内正常运行 MCP 服务器（IDE 的 Agent 需要它），但所有运行时数据被隔离到临时目录，不会污染 git 工作树。
 
 ## 权衡与替代方案
 
 ### 为什么不用微服务
 
-AutoSnippet 是一个**本地化工具**——它运行在开发者的机器上，数据存储在项目目录内的 SQLite 文件中。微服务的核心优势（独立部署、独立扩展）在这个场景下毫无意义：你不需要独立扩展 Guard 检测和 Search 排序，它们跑在同一台笔记本上。
+Alembic 是一个**本地化工具**——它运行在开发者的机器上，数据存储在项目目录内的 SQLite 文件中。微服务的核心优势（独立部署、独立扩展）在这个场景下毫无意义：你不需要独立扩展 Guard 检测和 Search 排序，它们跑在同一台笔记本上。
 
 单进程的好处是：服务间调用是内存函数调用（< 0.01ms），不是 HTTP/gRPC 网络请求（> 1ms）。SignalBus 的信号分发是同步的——在微服务架构下这需要 MessageQueue，引入延迟和复杂度。
 
 ### 为什么不用 Monorepo + Turborepo
 
-当前的单包结构已经通过路径别名和分层架构获得了清晰的模块边界。Monorepo 解决的问题（独立版本号、独立发布、独立构建缓存）在 AutoSnippet 中不存在——它是一个整体发布的 CLI 工具：`npm install -g autosnippet` 安装一切。
+当前的单包结构已经通过路径别名和分层架构获得了清晰的模块边界。Monorepo 解决的问题（独立版本号、独立发布、独立构建缓存）在 Alembic 中不存在——它是一个整体发布的 CLI 工具：`npm install -g alembic` 安装一切。
 
 唯一的子项目是 Dashboard（`dashboard/`，React + Vite）和 VSCode Extension（`resources/vscode-ext/`），它们有独立的 `package.json` 和构建流程，但通过 npm scripts 统一编排，不需要 Turborepo 的任务调度。
 
@@ -513,7 +513,7 @@ SQLite 访问层使用 Drizzle ORM 做类型安全的查询构建，但仓储层
 
 ## 小结
 
-AutoSnippet 的 7 层架构不是为了"看起来专业"而设计的分层，它解决的是一个真实问题：**当系统的消费者是不可信任的外部 AI Agent 时，清晰的层次边界就是最基本的安全保障。**
+Alembic 的 7 层架构不是为了"看起来专业"而设计的分层，它解决的是一个真实问题：**当系统的消费者是不可信任的外部 AI Agent 时，清晰的层次边界就是最基本的安全保障。**
 
 - **极薄入口**确保三个入口点（CLI / MCP / HTTP）行为一致
 - **两阶段初始化**将不可变的安全组件和可替换的业务服务分离

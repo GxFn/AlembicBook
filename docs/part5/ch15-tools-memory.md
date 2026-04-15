@@ -4,7 +4,7 @@
 
 ## 问题场景
 
-Agent 的推理循环需要与外部世界交互：查询知识库、分析 AST、检查代码合规性、读写文件。每一种交互就是一个工具（Tool）。AutoSnippet 有 60 个内置工具，分布在 12 个子模块中。
+Agent 的推理循环需要与外部世界交互：查询知识库、分析 AST、检查代码合规性、读写文件。每一种交互就是一个工具（Tool）。Alembic 有 60 个内置工具，分布在 12 个子模块中。
 
 管理 60 个工具带来三个工程问题：
 
@@ -241,7 +241,7 @@ Agent 助手的真正未来，不应该是"普通人使用开发者创造的 Too
 
 这就是 ToolForge 三级瀑布设计中 **Generate 模式**的深层意义。表面上看，它是 Agent 在运行时动态生成工具来解决 edge case；但从产品愿景看，它是通往"用户创造 Tool"的技术基础。Generate 模式的核心链路——**自然语言描述 → LLM 生成代码 → 沙箱验证 → 注册为可调用工具**——恰好就是"专业人士用自然语言定义工作流，系统将其转化为可复用 Tool"的原型。
 
-基于这个洞察，AutoSnippet 在 ToolForge 之上增加了 **Tool 锻造**的显式设计：
+基于这个洞察，Alembic 在 ToolForge 之上增加了 **Tool 锻造**的显式设计：
 
 1. **Forge 即创造**：用户（通过 Agent 对话）描述一个重复性的工作流需求，系统将其锻造为持久化的 Tool，而不是一次性的临时工具。
 2. **Skill 即沉淀**：锻造出的 Tool 经过实际使用和验证后，可以提升为 Skill——具有文档、参数 schema 和使用示例的成熟工具定义。
@@ -251,7 +251,7 @@ Agent 助手的真正未来，不应该是"普通人使用开发者创造的 Too
 
 ### 多层记忆体系
 
-AutoSnippet 的记忆系统借鉴了 **CoALA** 认知架构（Sumers & Yao et al., arXiv:2309.02427, TMLR 2024）和 **Generative Agents** 论文（Park et al., arXiv:2304.03442, UIST 2023）中的记忆模型，将记忆分为三个层级——工作记忆（秒级）、会话记忆（分钟级）、持久记忆（天级）。三层的读写速度、容量和生命周期各不相同：
+Alembic 的记忆系统借鉴了 **CoALA** 认知架构（Sumers & Yao et al., arXiv:2309.02427, TMLR 2024）和 **Generative Agents** 论文（Park et al., arXiv:2304.03442, UIST 2023）中的记忆模型，将记忆分为三个层级——工作记忆（秒级）、会话记忆（分钟级）、持久记忆（天级）。三层的读写速度、容量和生命周期各不相同：
 
 | 层级 | 类 | 容量 | 生命周期 | 用途 |
 |:---|:---|:---|:---|:---|
@@ -672,17 +672,17 @@ Iter 15: 连续 3 轮无新提交
 
 ### 为什么自建工具注册表而非用 LangChain Tool
 
-LangChain 有成熟的 Tool 抽象——`StructuredTool`、`DynamicTool`、`ToolKit`。AutoSnippet 为什么重新实现？
+LangChain 有成熟的 Tool 抽象——`StructuredTool`、`DynamicTool`、`ToolKit`。Alembic 为什么重新实现？
 
-1. **DI 深度集成**。AutoSnippet 的每个工具 handler 通过 `context.container` 访问 `ServiceContainer` 依赖注入——KnowledgeService、GuardService、AstService 等服务按需获取。LangChain Tool 有自己的初始化模型（`_call` 方法），与 ServiceContainer 的生命周期不兼容。
-2. **参数归一化**。20+ 别名映射 + snake_case → camelCase 自动转换是 AutoSnippet 特有的需求——不同 AI 模型的参数命名差异在 LangChain 层面不被处理。
-3. **中间件链**。LangChain Tool 的执行是"调一下就完了"，没有 before/after 中间件。AutoSnippet 需要 AllowlistGate、SafetyGate、CacheCheck、SubmitDedup、TrackerSignal 等 7 层中间件——这些横切关注点用 LangChain 实现需要大量包装代码。
+1. **DI 深度集成**。Alembic 的每个工具 handler 通过 `context.container` 访问 `ServiceContainer` 依赖注入——KnowledgeService、GuardService、AstService 等服务按需获取。LangChain Tool 有自己的初始化模型（`_call` 方法），与 ServiceContainer 的生命周期不兼容。
+2. **参数归一化**。20+ 别名映射 + snake_case → camelCase 自动转换是 Alembic 特有的需求——不同 AI 模型的参数命名差异在 LangChain 层面不被处理。
+3. **中间件链**。LangChain Tool 的执行是"调一下就完了"，没有 before/after 中间件。Alembic 需要 AllowlistGate、SafetyGate、CacheCheck、SubmitDedup、TrackerSignal 等 7 层中间件——这些横切关注点用 LangChain 实现需要大量包装代码。
 
 总成本：ToolRegistry 约 300 行 + ToolExecutionPipeline 约 400 行 = 700 行自建代码，换来与 DI 系统的无缝集成和 8 层安全/缓存/追踪中间件。
 
 ### 为什么记忆不用 Redis
 
-PersistentMemory 使用 SQLite 本地存储（通过 MemoryStore），而非 Redis 或 Pinecone 等外部服务。原因是 AutoSnippet 的"零外部依赖"原则——整个系统可以在开发者的笔记本上运行，不需要启动任何后台服务。
+PersistentMemory 使用 SQLite 本地存储（通过 MemoryStore），而非 Redis 或 Pinecone 等外部服务。原因是 Alembic 的"零外部依赖"原则——整个系统可以在开发者的笔记本上运行，不需要启动任何后台服务。
 
 500 条记忆上限 × 平均 200 字 ≈ 100KB 数据。SQLite 处理这个量级的读写延迟在 1ms 以内。如果未来记忆量增长到数万条（多项目共享），SQLite 仍然够用——它在百万行级别的性能表现远超这个需求。
 
@@ -690,7 +690,7 @@ PersistentMemory 使用 SQLite 本地存储（通过 MemoryStore），而非 Red
 
 ### ToolForge 的安全风险
 
-Generate 模式让 LLM 生成并执行代码——这是潜在的安全风险。AutoSnippet 的缓解措施：
+Generate 模式让 LLM 生成并执行代码——这是潜在的安全风险。Alembic 的缓解措施：
 
 1. **SandboxRunner 隔离**：生成的代码在沙箱环境中运行，没有 `fs`、`net`、`child_process` 模块访问权限。
 2. **只能调用已注册工具**：生成的工具 handler 只能通过 ToolRegistry 调用其他工具，不能直接访问底层 API。
@@ -701,21 +701,21 @@ Generate 模式让 LLM 生成并执行代码——这是潜在的安全风险。
 
 ## 前沿定位 — Agent 记忆系统的学术谱系
 
-AutoSnippet 的记忆系统并非凭空设计——它站在 2023–2025 年 Agent 记忆研究快速演进的肩膀上。本节将 AutoSnippet 的具体实现映射到学术文献，帮助读者理解设计选择的理论根源和工程取舍。
+Alembic 的记忆系统并非凭空设计——它站在 2023–2025 年 Agent 记忆研究快速演进的肩膀上。本节将 Alembic 的具体实现映射到学术文献，帮助读者理解设计选择的理论根源和工程取舍。
 
 ### 认知科学分类法
 
 认知科学早在 AI 之前就建立了成熟的记忆分类体系。CoALA（*Cognitive Architectures for Language Agents*，Sumers & Yao et al., TMLR 2024）将这套分类法引入 LLM Agent 领域，定义了三种记忆类型：
 
-| 认知科学分类 | CoALA 定义 | AutoSnippet 对应 | 实现 |
+| 认知科学分类 | CoALA 定义 | Alembic 对应 | 实现 |
 |:---|:---|:---|:---|
 | **情景记忆**（Episodic） | 具体事件的时序序列 | ActiveContext.ObservationLog | 每轮工具调用 + 结果的有序记录 |
 | **语义记忆**（Semantic） | 抽象事实和概念 | PersistentMemory（fact/insight） | SQLite 持久化，三维评分检索 |
 | **程序记忆**（Procedural） | 技能和行为模式 | ToolRegistry + ToolForge | 60 个工具 + 运行时动态锻造 |
 
-这个映射揭示了一个有趣的设计决策：AutoSnippet 把程序记忆外化为**工具**而非内化为**提示词模板**。大多数 Agent 框架将"如何分析代码"编码在系统提示词中（程序记忆 = 硬编码提示词），而 AutoSnippet 将其拆解为可组合的工具（程序记忆 = 可发现、可组合、可演化的工具集合）。ToolForge 的 Generate 模式更进一步——Agent 可以在运行时**创造新的程序记忆**。
+这个映射揭示了一个有趣的设计决策：Alembic 把程序记忆外化为**工具**而非内化为**提示词模板**。大多数 Agent 框架将"如何分析代码"编码在系统提示词中（程序记忆 = 硬编码提示词），而 Alembic 将其拆解为可组合的工具（程序记忆 = 可发现、可组合、可演化的工具集合）。ToolForge 的 Generate 模式更进一步——Agent 可以在运行时**创造新的程序记忆**。
 
-CoALA 还引入了 **working memory**（工作记忆）的概念——有限容量的暂存区，用于当前推理步骤。AutoSnippet 的 ActiveContext 精确实现了这一概念，甚至更细致地将其分为 Scratchpad（显式笔记）、ObservationLog（自动记录）和 Plan（计划信息）三个子区域。
+CoALA 还引入了 **working memory**（工作记忆）的概念——有限容量的暂存区，用于当前推理步骤。Alembic 的 ActiveContext 精确实现了这一概念，甚至更细致地将其分为 Scratchpad（显式笔记）、ObservationLog（自动记录）和 Plan（计划信息）三个子区域。
 
 ### 记忆系统演化谱系
 
@@ -727,20 +727,20 @@ Park et al. 的 *Generative Agents*（arXiv:2304.03442）首次在 LLM Agent 上
 
 $$\text{score} = \alpha \times \text{recency} + \beta \times \text{importance} + \gamma \times \text{relevance}$$
 
-AutoSnippet 的 MemoryRetriever 直接采用了这个公式（$w_r = 0.2, w_i = 0.3, w_v = 0.5$），但做了两处关键调整：
+Alembic 的 MemoryRetriever 直接采用了这个公式（$w_r = 0.2, w_i = 0.3, w_v = 0.5$），但做了两处关键调整：
 
-1. **时效性计算**：Generative Agents 使用线性衰减，AutoSnippet 改用指数衰减（7 天半衰期），使记忆淡出曲线更符合人类遗忘的 Ebbinghaus 特征。
-2. **缺少向量降级**：Generative Agents 强依赖 embedding 计算 relevance，断网即瘫痪。AutoSnippet 在 embedding 不可用时退化为词法重叠评分——核心功能不依赖 AI 服务可用性。
+1. **时效性计算**：Generative Agents 使用线性衰减，Alembic 改用指数衰减（7 天半衰期），使记忆淡出曲线更符合人类遗忘的 Ebbinghaus 特征。
+2. **缺少向量降级**：Generative Agents 强依赖 embedding 计算 relevance，断网即瘫痪。Alembic 在 embedding 不可用时退化为词法重叠评分——核心功能不依赖 AI 服务可用性。
 
-Generative Agents 的**反思**机制（每 100 次观察生成一次高级反思）启发了 SessionStore 的 `TierReflection`——AutoSnippet 在每个 tier 完成后生成反思摘要，但使用规则聚合而非 LLM 生成，确保确定性和低成本。
+Generative Agents 的**反思**机制（每 100 次观察生成一次高级反思）启发了 SessionStore 的 `TierReflection`——Alembic 在每个 tier 完成后生成反思摘要，但使用规则聚合而非 LLM 生成，确保确定性和低成本。
 
 **第二代：MemGPT/Letta（2023–2024）**
 
 Packer et al. 的 *MemGPT*（arXiv:2310.08560）将操作系统的虚拟内存概念引入 Agent——LLM 的有限上下文窗口类比为"物理内存"，外部存储类比为"磁盘"，Agent 通过类似 `page_fault` 的中断机制自主管理数据在两层之间的换入换出。
 
-AutoSnippet 的 MemoryCoordinator 解决的是同一问题——**有限上下文窗口下的多层记忆调度**——但采用了不同的架构策略：
+Alembic 的 MemoryCoordinator 解决的是同一问题——**有限上下文窗口下的多层记忆调度**——但采用了不同的架构策略：
 
-| 维度 | MemGPT | AutoSnippet |
+| 维度 | MemGPT | Alembic |
 |:---|:---|:---|
 | **调度模型** | Agent 自主换页（LLM 决定读/写哪层） | 预算分配 + 弹性 surplus（系统自动调度） |
 | **记忆层数** | 2 层（main context + external storage） | 4 层（ActiveContext / SessionStore / PersistentMemory / ConversationLog） |
@@ -748,13 +748,13 @@ AutoSnippet 的 MemoryCoordinator 解决的是同一问题——**有限上下�
 | **上下文压缩** | 递归摘要（摘要的摘要） | 三级渐进压缩（截断 → 蒸馏 → 紧急裁剪） |
 | **外部依赖** | 需要 PostgreSQL/pgvector | 纯 SQLite，零外部依赖 |
 
-MemGPT 的"Agent 自主换页"设计很优雅，但有一个实际问题：LLM 决策本身消耗 token 和推理时间。每次 `core_memory_append()` 或 `archival_memory_search()` 都是一次工具调用，会额外消耗 1 轮 ReAct 迭代。AutoSnippet 选择**系统级自动调度**——MemoryCoordinator 在每轮开始时自动注入最相关的记忆，Agent 不需要"手动管理记忆"，可以专注于任务本身。代价是灵活性略低：Agent 不能在运行时主动选择"把这条信息存入长期记忆"，必须通过 `note_finding` 工具间接实现。
+MemGPT 的"Agent 自主换页"设计很优雅，但有一个实际问题：LLM 决策本身消耗 token 和推理时间。每次 `core_memory_append()` 或 `archival_memory_search()` 都是一次工具调用，会额外消耗 1 轮 ReAct 迭代。Alembic 选择**系统级自动调度**——MemoryCoordinator 在每轮开始时自动注入最相关的记忆，Agent 不需要"手动管理记忆"，可以专注于任务本身。代价是灵活性略低：Agent 不能在运行时主动选择"把这条信息存入长期记忆"，必须通过 `note_finding` 工具间接实现。
 
 **第三代：Zep/Graphiti（2025）**
 
 Rasmussen et al. 的 *Zep*（arXiv:2501.13956）引入了**时序知识图谱**（Temporal Knowledge Graph）作为 Agent 记忆的核心存储——不再是扁平的向量数据库，而是包含实体节点、关系边和时间戳的结构化图。在 Deep Memory Retrieval（DMR）基准上以 94.8% 超过 MemGPT 的 93.4%，在更复杂的 LongMemEval 基准上准确率提升最高达 18.5%，同时延迟降低 90%。
 
-AutoSnippet 的 knowledge-graph 工具模块（`dedup_check`、`add_knowledge_edge`）是朝这个方向的初步实现——在知识候选间建立关系边，支持去重和关联查询。但与 Zep 相比，AutoSnippet 的图结构是事后补充的（候选提交后再加边），而非 Zep 那样在实时对话中动态提取实体和关系。
+Alembic 的 knowledge-graph 工具模块（`dedup_check`、`add_knowledge_edge`）是朝这个方向的初步实现——在知识候选间建立关系边，支持去重和关联查询。但与 Zep 相比，Alembic 的图结构是事后补充的（候选提交后再加边），而非 Zep 那样在实时对话中动态提取实体和关系。
 
 **第四代：Mem0（2025）**
 
@@ -767,9 +767,9 @@ Update Phase → 新记忆与 top-s 相似旧记忆对比 → ADD / UPDATE / DEL
 
 在 LOCOMO 基准上，Mem0 比 OpenAI 的内置 Memory 准确率高 26%（66.9% vs 52.9%），p95 延迟降低 91%（1.44s vs 17.12s），token 消耗减少 90%（~1.8K vs ~26K）。
 
-AutoSnippet 的 MemoryConsolidator 与 Mem0 的 Update Phase 高度相似——都执行相似度驱动的四选一决策。对比：
+Alembic 的 MemoryConsolidator 与 Mem0 的 Update Phase 高度相似——都执行相似度驱动的四选一决策。对比：
 
-| 操作 | Mem0 | AutoSnippet |
+| 操作 | Mem0 | Alembic |
 |:---|:---|:---|
 | 新增 | ADD | ADD（相似度 < 60%） |
 | 更新 | UPDATE | UPDATE（相似度 ≥ 85%） |
@@ -777,9 +777,9 @@ AutoSnippet 的 MemoryConsolidator 与 Mem0 的 Update Phase 高度相似——�
 | 删除/替换 | DELETE | REPLACE（冲突预消解：否定模式检测） |
 | 跳过 | NOOP | SKIP |
 
-AutoSnippet 比 Mem0 多了一个 **MERGE** 操作——两条相关但不完全重复的记忆合并为一条更完整的记忆。Mem0 的 DELETE 是简单的矛盾覆盖，AutoSnippet 的 REPLACE 通过否定模式匹配（"不"、"禁止"、"never"）主动检测语义矛盾——更精细但也更脆弱（依赖模式匹配而非语义理解）。
+Alembic 比 Mem0 多了一个 **MERGE** 操作——两条相关但不完全重复的记忆合并为一条更完整的记忆。Mem0 的 DELETE 是简单的矛盾覆盖，Alembic 的 REPLACE 通过否定模式匹配（"不"、"禁止"、"never"）主动检测语义矛盾——更精细但也更脆弱（依赖模式匹配而非语义理解）。
 
-Mem0ᵍ（图增强变体）用有向标记图存储记忆——Entity Extractor 提取实体节点，Relations Generator 推断关系边。这与 Zep/Graphiti 的方向一致。AutoSnippet 的知识图谱模块还处于早期阶段，未来可以借鉴 Mem0ᵍ 的 Conflict Detector 和 Update Resolver 来增强图节点的自动维护。
+Mem0ᵍ（图增强变体）用有向标记图存储记忆——Entity Extractor 提取实体节点，Relations Generator 推断关系边。这与 Zep/Graphiti 的方向一致。Alembic 的知识图谱模块还处于早期阶段，未来可以借鉴 Mem0ᵍ 的 Conflict Detector 和 Update Resolver 来增强图节点的自动维护。
 
 ### 上下文蒸馏 — 从学术概念到工程实践
 
@@ -788,7 +788,7 @@ Mem0ᵍ（图增强变体）用有向标记图存储记忆——Entity Extractor
 1. **模型蒸馏**（Knowledge Distillation）——大模型 → 小模型的知识迁移（Hinton et al., 2015）。如 DeepSeek-R1-Distill 从 R1 蒸馏推理能力到 Qwen/Llama 基座。
 2. **上下文蒸馏**（Context Distillation）——长上下文 → 短摘要的信息压缩。这才是 Agent 记忆系统的核心操作。
 
-AutoSnippet 中有四处关键的上下文蒸馏点：
+Alembic 中有四处关键的上下文蒸馏点：
 
 | 蒸馏点 | 输入 | 输出 | 压缩比 |
 |:---|:---|:---|:---|
@@ -800,13 +800,13 @@ AutoSnippet 中有四处关键的上下文蒸馏点：
 这些蒸馏点形成一条**渐进压缩管线**——信息从产生时的完整形态，经过多级蒸馏，最终以最精炼的形式注入下一个需要它的上下文。这与 Generative Agents 的"反思"（reflection）机制在目标上一致，但实现策略不同：
 
 - **Generative Agents 的反思**：用 LLM 从 100 条观察中生成 5 条高级反思——输出是自然语言"洞察"。
-- **AutoSnippet 的蒸馏**：`distill()` 和 `TierReflection` 使用规则聚合（模板拼接 + 重要度排序），不调用 LLM。只有 ContextWindow L2 蒸馏才使用 LLM 生成摘要。
+- **Alembic 的蒸馏**：`distill()` 和 `TierReflection` 使用规则聚合（模板拼接 + 重要度排序），不调用 LLM。只有 ContextWindow L2 蒸馏才使用 LLM 生成摘要。
 
 选择规则聚合而非 LLM 反思的原因是**成本和确定性**：Bootstrap 冷启动扫描 25 个维度 × 每个维度 24 轮 = 600 轮迭代，如果每次蒸馏都调 LLM，会增加数百次额外 API 调用。规则聚合的蒸馏结果不如 LLM 灵活，但零成本、零延迟、完全确定。
 
 ### 与前沿的差距与展望
 
-| 前沿方向 | 对标系统 | AutoSnippet 现状 | 可能的演进 |
+| 前沿方向 | 对标系统 | Alembic 现状 | 可能的演进 |
 |:---|:---|:---|:---|
 | 图结构记忆 | Zep/Graphiti, Mem0ᵍ | knowledge-graph 仅 2 个工具（去重 + 加边） | 实时实体提取 + 关系推断，构建项目知识图谱 |
 | 跨会话时序推理 | Zep（时序边） | PersistentMemory 只有 created_at / last_accessed | 为记忆添加时序边，支持"什么时候改了 X" |

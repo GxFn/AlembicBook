@@ -1,14 +1,14 @@
-# 图解速览 — 一张图读懂 AutoSnippet
+# 图解速览 — 一张图读懂 Alembic
 
 > 25 张手绘风格架构图，5 分钟快速理解整个系统。
 
-AutoSnippet 是一个 **AI 驱动的项目知识引擎**——它从代码中提取知识、持续进化知识、在开发时交付知识。本文用图解方式，沿着系统的六大部分快速走一遍。
+Alembic 是一个 **AI 驱动的项目知识引擎**——它从代码中提取知识、持续进化知识、在开发时交付知识。本文用图解方式，沿着系统的六大部分快速走一遍。
 
 ## Part I · 起点与哲学
 
 ### 核心工作流
 
-AutoSnippet 本质上做两件事：**一次构建有限答案，持续回答无限问题**。
+Alembic 本质上做两件事：**一次构建有限答案，持续回答无限问题**。
 
 代码经过 AST 分析和 Agent 推理挖掘后，经由人工审核，沉淀为知识有机体（Knowledge Organism）。之后通过 MCP 协议被各种 IDE Agent 消费——Guard 检查合规、Search 检索知识、Agent 回答问题。
 
@@ -16,7 +16,7 @@ AutoSnippet 本质上做两件事：**一次构建有限答案，持续回答无
 
 ### 工程规模
 
-从工程规模看，AutoSnippet 是一个 12 万行 TypeScript 的完整系统，支持 10 种编程语言、61+ Agent 工具、9 维度知识覆盖。
+从工程规模看，Alembic 是一个 12 万行 TypeScript 的完整系统，支持 10 种编程语言、61+ Agent 工具、9 维度知识覆盖。
 
 ![工程规模](/images/ch01/02-engineering-scale.png)
 
@@ -28,7 +28,7 @@ AutoSnippet 本质上做两件事：**一次构建有限答案，持续回答无
 
 ### 本地记忆主权
 
-AutoSnippet 的所有知识、记忆、行为信号都存储在项目本地——四层记忆架构（知识库 → 行为信号 → Agent 记忆 → 会话上下文）从临时到永久递进，信息密度逐层提升。PathGuard 文件沙箱 + stdio 零网络架构确保数据不外泄。
+Alembic 的所有知识、记忆、行为信号都存储在项目本地——四层记忆架构（知识库 → 行为信号 → Agent 记忆 → 会话上下文）从临时到永久递进，信息密度逐层提升。PathGuard 文件沙箱 + stdio 零网络架构确保数据不外泄。
 
 <!-- ![本地记忆主权](/images/ch02b/01-local-memory-sovereignty.png) -->
 
@@ -170,7 +170,7 @@ Agent 的行为由三个正交维度决定：Capability（能做什么）× Stra
 
 ### Task 意图生命周期
 
-MCP 工具中最特殊的 `autosnippet_task` 管理 Agent 自身的行为——五阶段闭环：Prime（IntentExtractor 意图识别 + PrimeSearchPipeline 多查询知识检索）→ Create（生成任务锚点）→ 行为自动采集（工具调用、搜索查询、文件引用、意图漂移检测）→ Close（IntentChain 持久化到 SignalBus → JSONL）→ Guard Review（git diff 增量审计 + inline Recipe 修复）。Close 返回 `nextAction.required: true` 强制 Agent 执行 Guard——协议层驱动，不依赖 Agent 自觉。
+MCP 工具中最特殊的 `asd_task` 管理 Agent 自身的行为——五阶段闭环：Prime（IntentExtractor 意图识别 + PrimeSearchPipeline 多查询知识检索）→ Create（生成任务锚点）→ 行为自动采集（工具调用、搜索查询、文件引用、意图漂移检测）→ Close（IntentChain 持久化到 SignalBus → JSONL）→ Guard Review（git diff 增量审计 + inline Recipe 修复）。Close 返回 `nextAction.required: true` 强制 Agent 执行 Guard——协议层驱动，不依赖 Agent 自觉。
 
 ![Task 意图生命周期链](/images/ch17/02-task-lifecycle-chain.png)
 
@@ -182,6 +182,6 @@ MCP 工具中最特殊的 `autosnippet_task` 管理 Agent 自身的行为——�
 
 ## 一句话总结
 
-> **AutoSnippet = 代码理解（AST）+ 知识建模（KnowledgeEntry）+ 质量治理（Guard + Metabolism）+ 智能交付（Agent + MCP）**
+> **Alembic = 代码理解（AST）+ 知识建模（KnowledgeEntry）+ 质量治理（Guard + Metabolism）+ 智能交付（Agent + MCP）**
 >
-> 从源代码到项目知识，从知识到开发者手中——这就是 AutoSnippet 的完整故事。
+> 从源代码到项目知识，从知识到开发者手中——这就是 Alembic 的完整故事。

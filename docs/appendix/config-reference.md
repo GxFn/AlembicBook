@@ -4,7 +4,7 @@
 
 ## constitution.yaml
 
-AutoSnippet 的治理宪章，定义能力探测、角色权限和行为规则。版本 3.0。
+Alembic 的治理宪章，定义能力探测、角色权限和行为规则。版本 3.0。
 
 ### capabilities（能力层）
 
@@ -46,14 +46,14 @@ AutoSnippet 的治理宪章，定义能力探测、角色权限和行为规则�
 
 ## default.json
 
-所有配置项及默认值。用户可在 `.autosnippet/config.json` 中覆盖。
+所有配置项及默认值。用户可在 `.asd/config.json` 中覆盖。
 
 ### database
 
 | 字段 | 类型 | 默认值 | 说明 |
 |:---|:---|:---|:---|
 | `type` | string | `"sqlite"` | 数据库类型 |
-| `path` | string | `"./.autosnippet/autosnippet.db"` | SQLite 数据库路径 |
+| `path` | string | `"./.asd/alembic.db"` | SQLite 数据库路径 |
 | `verbose` | boolean | `false` | 输出 SQL 日志 |
 
 ### server
@@ -87,7 +87,7 @@ AutoSnippet 的治理宪章，定义能力探测、角色权限和行为规则�
 | `format` | string | `"json"` | 日志格式 |
 | `console` | boolean | `true` | 输出到控制台 |
 | `file.enabled` | boolean | `true` | 写入文件 |
-| `file.path` | string | `"./.autosnippet/logs"` | 日志文件目录 |
+| `file.path` | string | `"./.asd/logs"` | 日志文件目录 |
 
 ### constitution
 

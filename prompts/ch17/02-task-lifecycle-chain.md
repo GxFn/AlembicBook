@@ -46,9 +46,9 @@ A box containing:
     "decisions · driftScore"
     "duration · outcome"
   Arrow right labeled "SignalBus.send('intent')" to:
-  Right side: A file icon labeled ".autosnippet/signals/intent.jsonl"
+  Right side: A file icon labeled ".asd/signals/intent.jsonl"
 
-Below the box, a prominent arrow down with bold label "nextAction: { tool: autosnippet_guard, required: true }"
+Below the box, a prominent arrow down with bold label "nextAction: { tool: asd_guard, required: true }"
 
 STAGE 5 — "⑤ Guard Review — 质量门禁" (bottom, pale yellow background rounded rectangle):
 Left side: "git diff" small icon with arrow labeled "staged + unstaged + untracked" pointing to:

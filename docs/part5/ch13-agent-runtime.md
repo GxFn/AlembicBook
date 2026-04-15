@@ -1,6 +1,6 @@
 # AgentRuntime — ReAct 推理循环
 
-> AutoSnippet 的 AI 中枢 — 感知、推理、行动、反思的循环引擎。
+> Alembic 的 AI 中枢 — 感知、推理、行动、反思的循环引擎。
 >
 > **相关章节**：Agent 在 [Bootstrap 冷启动](../part4/ch09-bootstrap) 中驱动知识提取，工具和记忆系统详见 [ch15](./ch15-tools-memory)
 
@@ -100,9 +100,9 @@ Answer:  "这个模块使用了策略模式..."
 
 ## CoALA 认知架构
 
-AgentRuntime 的设计借鉴了 **CoALA（Cognitive Architectures for Language Agents）** 框架——一个将 Agent 分解为五个认知阶段的理论模型。AutoSnippet 不是机械地照搬论文，而是把五个阶段映射到了具体的工程组件：
+AgentRuntime 的设计借鉴了 **CoALA（Cognitive Architectures for Language Agents）** 框架——一个将 Agent 分解为五个认知阶段的理论模型。Alembic 不是机械地照搬论文，而是把五个阶段映射到了具体的工程组件：
 
-| CoALA 阶段 | AutoSnippet 组件 | 职责 |
+| CoALA 阶段 | Alembic 组件 | 职责 |
 |:---|:---|:---|
 | **Perception** | AgentMessage + MessageAdapter | 接收并统一来自 HTTP/MCP/CLI/Lark 的输入 |
 | **Working Memory** | LoopContext + ContextWindow + ActiveContext | 维护循环状态、压缩历史、记录推理链 |
@@ -600,7 +600,7 @@ interface ToolMetadata {
 
 ### 配置化 Runtime
 
-AutoSnippet 没有 `ChatAgent`、`BootstrapAgent`、`LarkAgent` 这样的特化子类。只有一个 `AgentRuntime` 类，通过 **Preset** 配置来改变行为。`AgentFactory` 的工作是把 Preset 名称翻译为 Runtime 实例：
+Alembic 没有 `ChatAgent`、`BootstrapAgent`、`LarkAgent` 这样的特化子类。只有一个 `AgentRuntime` 类，通过 **Preset** 配置来改变行为。`AgentFactory` 的工作是把 Preset 名称翻译为 Runtime 实例：
 
 ```typescript
 // lib/agent/AgentFactory.ts
@@ -783,7 +783,7 @@ IntentClassifier 还处理**元语言包装**——用户说"让 Copilot 帮我�
 
 ### 四通道 → 一格式
 
-AutoSnippet 接收来自四个渠道的消息，格式各异：
+Alembic 接收来自四个渠道的消息，格式各异：
 
 - **HTTP**：JSON body，带 `conversationId`、`userId`、`lang`
 - **Lark（飞书）**：带 `chatId`、`messageId`、`senderName`
@@ -923,11 +923,11 @@ AgentRuntime 不关心消息从哪来——它只看 `content` 和 `metadata`，
 
 ### 为什么不用 LangChain
 
-LangChain 是最流行的 Agent 框架，AutoSnippet 为什么自建引擎？
+LangChain 是最流行的 Agent 框架，Alembic 为什么自建引擎？
 
-1. **依赖体积**。LangChain 的依赖树超过 300 个包。AutoSnippet 的整个 Agent 模块约 7400 行 TypeScript，零外部 Agent 框架依赖。
-2. **DI 集成**。AutoSnippet 的 ServiceContainer 依赖注入贯穿全栈——从 DatabaseConnection 到 AgentRuntime。LangChain 有自己的组件模型，两套系统叠加会导致混乱的生命周期管理。
-3. **可控性**。ReAct 循环的每一步——从 toolChoice 的动态选择到空响应的 rollback 策略——都是 AutoSnippet 特有的需求。用框架做这些定制需要频繁绕过框架的抽象，不如从头实现。
+1. **依赖体积**。LangChain 的依赖树超过 300 个包。Alembic 的整个 Agent 模块约 7400 行 TypeScript，零外部 Agent 框架依赖。
+2. **DI 集成**。Alembic 的 ServiceContainer 依赖注入贯穿全栈——从 DatabaseConnection 到 AgentRuntime。LangChain 有自己的组件模型，两套系统叠加会导致混乱的生命周期管理。
+3. **可控性**。ReAct 循环的每一步——从 toolChoice 的动态选择到空响应的 rollback 策略——都是 Alembic 特有的需求。用框架做这些定制需要频繁绕过框架的抽象，不如从头实现。
 
 ### 为什么最大迭代不超过 24 轮
 
@@ -956,7 +956,7 @@ AgentRuntime 的设计可以归结为两个核心选择：
 
 2. **容错优于正确**。2-strike 错误恢复、空响应 rollback、熔断器感知、提交去重——这些机制的共同思路是"部分结果好过无结果"。LLM 不是可靠的函数调用——它会超时、会返回空、会幻觉工具、会重复提交。AgentRuntime 的每一层防护都基于这个现实假设。
 
-下一章深入 Capability × Strategy × Policy 三维正交组合——AutoSnippet Agent 架构最独特的设计。
+下一章深入 Capability × Strategy × Policy 三维正交组合——Alembic Agent 架构最独特的设计。
 
 ::: tip 下一章
 [正交组合 — Capability × Strategy × Policy](./ch14-orthogonal)

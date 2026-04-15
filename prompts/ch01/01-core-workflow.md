@@ -1,4 +1,4 @@
-Title at top center in bold Chinese: "AutoSnippet 核心工作流"
+Title at top center in bold Chinese: "Alembic 核心工作流"
 Subtitle directly below title in slightly smaller but clearly visible text: "有限答案，无限问题"
 
 This is a TWO-PHASE CENTER-RADIAL diagram. A prominent central organism shape sits at the heart, with the knowledge PRODUCTION phase flowing into it from above, and the knowledge CONSUMPTION phase radiating out below. The overall composition is divided into an upper half and a lower half by the central organism.
@@ -14,7 +14,7 @@ Inside the organism, arranged vertically with comfortable spacing:
 - Middle item: a cylinder icon + text "SQLite (向量 + 元数据)"
 - Bottom item: a small ring of 6 tiny dots forming a cycle + text "六态生命周期"
 
-Bold label directly below the organism shape: "AutoSnippet 知识有机体"
+Bold label directly below the organism shape: "Alembic 知识有机体"
 
 Five tiny satellite icons are attached around the membrane of the organism (like organelles on a cell), each with a Chinese label:
 - Upper-left of organism: skeleton stick icon + "全景"

@@ -6,13 +6,13 @@
 
 知识库建好了。几百条 Recipe 安静地躺在 SQLite 里。但 AI 怎么用它？
 
-最直接的方式是通过 MCP（Model Context Protocol）—— AI 调用 `autosnippet_search` 工具，按需获取相关 Recipe。这种模式灵活、精确，但有一个前提：**AI 需要"知道"自己该搜索**。首次对话时，Agent 对项目一无所知，不知道有哪些约束、哪些模式——它不会主动搜索一个它不知道存在的知识库。
+最直接的方式是通过 MCP（Model Context Protocol）—— AI 调用 `asd_search` 工具，按需获取相关 Recipe。这种模式灵活、精确，但有一个前提：**AI 需要"知道"自己该搜索**。首次对话时，Agent 对项目一无所知，不知道有哪些约束、哪些模式——它不会主动搜索一个它不知道存在的知识库。
 
 更优的方式是**主动推送**：把最重要的知识直接写入 IDE 的原生配置文件（`.cursor/rules/`、`AGENTS.md`、`.github/copilot-instructions.md`），AI 在每次对话开始时就自动读取。这不占用工具调用额度，不需要 AI 主动搜索——知识在对话前就已经注入了上下文。
 
 但推送不能无限制——IDE 的上下文窗口有限。把 500 条 Recipe 全部推送进去，等于用知识噪声淹没了用户的实际问题。必须选择、压缩、分层。
 
-AutoSnippet 用**六通道交付**覆盖两种模式——按需查询（MCP 工具调用）和主动推送（IDE 文件写入），让知识从数据库到 AI 的路径既完整又可控。
+Alembic 用**六通道交付**覆盖两种模式——按需查询（MCP 工具调用）和主动推送（IDE 文件写入），让知识从数据库到 AI 的路径既完整又可控。
 
 ![MCP 协议与六通道交付全景图](/images/ch17/01-mcp-delivery-overview.png)
 
@@ -20,28 +20,28 @@ AutoSnippet 用**六通道交付**覆盖两种模式——按需查询（MCP 工
 
 ### MCP Server——18 个工具的协议层
 
-MCP（Model Context Protocol）是 Anthropic 提出的标准协议，定义了 AI Agent 与外部工具之间的通信方式。协议提供三种能力——**Tool**（工具调用）、**Resource**（数据资源）和 **Prompt**（提示模板）。AutoSnippet 使用 Tool 能力，注册了 18 个工具：
+MCP（Model Context Protocol）是 Anthropic 提出的标准协议，定义了 AI Agent 与外部工具之间的通信方式。协议提供三种能力——**Tool**（工具调用）、**Resource**（数据资源）和 **Prompt**（提示模板）。Alembic 使用 Tool 能力，注册了 18 个工具：
 
 | # | 工具名 | 层级 | 职责 |
 |:---|:---|:---|:---|
-| 1 | `autosnippet_health` | Agent | 服务健康检查 · KB 统计 |
-| 2 | `autosnippet_search` | Agent | 知识搜索（auto/keyword/semantic/context） |
-| 3 | `autosnippet_knowledge` | Agent | 知识浏览（list/get/insights/confirm_usage） |
-| 4 | `autosnippet_structure` | Agent | 项目结构发现 |
-| 5 | `autosnippet_graph` | Agent | 知识图谱查询 |
-| 6 | `autosnippet_call_context` | Agent | 调用上下文分析 |
-| 7 | `autosnippet_guard` | Agent | 代码合规检查 |
-| 8 | `autosnippet_submit_knowledge` | Agent | 知识提交（统一管线） |
-| 9 | `autosnippet_skill` | Agent | 技能管理（list/load/create/update/delete） |
-| 10 | `autosnippet_bootstrap` | Agent | 冷启动扫描 |
-| 11 | `autosnippet_rescan` | Agent | 增量重扫（保留 Recipe，重新分析项目） |
-| 12 | `autosnippet_evolve` | Agent | 批量 Recipe 进化决策 |
-| 13 | `autosnippet_dimension_complete` | Agent | 维度补全 |
-| 14 | `autosnippet_wiki` | Agent | Wiki 规划与生成 |
-| 15 | `autosnippet_panorama` | Agent | 项目全景分析 |
-| 16 | `autosnippet_task` | Agent | 意图管理 · 任务生命周期 · 决策记录 |
-| 17 | `autosnippet_enrich_candidates` | Admin | 候选知识富化 |
-| 18 | `autosnippet_knowledge_lifecycle` | Admin | 知识生命周期管理 |
+| 1 | `asd_health` | Agent | 服务健康检查 · KB 统计 |
+| 2 | `asd_search` | Agent | 知识搜索（auto/keyword/semantic/context） |
+| 3 | `asd_knowledge` | Agent | 知识浏览（list/get/insights/confirm_usage） |
+| 4 | `asd_structure` | Agent | 项目结构发现 |
+| 5 | `asd_graph` | Agent | 知识图谱查询 |
+| 6 | `asd_call_context` | Agent | 调用上下文分析 |
+| 7 | `asd_guard` | Agent | 代码合规检查 |
+| 8 | `asd_submit_knowledge` | Agent | 知识提交（统一管线） |
+| 9 | `asd_skill` | Agent | 技能管理（list/load/create/update/delete） |
+| 10 | `asd_bootstrap` | Agent | 冷启动扫描 |
+| 11 | `asd_rescan` | Agent | 增量重扫（保留 Recipe，重新分析项目） |
+| 12 | `asd_evolve` | Agent | 批量 Recipe 进化决策 |
+| 13 | `asd_dimension_complete` | Agent | 维度补全 |
+| 14 | `asd_wiki` | Agent | Wiki 规划与生成 |
+| 15 | `asd_panorama` | Agent | 项目全景分析 |
+| 16 | `asd_task` | Agent | 意图管理 · 任务生命周期 · 决策记录 |
+| 17 | `asd_enrich_candidates` | Admin | 候选知识富化 |
+| 18 | `asd_knowledge_lifecycle` | Admin | 知识生命周期管理 |
 
 18 个工具分为两个层级——**Agent 层**（16 个，AI Agent 可调用）和 **Admin 层**（2 个，仅管理员工具链使用）。层级通过环境变量 `ASD_MCP_TIER` 控制，MCP Server 在列出工具时过滤：
 
@@ -66,7 +66,7 @@ IDE Agent → CallToolRequest{name, arguments}
 ← IDE Agent
 ```
 
-Gateway 关卡是安全边界——不是所有工具调用都需要权限检查。`autosnippet_search`（只读查询）直接放行；`autosnippet_submit_knowledge`（写入操作）和 `autosnippet_skill`（create/update/delete 操作）必须经过 Gateway 的权限验证。路由映射在 `TOOL_GATEWAY_MAP` 中声明，某些工具使用 `resolver` 函数根据参数动态决定是否需要关卡——例如 `autosnippet_skill` 的 `list` 操作是只读的，`create` 操作才需要权限。
+Gateway 关卡是安全边界——不是所有工具调用都需要权限检查。`asd_search`（只读查询）直接放行；`asd_submit_knowledge`（写入操作）和 `asd_skill`（create/update/delete 操作）必须经过 Gateway 的权限验证。路由映射在 `TOOL_GATEWAY_MAP` 中声明，某些工具使用 `resolver` 函数根据参数动态决定是否需要关卡——例如 `asd_skill` 的 `list` 操作是只读的，`create` 操作才需要权限。
 
 **多 IDE 适配**——MCP Server 使用 stdio 传输（标准输入/输出），这是最通用的方式：
 
@@ -85,11 +85,11 @@ Gateway 关卡是安全边界——不是所有工具调用都需要权限检查
 
 | 通道 | 交付物 | 目标文件 | Token 预算 | 加载时机 |
 |:---|:---|:---|:---|:---|
-| **A** | alwaysApply 一行式规则 | `.cursor/rules/autosnippet-project-rules.mdc` | 800 · ≤15 条 | 每次对话自动加载 |
-| **B** | When/Do/Don't 主题规则 | `.cursor/rules/autosnippet-patterns-{topic}.mdc` | 750/文件 · ≤5 条 | 按主题相关性加载 |
-| **B+** | 调用图架构规则 | `.cursor/rules/autosnippet-patterns-call-architecture.mdc` | — | 架构相关时加载 |
-| **C** | 项目技能同步 | `.cursor/skills/autosnippet-{name}/` | — | Agent 主动引用 |
-| **D** | 压缩开发文档 | `.cursor/skills/autosnippet-devdocs/references/` | — | Agent 主动引用 |
+| **A** | alwaysApply 一行式规则 | `.cursor/rules/alembic-project-rules.mdc` | 800 · ≤15 条 | 每次对话自动加载 |
+| **B** | When/Do/Don't 主题规则 | `.cursor/rules/alembic-patterns-{topic}.mdc` | 750/文件 · ≤5 条 | 按主题相关性加载 |
+| **B+** | 调用图架构规则 | `.cursor/rules/alembic-patterns-call-architecture.mdc` | — | 架构相关时加载 |
+| **C** | 项目技能同步 | `.cursor/skills/alembic-{name}/` | — | Agent 主动引用 |
+| **D** | 压缩开发文档 | `.cursor/skills/alembic-devdocs/references/` | — | Agent 主动引用 |
 | **F** | Agent 指令集 | `AGENTS.md` · `CLAUDE.md` · `.github/copilot-instructions.md` | — | 非 Cursor IDE 自动加载 |
 | **Mirror** | IDE 配置镜像 | `.trae/` · `.qoder/` | — | `asd mirror` 手动触发 |
 
@@ -121,7 +121,7 @@ deliver():
 
 **知识选择**的关键在于 `_loadEntries()`——不是所有知识都参与交付。只有 `active`（已验证的正式知识）、`staging`（待发布的准正式知识）和高置信度 `pending`（尚未完全验证但可信度够高）的条目会被加载。`deprecated` 和 `decaying` 状态的知识被排除——它们不应该被推送给 AI。
 
-**文件写入策略**是全量覆盖——每次交付重新生成所有通道文件。这比增量更新简单且可靠：不需要跟踪"上次交付了哪些知识"，也不会因为知识删除而留下废弃文件。`cleanDynamicFiles()` 先清理上次生成的 `autosnippet-*` 文件，再写入新内容，保证幂等性。
+**文件写入策略**是全量覆盖——每次交付重新生成所有通道文件。这比增量更新简单且可靠：不需要跟踪"上次交付了哪些知识"，也不会因为知识删除而留下废弃文件。`cleanDynamicFiles()` 先清理上次生成的 `alembic-*` 文件，再写入新内容，保证幂等性。
 
 ### KnowledgeCompressor——四种压缩策略
 
@@ -208,29 +208,29 @@ confidence 权重最高——高置信度的知识优先推送。useCount 有上
 4. 推断分层架构：Foundation → Service → Controller → Application
 ```
 
-输出为一条架构规则文件 `autosnippet-patterns-call-architecture.mdc`，告诉 AI "这个项目的分层结构是什么，哪些模块不应该跨层调用"。这是用数据驱动的方式自动发现项目架构约束——不需要开发者手动编写架构文档。
+输出为一条架构规则文件 `alembic-patterns-call-architecture.mdc`，告诉 AI "这个项目的分层结构是什么，哪些模块不应该跨层调用"。这是用数据驱动的方式自动发现项目架构约束——不需要开发者手动编写架构文档。
 
 ### 通道 C——技能同步
 
-技能（Skills）是比规则更长、更深入的文档——描述一个完整的领域实践（如"项目架构概览"、"编码标准"、"设计模式"等）。SkillsSyncer 把 AutoSnippet 管理的技能同步到 `.cursor/skills/` 目录：
+技能（Skills）是比规则更长、更深入的文档——描述一个完整的领域实践（如"项目架构概览"、"编码标准"、"设计模式"等）。SkillsSyncer 把 Alembic 管理的技能同步到 `.cursor/skills/` 目录：
 
 ```yaml
 同步两类来源：
-  ① 内置技能：从 AutoSnippet 包的 skills/ 目录直接复制
-  ② 项目技能：从 AutoSnippet/skills/project-* 转换
+  ① 内置技能：从 Alembic 包的 skills/ 目录直接复制
+  ② 项目技能：从 Alembic/skills/project-* 转换
 
 转换规则：
-  project-architecture  → autosnippet-architecture
-  project-coding-standards → autosnippet-coding-standards
-  project-agent-guidelines → autosnippet-guidelines
+  project-architecture  → alembic-architecture
+  project-coding-standards → alembic-coding-standards
+  project-agent-guidelines → alembic-guidelines
   ...
 
 每个技能输出：
-  .cursor/skills/autosnippet-{name}/SKILL.md
-  .cursor/skills/autosnippet-{name}/references/RECIPES.md  ← 关联 Recipe 摘要
+  .cursor/skills/alembic-{name}/SKILL.md
+  .cursor/skills/alembic-{name}/references/RECIPES.md  ← 关联 Recipe 摘要
 ```
 
-`references/RECIPES.md` 是技能和知识库的桥梁——列出与该技能主题相关的 Recipe 摘要表格，让 Agent 知道"如果需要更详细的信息，可以通过 `autosnippet_search` 搜索这些条目"。
+`references/RECIPES.md` 是技能和知识库的桥梁——列出与该技能主题相关的 Recipe 摘要表格，让 Agent 知道"如果需要更详细的信息，可以通过 `asd_search` 搜索这些条目"。
 
 ### 通道 F——Agent 指令集
 
@@ -244,21 +244,21 @@ confidence 权重最高——高置信度的知识优先推送。useCount 有上
 
 **CLAUDE.md 的特殊处理**：
 
-CLAUDE.md 通常是开发者手动创建的项目文档——AutoSnippet 不能覆盖用户内容。解决方案是**标记边界注入**：
+CLAUDE.md 通常是开发者手动创建的项目文档——Alembic 不能覆盖用户内容。解决方案是**标记边界注入**：
 
 ```markdown
 # 项目文档（用户编写的内容，不会被修改）
 
-<!-- autosnippet:begin -->
+<!-- asd:begin -->
 ## Coding Standards
 - [swift] Use constructor injection...
 ...
-<!-- autosnippet:end -->
+<!-- asd:end -->
 
 更多用户内容...
 ```
 
-AutoSnippet 只修改 `<!-- autosnippet:begin -->` 和 `<!-- autosnippet:end -->` 之间的区域，保留标记外的所有用户内容。如果文件不存在，整体生成并包含标记。
+Alembic 只修改 `<!-- asd:begin -->` 和 `<!-- asd:end -->` 之间的区域，保留标记外的所有用户内容。如果文件不存在，整体生成并包含标记。
 
 **FileProtection 机制**保护用户文件不被意外覆盖：
 
@@ -268,14 +268,14 @@ function checkWriteSafety(filePath: string) {
   
   // 读取文件头 1024 字节检测签名
   const header = fs.readFileSync(filePath, 'utf8').slice(0, 1024);
-  const SIGNATURE = /auto-generated by (?:\[)?autosnippet(?:\])?|autosnippet:begin/i;
+  const SIGNATURE = /auto-generated by (?:\[)?alembic(?:\])?|asd:begin/i;
   
-  if (SIGNATURE.test(header)) { return { canWrite: true, reason: 'autosnippet-owned' }; }
+  if (SIGNATURE.test(header)) { return { canWrite: true, reason: 'alembic-owned' }; }
   return { canWrite: false, reason: 'user-owned' };
 }
 ```
 
-只有 AutoSnippet 自己生成的文件（头部含签名）或标记区域才会被写入。用户手动创建的 `AGENTS.md`（不含签名）不会被覆盖。
+只有 Alembic 自己生成的文件（头部含签名）或标记区域才会被写入。用户手动创建的 `AGENTS.md`（不含签名）不会被覆盖。
 
 ## 核心实现
 
@@ -301,7 +301,7 @@ async initialize() {
   });
   this.registerGatewayActions();                        // Gateway 路由注册
   this.sdkServer = new SdkMcpServer({
-    name: 'autosnippet-v3', version: '3.0.0'
+    name: 'alembic-v3', version: '3.0.0'
   });
 }
 ```
@@ -330,7 +330,7 @@ IntentState 的完整生命周期——从 Prime 初始化到 Close 持久化为
 
 ### Gateway 四阶段管线
 
-Gateway 是 AutoSnippet 的安全和审计中枢——MCP 工具调用和 HTTP API 请求都经过它。四个阶段：
+Gateway 是 Alembic 的安全和审计中枢——MCP 工具调用和 HTTP API 请求都经过它。四个阶段：
 
 ```yaml
 Validate → Guard → Route → Audit
@@ -350,11 +350,11 @@ MCP Server 使用 Gateway 的两种模式：
 
 ### Task 生命周期——意图驱动的 Agent 工作流
 
-18 个 MCP 工具中，`autosnippet_task` 是最特殊的一个——它不操作知识库，不检查代码，而是**管理 Agent 自身的行为**。当用户说"帮我实现网络缓存中间件"时，Agent 不应该直接开始写代码——它应该先加载相关的项目知识（这个项目怎么写中间件？有没有已有的模式？）、锚定一个任务追踪锚点、编码完成后检查合规性。
+18 个 MCP 工具中，`asd_task` 是最特殊的一个——它不操作知识库，不检查代码，而是**管理 Agent 自身的行为**。当用户说"帮我实现网络缓存中间件"时，Agent 不应该直接开始写代码——它应该先加载相关的项目知识（这个项目怎么写中间件？有没有已有的模式？）、锚定一个任务追踪锚点、编码完成后检查合规性。
 
 ![Task 意图生命周期链](/images/ch17/02-task-lifecycle-chain.png)
 
-`autosnippet_task` 的五个 operation 构成了一条完整的意图生命周期链：
+`asd_task` 的五个 operation 构成了一条完整的意图生命周期链：
 
 ```text
 prime → create → (Agent 编码过程) → close → guard
@@ -370,7 +370,7 @@ prime → create → (Agent 编码过程) → close → guard
 
 #### Prime——意图识别与知识预加载
 
-Agent 在**每条用户消息**的第一步必须调用 `autosnippet_task({ operation: 'prime', userQuery, activeFile, language })`。这是整条链路的起点——从用户的自然语言中提取结构化意图，主动检索相关知识。
+Agent 在**每条用户消息**的第一步必须调用 `asd_task({ operation: 'prime', userQuery, activeFile, language })`。这是整条链路的起点——从用户的自然语言中提取结构化意图，主动检索相关知识。
 
 Prime 的内部实现分为三层——**Intake → Enrichment → Delivery**：
 
@@ -409,7 +409,7 @@ export function extract(userQuery, activeFile?, language?): ExtractedIntent {
 | Q3 | 文件上下文推断 | 模块匹配：`"Modules/Network NetworkManager"` |
 | Q4 | 纯同义词焦点（仅长查询） | 防 BM25 稀释：`"cache 缓存 middleware 中间件"` |
 
-Q1 的跨语言同义词扩展值得展开。AutoSnippet 维护了 40+ 组 EN↔CJK 映射（如 `['inject', 'injection', '注入']`、`['singleton', '单例']`、`['cache', 'caching', '缓存']`），策略是**逐 token 跨脚本扩展**：英文 token 只添加中文同义词，中文 token 只添加英文同义词。这样混合语言查询（"在 module 里用 singleton"）能同时在两个方向上扩展。Q4 在长查询（>50 字符）时单独生成——因为长自然语言句子中，同义词被大量普通词稀释后对 BM25 评分的贡献趋近于零。
+Q1 的跨语言同义词扩展值得展开。Alembic 维护了 40+ 组 EN↔CJK 映射（如 `['inject', 'injection', '注入']`、`['singleton', '单例']`、`['cache', 'caching', '缓存']`），策略是**逐 token 跨脚本扩展**：英文 token 只添加中文同义词，中文 token 只添加英文同义词。这样混合语言查询（"在 module 里用 singleton"）能同时在两个方向上扩展。Q4 在长查询（>50 字符）时单独生成——因为长自然语言句子中，同义词被大量普通词稀释后对 BM25 评分的贡献趋近于零。
 
 **场景分类**用正则匹配用户意图：
 
@@ -490,11 +490,11 @@ return envelope({
 • MUST close when done with meaningful reason
 ```
 
-这是 AutoSnippet 控制 Agent 行为的核心机制——**MCP 工具通过返回值反向驱动 Agent**。Agent 调用 Prime 获取知识上下文，同时收到了"你接下来该怎么做"的行为指令。通道 F（`AGENTS.md`、`.github/copilot-instructions.md`）的指令是静态注入的，`_taskRules` 是每次动态注入的——双重保障 Agent 遵循任务协议。
+这是 Alembic 控制 Agent 行为的核心机制——**MCP 工具通过返回值反向驱动 Agent**。Agent 调用 Prime 获取知识上下文，同时收到了"你接下来该怎么做"的行为指令。通道 F（`AGENTS.md`、`.github/copilot-instructions.md`）的指令是静态注入的，`_taskRules` 是每次动态注入的——双重保障 Agent 遵循任务协议。
 
 #### Create——任务锚点
 
-当 Agent 判断用户需求是非简单操作（≥2 个文件或 ≥10 行修改）时，调用 `autosnippet_task({ operation: 'create', title: '...' })`。
+当 Agent 判断用户需求是非简单操作（≥2 个文件或 ≥10 行修改）时，调用 `asd_task({ operation: 'create', title: '...' })`。
 
 Create 的实现极简——只生成 ID 并绑定到 IntentState：
 
@@ -526,7 +526,7 @@ _trackSession(toolName: string, result: unknown): void {
   intent.toolCalls.push({ tool: toolName, timestamp: Date.now(), args_summary: toolName });
 
   // 2. 搜索查询自动提取
-  if (toolName === 'autosnippet_search') {
+  if (toolName === 'asd_search') {
     const query = this._extractSearchQuery(result);
     if (query) intent.searchQueries.push(query);
   }
@@ -555,7 +555,7 @@ _trackSession(toolName: string, result: unknown): void {
 
 #### Close——意图链持久化
 
-编码完成后，Agent 调用 `autosnippet_task({ operation: 'close', id: 'asd-xxx', reason: '...' })`。Close 做两件事：持久化整条意图链，然后强制触发 Guard。
+编码完成后，Agent 调用 `asd_task({ operation: 'close', id: 'asd-xxx', reason: '...' })`。Close 做两件事：持久化整条意图链，然后强制触发 Guard。
 
 **IntentChainRecord 持久化**：
 
@@ -579,7 +579,7 @@ function _persistIntentChain(ctx, intent, outcome, reason) {
 }
 ```
 
-一条 IntentChainRecord 完整记录了"Agent 在这次任务中做了什么"——从 Prime 时的意图到 Close 时的结果，中间用了哪些工具、搜了什么、看了哪些文件、做了什么决策、意图有没有漂移。写入 `.autosnippet/signals/intent.jsonl` 后，代谢引擎用这些数据做知识有效性评估——频繁被 Prime 检索到但 Agent 最终没用的 Recipe 可能需要衰退。
+一条 IntentChainRecord 完整记录了"Agent 在这次任务中做了什么"——从 Prime 时的意图到 Close 时的结果，中间用了哪些工具、搜了什么、看了哪些文件、做了什么决策、意图有没有漂移。写入 `.asd/signals/intent.jsonl` 后，代谢引擎用这些数据做知识有效性评估——频繁被 Prime 检索到但 Agent 最终没用的 Recipe 可能需要衰退。
 
 **强制触发 Guard**：
 
@@ -590,17 +590,17 @@ return envelope({
   data: {
     closed: { id, reason, closedAt: Date.now() },
     nextAction: {
-      tool: 'autosnippet_guard',
+      tool: 'asd_guard',
       args: {},
       required: true,
       reason: 'Post-close compliance review — check diff for violations before moving on.'
     }
   },
-  message: '✅ Closed: asd-xxx\n⚠️ REQUIRED: You MUST call autosnippet_guard NOW...'
+  message: '✅ Closed: asd-xxx\n⚠️ REQUIRED: You MUST call asd_guard NOW...'
 });
 ```
 
-Agent 读到 `nextAction.required: true`，必须在下一步调用 `autosnippet_guard()`。这个设计保证了每次编码后都有质量门禁——不依赖 Agent 的"自觉性"，而是通过协议层强制执行。
+Agent 读到 `nextAction.required: true`，必须在下一步调用 `asd_guard()`。这个设计保证了每次编码后都有质量门禁——不依赖 Agent 的"自觉性"，而是通过协议层强制执行。
 
 #### Guard Review——编码后质量门禁
 
@@ -663,37 +663,37 @@ capabilityReport: {
 ```text
 User: "帮我实现网络缓存中间件"
   │
-Agent ──── ① autosnippet_task({ operation: "prime", userQuery: "帮我实现网络缓存中间件" })
+Agent ──── ① asd_task({ operation: "prime", userQuery: "帮我实现网络缓存中间件" })
   │            IntentExtractor: scenario=generate
   │            queries=["帮我实现网络缓存中间件 cache 缓存 middleware 中间件", "CacheMiddleware"]
   │            PrimeSearchPipeline: 3 recipes + 1 guard rule (RRF 融合 + 三层质量过滤)
   │        ← relatedKnowledge + guardRules + _taskRules
   │
-Agent ──── ② autosnippet_task({ operation: "create", title: "实现网络缓存中间件" })
+Agent ──── ② asd_task({ operation: "create", title: "实现网络缓存中间件" })
   │        ← { id: "asd-m2x8k-1" }
   │
-Agent ──── ③ autosnippet_search({ query: "Alamofire middleware" })
+Agent ──── ③ asd_search({ query: "Alamofire middleware" })
   │            → _trackSession: intent.toolCalls + intent.searchQueries 自动采集
   │        ← 搜索结果
   │
-Agent ──── ④ autosnippet_structure({ operation: "files", target: "NetworkKit" })
+Agent ──── ④ asd_structure({ operation: "files", target: "NetworkKit" })
   │            → _trackSession: intent.mentionedFiles + intent.mentionedModules 自动采集
   │        ← 文件列表
   │
   │        ... Agent 按 Recipe 指导编写 CacheMiddleware.swift ...
   │
-Agent ──── ⑤ autosnippet_task({ operation: "close", id: "asd-m2x8k-1", reason: "Implemented" })
+Agent ──── ⑤ asd_task({ operation: "close", id: "asd-m2x8k-1", reason: "Implemented" })
   │            → _persistIntentChain → SignalBus → intent.jsonl
   │            → IntentState 重置为 idle
-  │        ← nextAction: { tool: "autosnippet_guard", required: true }
+  │        ← nextAction: { tool: "asd_guard", required: true }
   │
-Agent ──── ⑥ autosnippet_guard({})
+Agent ──── ⑥ asd_guard({})
   │            → guardReview: git diff → 审计变更文件 → 内联 Recipe 修复指南
   │        ← { passed: false, violations: [...], reviewRound: 1 }
   │
   │        ... Agent 按 violation.recipe.coreCode 修复 ...
   │
-Agent ──── ⑦ autosnippet_guard({})
+Agent ──── ⑦ asd_guard({})
   │        ← { passed: true, reviewRound: 2 }
   │
 Agent ──── "Done. 已实现 CacheMiddleware，Guard 审计通过。"
@@ -760,23 +760,23 @@ Mirror 的实现很直接：
 
 ```typescript
 _mirrorToIDE(targetDirName: string) {
-  // 1. 复制 .cursor/rules/autosnippet-* → {target}/rules/
+  // 1. 复制 .cursor/rules/alembic-* → {target}/rules/
   const rules = fs.readdirSync(rulesPath)
-    .filter(f => f.startsWith('autosnippet-'));
+    .filter(f => f.startsWith('alembic-'));
   for (const file of rules) {
     fs.cpSync(src, dest, { recursive: true, force: true });
   }
   
-  // 2. 复制 .cursor/skills/autosnippet-* → {target}/skills/
+  // 2. 复制 .cursor/skills/alembic-* → {target}/skills/
   const skills = fs.readdirSync(skillsPath)
-    .filter(d => d.startsWith('autosnippet-'));
+    .filter(d => d.startsWith('alembic-'));
   for (const dir of skills) {
     fs.cpSync(src, dest, { recursive: true, force: true });
   }
 }
 ```
 
-只复制 `autosnippet-` 前缀的文件和目录——用户自己创建的规则和技能不会被 Mirror。这避免了"AutoSnippet 把用户在 Cursor 里手动写的规则推到 Trae 里"的意外行为。
+只复制 `alembic-` 前缀的文件和目录——用户自己创建的规则和技能不会被 Mirror。这避免了"Alembic 把用户在 Cursor 里手动写的规则推到 Trae 里"的意外行为。
 
 ## 运行时行为
 
@@ -787,20 +787,20 @@ _mirrorToIDE(targetDirName: string) {
 ```text
 知识库：120 条 active Recipe（50 rules · 40 patterns · 20 facts · 10 documents）
 
-→ 通道 A：Top 15 规则 → autosnippet-project-rules.mdc (780 tokens)
+→ 通道 A：Top 15 规则 → alembic-project-rules.mdc (780 tokens)
 → 通道 B：5 主题文件
-    networking (5 patterns) → autosnippet-patterns-networking.mdc
-    ui (4 patterns) → autosnippet-patterns-ui.mdc
-    data (3 patterns) → autosnippet-patterns-data.mdc
-    architecture (5 patterns) → autosnippet-patterns-architecture.mdc
-    conventions (3 patterns) → autosnippet-patterns-conventions.mdc
-→ 通道 B+：调用图分析 → autosnippet-patterns-call-architecture.mdc
-→ 通道 C：3 技能同步 → autosnippet-architecture/ · autosnippet-coding-standards/ · ...
-→ 通道 D：10 文档 → autosnippet-devdocs/references/*.md
+    networking (5 patterns) → alembic-patterns-networking.mdc
+    ui (4 patterns) → alembic-patterns-ui.mdc
+    data (3 patterns) → alembic-patterns-data.mdc
+    architecture (5 patterns) → alembic-patterns-architecture.mdc
+    conventions (3 patterns) → alembic-patterns-conventions.mdc
+→ 通道 B+：调用图分析 → alembic-patterns-call-architecture.mdc
+→ 通道 C：3 技能同步 → alembic-architecture/ · alembic-coding-standards/ · ...
+→ 通道 D：10 文档 → alembic-devdocs/references/*.md
 → 通道 F：AGENTS.md + .github/copilot-instructions.md
 ```
 
-用户打开 Cursor，开始对话——AI 自动读取通道 A 的 15 条硬约束。讨论网络代码时，Cursor 自动加载 `autosnippet-patterns-networking.mdc`。Agent 需要深入了解架构时，引用 `autosnippet-architecture` 技能。
+用户打开 Cursor，开始对话——AI 自动读取通道 A 的 15 条硬约束。讨论网络代码时，Cursor 自动加载 `alembic-patterns-networking.mdc`。Agent 需要深入了解架构时，引用 `alembic-architecture` 技能。
 
 ### 场景 2：新知识批准——增量交付
 
@@ -810,10 +810,10 @@ Agent 产出了一条新的 `code-pattern`，经过 Guard 验证后进入 `activ
 
 ### 场景 3：MCP 工具调用——搜索知识
 
-AI Agent 需要了解"这个项目的 Cookie 管理方式"，调用 `autosnippet_search({ query: "cookie management pattern", mode: "auto" })`：
+AI Agent 需要了解"这个项目的 Cookie 管理方式"，调用 `asd_search({ query: "cookie management pattern", mode: "auto" })`：
 
 ```text
-McpServer._handleToolCall('autosnippet_search', {query, mode})
+McpServer._handleToolCall('asd_search', {query, mode})
   → _gatewayGate()：搜索是只读操作，不在 TOOL_GATEWAY_MAP 中，直接放行
   → _resolveHandler()：映射到 consolidated.consolidatedSearch()
   → consolidatedSearch()：mode='auto' 路由到 searchHandlers.search()
@@ -829,9 +829,9 @@ McpServer._handleToolCall('autosnippet_search', {query, mode})
 用户同时使用 Cursor 和 Trae。`.cursor/` 下的规则通过正常交付生成后，执行 `asd mirror`：
 
 ```text
-→ 检测 .cursor/rules/autosnippet-* 文件（6 个）
+→ 检测 .cursor/rules/alembic-* 文件（6 个）
 → 复制到 .trae/rules/ （保持文件名不变）
-→ 检测 .cursor/skills/autosnippet-* 目录（3 个）
+→ 检测 .cursor/skills/alembic-* 目录（3 个）
 → 复制到 .trae/skills/
 → 完成。用户在 Trae 中获得相同的知识覆盖
 ```
@@ -840,7 +840,7 @@ McpServer._handleToolCall('autosnippet_search', {query, mode})
 
 ### 为什么不只用 MCP 按需查询
 
-纯 MCP 模式的问题在于**冷启动**——Agent 首次对话时不知道搜索什么。通道 A 的 15 条 alwaysApply 规则解决了这个问题：即使 Agent 从不调用 `autosnippet_search`，它也遵守了项目的核心约束。
+纯 MCP 模式的问题在于**冷启动**——Agent 首次对话时不知道搜索什么。通道 A 的 15 条 alwaysApply 规则解决了这个问题：即使 Agent 从不调用 `asd_search`，它也遵守了项目的核心约束。
 
 实际行为是两种模式的互补：通道 A/B/F 提供"基线知识"（最重要的 20-30 条），MCP 搜索提供"长尾知识"（剩余的几百条）。基线知识保证 AI 不犯低级错误，搜索补充具体场景的深度信息。
 
@@ -855,18 +855,18 @@ MCP 搜索没有这个限制——它按需获取，搜索结果通常 5-10 条�
 为什么不合并成三个通道（规则 · 技能 · 指令）？因为 IDE 的文件加载粒度不同：
 
 - 通道 A（alwaysApply）和通道 B（按需加载）的区别不是内容格式，而是**加载策略**。合并它们意味着要么所有规则都 alwaysApply（浪费上下文），要么都按需加载（核心约束可能被遗漏）。
-- 通道 C（技能）和通道 D（文档）的区别是来源和更新频率——技能来自 AutoSnippet 管理的 SKILL.md，文档来自 Recipe 中的 dev-document 类型。它们的同步逻辑不同。
+- 通道 C（技能）和通道 D（文档）的区别是来源和更新频率——技能来自 Alembic 管理的 SKILL.md，文档来自 Recipe 中的 dev-document 类型。它们的同步逻辑不同。
 
 六通道的复杂度是真实的维护成本。但每个通道解决了一个具体的交付问题，合并任何两个都会丢失重要的区分能力。
 
 ## 小结
 
-MCP 协议和六通道交付是 AutoSnippet 知识价值链的最后一环——知识从数据库到达 AI 的"最后一公里"：
+MCP 协议和六通道交付是 Alembic 知识价值链的最后一环——知识从数据库到达 AI 的"最后一公里"：
 
 - **MCP Server** 注册 18 个工具，通过 stdio 传输服务 Cursor / VS Code / Claude Code，Gateway 四阶段管线保证安全和审计
 - **六通道交付**把知识推送到 IDE 原生文件——通道 A 的 15 条 alwaysApply 规则保证冷启动不犯错，通道 B 的主题规则按需加载，通道 F 的 Agent 指令覆盖非 Cursor IDE
 - **KnowledgeCompressor** 在 800 token 的预算内压缩规则为一行式表述，排名得分决定谁进入 Top 15
-- **FileProtection** 保护用户文件不被覆盖，标记边界注入让 AutoSnippet 和用户内容和平共存
+- **FileProtection** 保护用户文件不被覆盖，标记边界注入让 Alembic 和用户内容和平共存
 - **Mirror** 让 .cursor/ 的知识资产跨 IDE 复用
 
 两种模式互补：推送提供基线知识（核心约束 · 高频模式），MCP 搜索提供长尾知识（特定场景 · 深度细节）。知识库的几百条 Recipe 通过这两条路径，最终在每次 AI 对话中发挥价值。

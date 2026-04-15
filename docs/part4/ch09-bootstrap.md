@@ -10,7 +10,7 @@
 
 如果系统自带 AI Provider（OpenAI、Gemini 等 API Key），完全可以在后台自动完成全部分析——文件收集、AST 解析、依赖图构建、Guard 审计，然后启动 Agent 逐维度提取知识。用户只需等待进度条走完。
 
-但现实更复杂。许多用户通过 IDE Agent（Cursor、GitHub Copilot）接入 AutoSnippet，此时系统没有独立的 AI Provider——分析能力由 IDE 的 Agent 提供。系统能做的只是把项目结构和上下文准备好，然后以 **Mission Briefing** 的形式交给 IDE Agent 去执行。
+但现实更复杂。许多用户通过 IDE Agent（Cursor、GitHub Copilot）接入 Alembic，此时系统没有独立的 AI Provider——分析能力由 IDE 的 Agent 提供。系统能做的只是把项目结构和上下文准备好，然后以 **Mission Briefing** 的形式交给 IDE Agent 去执行。
 
 这就产生了 Bootstrap 的**双路径架构**：
 
@@ -48,7 +48,7 @@
 
 换一个角度理解：Phase 1–4 做的事情，相当于在 LLM "上班"之前，把它的"办公桌"整理好——文件分类归档、组织架构图绘制完毕、规章制度整理就位。一个拿到整理好的材料的 LLM，和一个面对杂乱文件堆的 LLM，工作效率和产出质量是天壤之别。
 
-这个认知并非 AutoSnippet 独创。Anthropic 在 *Building effective agents*（2024.12）一文中明确提出了同样的观点：
+这个认知并非 Alembic 独创。Anthropic 在 *Building effective agents*（2024.12）一文中明确提出了同样的观点：
 
 > "Agents can handle sophisticated tasks, but their implementation is often straightforward. They are typically just LLMs using tools based on environmental feedback in a loop. **It is therefore crucial to design toolsets and their documentation clearly and thoughtfully.**"
 
@@ -58,7 +58,7 @@
 
 更值得注意的是 Anthropic 在 SWE-bench 实践中的经验：**他们花在优化工具上的时间，比花在优化整体提示词上的时间还多**。例如他们发现模型在使用相对路径时会频繁出错，于是将工具改为强制使用绝对路径——模型随即表现完美。这个细节印证了一个核心洞察：Agent 的表现瓶颈往往不在 LLM 的推理能力，而在工具的设计质量。
 
-AutoSnippet 的 Bootstrap 管线正是这一理念的工程实践——13 个阶段的深度解析，本质上是在精心打造每一个 ACI，让 LLM 在后续的知识提取阶段能够高效、准确地工作。
+Alembic 的 Bootstrap 管线正是这一理念的工程实践——13 个阶段的深度解析，本质上是在精心打造每一个 ACI，让 LLM 在后续的知识提取阶段能够高效、准确地工作。
 
 ### 管线阶段总览
 
@@ -125,8 +125,8 @@ Phase 0–4 在 **`runAllPhases()`** 中顺序执行，是两条路径的共享�
 ⚠️ Bootstrap 仅完成第一步（项目扫描），你必须继续完成全部 N 个维度的分析。
 请立即按 executionPlan.tiers 的顺序，对每个维度执行：
 (1) 用你的代码阅读能力分析该维度相关文件 →
-(2) 调用 autosnippet_submit_knowledge_batch 提交候选知识 →
-(3) 调用 autosnippet_dimension_complete 标记维度完成。
+(2) 调用 asd_submit_knowledge_batch 提交候选知识 →
+(3) 调用 asd_dimension_complete 标记维度完成。
 ```
 
 这段提示不是给人看的——是给 IDE Agent 看的。Agent 收到后会像收到一份任务清单，逐条执行。这是 MCP 协议下工具与 Agent 之间的**协作接口设计**。
@@ -159,7 +159,7 @@ export async function runPhase1_FileCollection(
     for (const f of fileList) {
       const fp = typeof f === 'string' ? f : f.path;
       if (seenPaths.has(fp)) { continue; }
-      if (isAutoSnippetGenerated(fp)) { continue; }
+      if (isAlembicGenerated(fp)) { continue; }
 
       seenPaths.add(fp);
       const content = fs.readFileSync(fp, 'utf8');
@@ -176,7 +176,7 @@ export async function runPhase1_FileCollection(
 
 **DiscovererRegistry 自动检测**。系统不要求用户声明项目类型——`registry.detect(projectRoot)` 会检查标记文件（`Package.swift` → SPM, `package.json` → Node.js, `build.gradle` → Gradle, `Cargo.toml` → Rust, `go.mod` → Go）自动选择最优 Discoverer。每个 Discoverer 知道如何枚举该生态系统下的 Target（编译模块）和源文件。
 
-**R13 黑名单**。`isAutoSnippetGenerated()` 排除系统自身生成的文件——`AGENTS.md`、`CLAUDE.md`、`copilot-instructions.md`、`.cursor/` 目录、`.mdc` 生成物。这是一条自我保护规则：如果把这些文件纳入分析，系统会从自己生成的指令中"提取知识"，形成自引用循环。
+**R13 黑名单**。`isAlembicGenerated()` 排除系统自身生成的文件——`AGENTS.md`、`CLAUDE.md`、`copilot-instructions.md`、`.cursor/` 目录、`.mdc` 生成物。这是一条自我保护规则：如果把这些文件纳入分析，系统会从自己生成的指令中"提取知识"，形成自引用循环。
 
 **500 文件截断**。`maxFiles` 默认 500，超出后发出 `truncated` 警告。这不是一个保守的限制——对于 AST 分析和 AI 提取来说，500 个文件已经足够建立项目骨架。更多文件可以在后续增量扫描中补充。截断阈值可通过 CLI 参数 `--max-files` 调整。
 
@@ -372,7 +372,7 @@ Gate 的评估结果是**三态**的：
 
 这个三态设计与 Guard 的 `pass / violation / uncertain` 三态是同一思路——在"通过"和"失败"之间留出灰色地带，让系统有机会自我修正。
 
-**Produce 阶段**：基于 Analyze 的输出生成结构化的 Candidate 知识条目，调用 `autosnippet_submit_knowledge_batch` 写入知识库。
+**Produce 阶段**：基于 Analyze 的输出生成结构化的 Candidate 知识条目，调用 `asd_submit_knowledge_batch` 写入知识库。
 
 ```text
 Analyze (24 轮) → Gate → Produce (24 轮)
@@ -388,7 +388,7 @@ Phase 5 和 Phase 5.5 的区别在于知识的粒度：
 
 **微观维度**（Phase 5）：`code-pattern`、`best-practice`、`concurrency-async`、`data-event-flow` 等。每个维度产出**多条细粒度 Candidate**——一个项目可能在 `code-pattern` 维度下提取出 8–15 条模式知识。
 
-**宏观维度**（Phase 5.5）：`architecture`、`coding-standards`、`project-profile`。这些维度的知识更适合以**整体视角**呈现，而不是拆成零散条目。Phase 5.5 把它们聚合为 **Project Skill**——一个完整的 Markdown 文件写入 `AutoSnippet/skills/` 目录。
+**宏观维度**（Phase 5.5）：`architecture`、`coding-standards`、`project-profile`。这些维度的知识更适合以**整体视角**呈现，而不是拆成零散条目。Phase 5.5 把它们聚合为 **Project Skill**——一个完整的 Markdown 文件写入 `Alembic/skills/` 目录。
 
 这个分流避免了两个问题：
 
@@ -636,7 +636,7 @@ AI 的价值在于**理解**——识别设计模式的意图、判断代码风�
 
 ## 小结
 
-Bootstrap 是 AutoSnippet 系统中编排复杂度最高的流程。它的核心设计思路可以归结为三点：
+Bootstrap 是 Alembic 系统中编排复杂度最高的流程。它的核心设计思路可以归结为三点：
 
 1. **工程先行，AI 增值**：Phase 0–4 纯确定性计算，2 秒内完成项目"CT 扫描"。Phase 5 的 AI 分析建立在结构化上下文之上，而非从零推理。
 2. **双路径统一基座**：内部 Agent 和外部 Agent 共享 Phase 0–4 的分析逻辑（`runAllPhases`），仅在知识填充阶段分流。这避免了两套独立管线的维护负担。

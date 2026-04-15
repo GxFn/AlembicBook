@@ -1,7 +1,7 @@
 ---
 layout: home
 hero:
-  name: AutoSnippet
+  name: Alembic
   text: 技术解构
   tagline: 从 SOUL 原则到 12 万行实现 — 一个 AI 知识引擎的完整设计故事
   actions:
@@ -13,7 +13,7 @@ hero:
       link: /part1/ch01-introduction
     - theme: alt
       text: GitHub
-      link: https://github.com/GxFn/AutoSnippet
+      link: https://github.com/GxFn/Alembic
 
 features:
   - icon: 🧠

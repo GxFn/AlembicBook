@@ -1,18 +1,18 @@
 # MCP 工具清单
 
-> AutoSnippet 通过 MCP 协议暴露的 18 个工具完整列表。
+> Alembic 通过 MCP 协议暴露的 18 个工具完整列表。
 
 工具分为两个层级：**Agent Tier**（16 个，IDE Agent 日常使用）和 **Admin Tier**（2 个，管理员操作）。每个工具调用都经过 Gateway 四阶段管线（Validate → Guard → Route → Audit）。
 
 ## Agent Tier（16 个工具）
 
-### autosnippet_health
+### asd_health
 
 检查服务状态和知识库统计（条目总数、kind/lifecycle 分布）。`total=0` 时需要冷启动。
 
 **参数**：无
 
-### autosnippet_search
+### asd_search
 
 知识库搜索，支持 5 种模式。
 
@@ -26,7 +26,7 @@
 | `sessionId` | string | — | — | 会话 ID（context 模式用） |
 | `sessionHistory` | array | — | — | 会话历史 |
 
-### autosnippet_knowledge
+### asd_knowledge
 
 知识条目管理：list / get / insights / confirm_usage。
 
@@ -44,7 +44,7 @@
 | `usageType` | enum | — | — | adoption / application（confirm_usage 用） |
 | `feedback` | string | — | — | 使用反馈 |
 
-### autosnippet_structure
+### asd_structure
 
 项目结构发现：targets / files / metadata。
 
@@ -57,7 +57,7 @@
 | `contentMaxLines` | int | — | `100` | 内容截取行数 |
 | `maxFiles` | int | — | `500` | 最大文件数（1-5000） |
 
-### autosnippet_graph
+### asd_graph
 
 知识关系图谱查询：query / impact / path / stats。
 
@@ -72,7 +72,7 @@
 | `maxDepth` | int | — | `3` | 最大深度（1-10） |
 | `relation` | string | — | — | 关系类型过滤 |
 
-### autosnippet_call_context
+### asd_call_context
 
 函数/方法调用链查询：callers / callees / both / impact。
 
@@ -82,7 +82,7 @@
 | `direction` | enum | — | `"both"` | callers / callees / both / impact |
 | `maxDepth` | int | — | `2` | 最大深度（1-5） |
 
-### autosnippet_guard
+### asd_guard
 
 代码合规检查。支持：无参数（git diff）、files、code、reverse_audit、coverage_matrix、compliance_report。
 
@@ -95,7 +95,7 @@
 | `filePath` | string | — | — | 文件路径 |
 | `maxFiles` | number | — | — | reverse_audit / coverage_matrix 扫描上限 |
 
-### autosnippet_submit_knowledge
+### asd_submit_knowledge
 
 提交知识条目（单条/批量统一管线）。自动融合分析检测重叠。
 
@@ -110,7 +110,7 @@
 | `dimensionId` | string | — | — | 冷启动关联维度 |
 | `supersedes` | string | — | — | 声明替代旧 Recipe 的 ID |
 
-### autosnippet_skill
+### asd_skill
 
 技能管理：list / load / create / update / delete / suggest。
 
@@ -124,13 +124,13 @@
 | `overwrite` | boolean | — | `false` | 覆盖已有 |
 | `createdBy` | enum | — | `"external-ai"` | manual / user-ai / system-ai / external-ai |
 
-### autosnippet_bootstrap
+### asd_bootstrap
 
 冷启动——无参数。自动分析项目（AST · 依赖图 · Guard 审计），返回 Mission Briefing。
 
 **参数**：无
 
-### autosnippet_rescan
+### asd_rescan
 
 增量重扫——保留现有 Recipe，重新分析项目，运行 RecipeRelevanceAuditor。
 
@@ -139,7 +139,7 @@
 | `dimensions` | string[] | — | — | 指定维度列表，空=全部 |
 | `reason` | string | — | — | 触发原因 |
 
-### autosnippet_evolve
+### asd_evolve
 
 批量 Recipe 进化决策：propose_evolution / confirm_deprecation / skip。
 
@@ -152,7 +152,7 @@
 | `decisions[].reason` | string | — | — | 弃用原因 |
 | `decisions[].skipReason` | enum | — | — | still_valid / insufficient_info |
 
-### autosnippet_dimension_complete
+### asd_dimension_complete
 
 维度分析完成通知，处理 Recipe 关联、Skill 生成、检查点、跨维度提示。
 
@@ -167,7 +167,7 @@
 | `referencedFiles` | string[] | — | — | 引用文件列表 |
 | `crossDimensionHints` | Record | — | — | 跨维度提示 |
 
-### autosnippet_wiki
+### asd_wiki
 
 Wiki 文档生成：plan / finalize。
 
@@ -178,7 +178,7 @@ Wiki 文档生成：plan / finalize。
 | `sessionId` | string | — | — | 会话 ID |
 | `articlesWritten` | string[] | — | — | finalize 时的文件列表 |
 
-### autosnippet_panorama
+### asd_panorama
 
 项目全景查询，支持 8 种操作。
 
@@ -187,7 +187,7 @@ Wiki 文档生成：plan / finalize。
 | `operation` | enum | — | `"overview"` | overview / module / gaps / health / governance_cycle / decay_report / staging_check / enhancement_suggestions |
 | `module` | string | — | — | operation=module 时必填 |
 
-### autosnippet_task
+### asd_task
 
 任务与决策管理。**每条消息必须先调用 `prime`**。
 
@@ -206,7 +206,7 @@ Wiki 文档生成：plan / finalize。
 
 ## Admin Tier（2 个工具）
 
-### autosnippet_enrich_candidates
+### asd_enrich_candidates
 
 诊断候选条目字段完整度（不调用 AI），返回每个候选的缺失字段列表。
 
@@ -214,7 +214,7 @@ Wiki 文档生成：plan / finalize。
 |:---|:---|:---|:---|
 | `candidateIds` | string[] | ✅ | 1-20 个 Candidate ID |
 
-### autosnippet_knowledge_lifecycle
+### asd_knowledge_lifecycle
 
 知识条目生命周期操作。
 
@@ -230,17 +230,17 @@ Wiki 文档生成：plan / finalize。
 
 | 工具 | Gateway Action | 资源 |
 |:---|:---|:---|
-| `autosnippet_submit_knowledge` | `knowledge:create` | knowledge |
-| `autosnippet_rescan` | `knowledge:bootstrap` | knowledge |
-| `autosnippet_dimension_complete` | `knowledge:bootstrap` | knowledge |
-| `autosnippet_wiki`（finalize） | `knowledge:create` | knowledge |
-| `autosnippet_evolve` | `knowledge:evolve` | knowledge |
-| `autosnippet_guard`（files） | `guard_rule:check_code` | guard_rules |
-| `autosnippet_skill`（create） | `create:skills` | skills |
-| `autosnippet_skill`（update） | `update:skills` | skills |
-| `autosnippet_skill`（delete） | `delete:skills` | skills |
-| `autosnippet_task`（create） | `task:create` | intent |
-| `autosnippet_task`（close/fail） | `task:update` | intent |
-| `autosnippet_task`（record_decision） | `task:create` | intent |
-| `autosnippet_enrich_candidates` | `knowledge:update` | knowledge |
-| `autosnippet_knowledge_lifecycle` | `knowledge:update` | knowledge |
+| `asd_submit_knowledge` | `knowledge:create` | knowledge |
+| `asd_rescan` | `knowledge:bootstrap` | knowledge |
+| `asd_dimension_complete` | `knowledge:bootstrap` | knowledge |
+| `asd_wiki`（finalize） | `knowledge:create` | knowledge |
+| `asd_evolve` | `knowledge:evolve` | knowledge |
+| `asd_guard`（files） | `guard_rule:check_code` | guard_rules |
+| `asd_skill`（create） | `create:skills` | skills |
+| `asd_skill`（update） | `update:skills` | skills |
+| `asd_skill`（delete） | `delete:skills` | skills |
+| `asd_task`（create） | `task:create` | intent |
+| `asd_task`（close/fail） | `task:update` | intent |
+| `asd_task`（record_decision） | `task:create` | intent |
+| `asd_enrich_candidates` | `knowledge:update` | knowledge |
+| `asd_knowledge_lifecycle` | `knowledge:update` | knowledge |

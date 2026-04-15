@@ -1,4 +1,4 @@
-# AutoSnippet 技术解构
+# Alembic 技术解构
 
 > 从 150 行 Shell 脚本到 12 万行 AI 知识引擎 — 每一个设计决策的深度解读。
 
@@ -6,13 +6,13 @@
 
 ## 这本书讲什么
 
-[AutoSnippet](https://github.com/GxFn/AutoSnippet) 是一个 AI 代码知识引擎，为 Cursor / Copilot 等 AI 助手构建本地项目知识层。本书 6 个篇章、18 章正文 + 4 篇附录，从架构到实现逐模块解构其技术细节。
+[Alembic](https://github.com/GxFn/Alembic) 是一个 AI 代码知识引擎，为 Cursor / Copilot 等 AI 助手构建本地项目知识层。本书 6 个篇章、18 章正文 + 4 篇附录，从架构到实现逐模块解构其技术细节。
 
 ### Part 1 — 起点与哲学
 
 | 章 | 标题 |
 |---|------|
-| Ch01 | AutoSnippet 介绍 |
+| Ch01 | Alembic 介绍 |
 | Ch02 | SOUL 原则 — 知识引擎的身份约束 |
 
 ### Part 2 — 核心引擎
@@ -133,7 +133,7 @@ scripts/
 
 ## 相关链接
 
-- [AutoSnippet 源码](https://github.com/GxFn/AutoSnippet)
+- [Alembic 源码](https://github.com/GxFn/Alembic)
 - [博客](https://gaoxuefeng.com)
 
 ## License

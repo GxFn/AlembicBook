@@ -4,9 +4,9 @@
 
 ## 问题场景
 
-AutoSnippet 的用户接触系统有四种途径：在终端中敲命令、在浏览器中审核 Recipe、在 IDE 中通过 AI Agent 交互、在飞书群中讨论技术决策。每种途径的用户预期和交互模式完全不同——CLI 用户期望秒级响应和结构化输出，Dashboard 用户期望实时进度条和可视化图表，IDE 用户甚至不知道 AutoSnippet 的存在（他们只是在和 AI 对话），飞书用户说的是自然语言而不是命令。
+Alembic 的用户接触系统有四种途径：在终端中敲命令、在浏览器中审核 Recipe、在 IDE 中通过 AI Agent 交互、在飞书群中讨论技术决策。每种途径的用户预期和交互模式完全不同——CLI 用户期望秒级响应和结构化输出，Dashboard 用户期望实时进度条和可视化图表，IDE 用户甚至不知道 Alembic 的存在（他们只是在和 AI 对话），飞书用户说的是自然语言而不是命令。
 
-但它们操作的是**同一个知识库**，经过**同一条 Gateway 管线**，遵守**同一套 Constitution 约束**。本章展示 AutoSnippet 如何让四种界面形态共享一个核心，又各自适配自己的交互范式。
+但它们操作的是**同一个知识库**，经过**同一条 Gateway 管线**，遵守**同一套 Constitution 约束**。本章展示 Alembic 如何让四种界面形态共享一个核心，又各自适配自己的交互范式。
 
 ![四端接入统一架构图](/images/ch18/01-four-interface-architecture.png)
 
@@ -14,7 +14,7 @@ AutoSnippet 的用户接触系统有四种途径：在终端中敲命令、在�
 
 ### CLI 命令体系
 
-CLI 是 AutoSnippet 的主要安装和管理入口——用户通过 `asd` 命令完成项目初始化、知识库扫描、合规检查、向量索引等操作。Commander.js 作为参数解析框架，18+ 命令覆盖系统的全部管理功能：
+CLI 是 Alembic 的主要安装和管理入口——用户通过 `asd` 命令完成项目初始化、知识库扫描、合规检查、向量索引等操作。Commander.js 作为参数解析框架，18+ 命令覆盖系统的全部管理功能：
 
 | 命令 | 职责 | 关键参数 |
 |:---|:---|:---|
@@ -88,7 +88,7 @@ Dashboard 是面向人类的知识管理界面——审核 AI 产出的候选知
 
 ### VSCode Extension
 
-VSCode Extension 是 AutoSnippet 在 IDE 中的存在形式——不是一个独立的面板，而是**编辑器内嵌的辅助能力**。
+VSCode Extension 是 Alembic 在 IDE 中的存在形式——不是一个独立的面板，而是**编辑器内嵌的辅助能力**。
 
 核心设计思想：**最小侵入**。Extension 不弹窗、不强制面板、不修改编辑器布局——它通过三种轻量机制与开发者交互：
 
@@ -98,18 +98,18 @@ VSCode Extension 是 AutoSnippet 在 IDE 中的存在形式——不是一个独
 
 ```typescript
 // 指令正则模式
-const SEARCH_RE = /\/\/\s*(?:autosnippet|as):(?:search|s)\s+(.*)/
-const CREATE_RE = /\/\/\s*(?:autosnippet|as):(?:create|c)\b(.*)?/
-const AUDIT_RE  = /\/\/\s*(?:autosnippet|as):(?:audit|a)\b(.*)?/
+const SEARCH_RE = /\/\/\s*(?:alembic|as):(?:search|s)\s+(.*)/
+const CREATE_RE = /\/\/\s*(?:alembic|as):(?:create|c)\b(.*)?/
+const AUDIT_RE  = /\/\/\s*(?:alembic|as):(?:audit|a)\b(.*)?/
 ```
 
-三种指令对应三种操作：`as:s` 搜索知识、`as:c` 创建知识候选、`as:a` 审计当前文件。指令语法简短（`as:s` 而非 `autosnippet:search`），减少输入负担。
+三种指令对应三种操作：`as:s` 搜索知识、`as:c` 创建知识候选、`as:a` 审计当前文件。指令语法简短（`as:s` 而非 `alembic:search`），减少输入负担。
 
 **RemoteCommandPoller** 是 Extension 的秘密武器——它轮询 HTTP Server 的 `/api/v1/remote/pending` 端点，获取来自飞书或 Dashboard 的远程命令。当飞书用户说"帮我生成 NetworkKit 的单元测试"，LarkTransport 把这条命令加入队列，Extension 在下一次轮询时取到命令，通过 Copilot Chat API 执行，再把结果回传。这实现了**飞书 → 服务端 → IDE** 的跨端指令链路。
 
 ### 飞书 Lark Transport
 
-Lark Transport 是最"非常规"的接入端——它把飞书群聊变成 AutoSnippet 的交互界面。
+Lark Transport 是最"非常规"的接入端——它把飞书群聊变成 Alembic 的交互界面。
 
 **意图分类**——LarkTransport 接收飞书消息后，首先通过 IntentClassifier 判断意图类型：
 
@@ -117,13 +117,13 @@ Lark Transport 是最"非常规"的接入端——它把飞书群聊变成 AutoS
 |:---|:---|:---|
 | `bot_agent` | AgentRuntime + MCP 工具 | "搜索 Cookie 管理的最佳实践" |
 | `ide_agent` | RemoteCommand 队列 → VSCode | "帮我重构 NetworkKit 的错误处理" |
-| `system` | 系统命令 | "AutoSnippet 状态" |
+| `system` | 系统命令 | "Alembic 状态" |
 
 `bot_agent` 意图的消息直接进入 AgentRuntime——和 MCP Server 共享同一个 Agent 循环。这意味着飞书用户和 IDE 用户使用的是同一个 AI Agent，同一套工具，同一个知识库。只是输入输出的传输层不同。
 
 `ide_agent` 意图实现了一个有趣的跨端协作——飞书用户描述编程任务，命令被投递到队列，IDE 中的 Extension 取走执行。执行结果通过反向路径回传到飞书。这让"在手机上给 AI 下达编程指令，在电脑上看到代码生成"成为可能。
 
-**会话持久化**——ConversationStore 为每个飞书 chat 维护会话历史（`chatId → conversationId` 映射），保存到 `.autosnippet/conversations/` 目录。每个会话最多保留 20 条消息，超出后自动裁剪最早的消息。消息去重使用 5 分钟窗口——飞书偶尔会重发消息（网络问题），`recentMsgIds` Map 过滤重复。
+**会话持久化**——ConversationStore 为每个飞书 chat 维护会话历史（`chatId → conversationId` 映射），保存到 `.asd/conversations/` 目录。每个会话最多保留 20 条消息，超出后自动裁剪最早的消息。消息去重使用 5 分钟窗口——飞书偶尔会重发消息（网络问题），`recentMsgIds` Map 过滤重复。
 
 ## 架构与数据流
 
@@ -145,7 +145,7 @@ asd ui 启动序列：
       → 生产模式：express.static(dist/)
 ```
 
-为什么单进程而非微服务？AutoSnippet 是**本地工具**——不需要水平扩展，不需要进程隔离。单进程意味着 HTTP API、Socket.IO 和 Dashboard 共享同一个 ServiceContainer 实例——服务之间是直接的函数调用，不是 RPC。这消除了序列化开销和网络延迟。
+为什么单进程而非微服务？Alembic 是**本地工具**——不需要水平扩展，不需要进程隔离。单进程意味着 HTTP API、Socket.IO 和 Dashboard 共享同一个 ServiceContainer 实例——服务之间是直接的函数调用，不是 RPC。这消除了序列化开销和网络延迟。
 
 `asd server` 是 `asd ui` 的精简版——只启动 HTTP API，不启动 Dashboard 和 Vite。适合 CI/CD 环境或只需要 API 接口的场景。
 
@@ -195,7 +195,7 @@ useEffect(() => {
 }, []);
 ```
 
-所有客户端加入 `notifications` 房间——这是一个简化设计。AutoSnippet 的典型使用场景是单用户（一个开发者管理一个项目的知识库），不需要多房间隔离。如果未来支持团队协作，房间可以按项目或用户分组。
+所有客户端加入 `notifications` 房间——这是一个简化设计。Alembic 的典型使用场景是单用户（一个开发者管理一个项目的知识库），不需要多房间隔离。如果未来支持团队协作，房间可以按项目或用户分组。
 
 ### Dashboard API 层
 
@@ -248,7 +248,7 @@ isAiError(err: unknown): boolean        // 检测 AI Provider 错误
 
 ### Bootstrap 进度——实时管线
 
-Bootstrap（冷启动）是 AutoSnippet 中最长耗时的操作——分析项目 9 个维度、AI 填充知识、三轮审核。整个过程可能持续数分钟，Dashboard 必须实时展示进度。
+Bootstrap（冷启动）是 Alembic 中最长耗时的操作——分析项目 9 个维度、AI 填充知识、三轮审核。整个过程可能持续数分钟，Dashboard 必须实时展示进度。
 
 后端的 Bootstrap 会话结构：
 
@@ -363,7 +363,7 @@ VSCode Extension（每 3 秒轮询）
 
 ```yaml
 ① 终端：asd setup
-   → 创建 .autosnippet/ 目录结构
+   → 创建 .asd/ 目录结构
    → 生成 MCP 配置（.cursor/mcp.json · .vscode/mcp.json · .claude/mcp.json）
    → 初始化 SQLite 数据库 + 自动迁移
    → 提示"运行 asd ui 启动 Dashboard"
@@ -394,8 +394,8 @@ VSCode Extension（每 3 秒轮询）
    → 意图: bot_agent
 
 ③ AgentRuntime 执行：
-   → autosnippet_search("Result 类型错误处理") → 未找到相关 Recipe
-   → autosnippet_submit_knowledge({
+   → asd_search("Result 类型错误处理") → 未找到相关 Recipe
+   → asd_submit_knowledge({
        title: "统一使用 Result<T> 错误处理",
        kind: "rule",
        doClause: "Use Result<T> for error handling in all service methods",
@@ -416,7 +416,7 @@ VSCode Extension（每 3 秒轮询）
    // as:s cookie management pattern
 
 ② Extension 的 DirectiveCodeLensProvider 识别指令
-   → 行上方显示 CodeLens 按钮 "🔍 Search AutoSnippet"
+   → 行上方显示 CodeLens 按钮 "🔍 Search Alembic"
 
 ③ 开发者点击按钮
    → ApiClient.search("cookie management pattern")
@@ -436,7 +436,7 @@ VSCode Extension（每 3 秒轮询）
 
 ### CLI 框架选择——Commander vs yargs vs oclif
 
-Commander.js 是最轻量的选择——纯 ESM 兼容，无装饰器依赖。yargs 功能更丰富（自动补全、命令发现），但在 ESM 模块中有已知的兼容性问题。oclif 是企业级 CLI 框架，提供插件系统和自动生成命令文档——但对于 AutoSnippet 的 18 个命令来说过于重型。Commander.js 的"一个文件一个命令"模式足够清晰。
+Commander.js 是最轻量的选择——纯 ESM 兼容，无装饰器依赖。yargs 功能更丰富（自动补全、命令发现），但在 ESM 模块中有已知的兼容性问题。oclif 是企业级 CLI 框架，提供插件系统和自动生成命令文档——但对于 Alembic 的 18 个命令来说过于重型。Commander.js 的"一个文件一个命令"模式足够清晰。
 
 ### Socket.IO vs WebSocket 原生
 
@@ -448,7 +448,7 @@ Socket.IO 在原生 WebSocket 之上提供三个关键能力：**自动重连**�
 
 `asd ui` 在开发模式下启动 Vite Dev Server（支持 HMR 热更新），生产模式下直接用 Express 托管预构建的 `dist/` 目录。
 
-为什么不总是用预构建？因为 AutoSnippet 的 Dashboard 代码随 npm 包一起分发——`npm install -g autosnippet` 时已经包含了构建好的 `dashboard/dist/`。但开发者修改 Dashboard 源码时（贡献代码），需要 HMR 的即时反馈。`asd ui` 自动检测：如果 `dashboard/src/` 存在，启动 Vite Dev Server；否则使用静态文件服务。
+为什么不总是用预构建？因为 Alembic 的 Dashboard 代码随 npm 包一起分发——`npm install -g alembic` 时已经包含了构建好的 `dashboard/dist/`。但开发者修改 Dashboard 源码时（贡献代码），需要 HMR 的即时反馈。`asd ui` 自动检测：如果 `dashboard/src/` 存在，启动 Vite Dev Server；否则使用静态文件服务。
 
 ### 飞书集成的边界
 
@@ -458,7 +458,7 @@ Lark Transport 是一个实验性功能——它展示了知识系统可以接�
 
 ## 小结
 
-AutoSnippet 的四端接入共享一个核心——ServiceContainer 中的 70+ 服务通过不同的界面层暴露给不同的用户群体：
+Alembic 的四端接入共享一个核心——ServiceContainer 中的 70+ 服务通过不同的界面层暴露给不同的用户群体：
 
 - **CLI** 提供 18+ 命令覆盖全部管理功能，`guard:ci` 集成 CI/CD 管道，`--json` 支持脚本消费
 - **Dashboard** 用 React 19 + Socket.IO 实现 10 个页面的实时管理界面，Bootstrap 进度条和知识审核流是核心体验
@@ -468,5 +468,5 @@ AutoSnippet 的四端接入共享一个核心——ServiceContainer 中的 70+ �
 四种界面形态的共同点是：它们都不包含业务逻辑——业务逻辑在 Service 层和 Domain 层。CLI 是 ServiceContainer 的命令行外壳，Dashboard 是 HTTP API 的可视化外壳，Extension 是 API 的 IDE 嵌入，Lark 是 AgentRuntime 的自然语言外壳。四个外壳，一个内核。
 
 ::: info 全书总结
-至此，我们从 SOUL 原则出发，经过架构基石、知识领域、核心服务、Agent 智能层，最终到达平台交付。AutoSnippet 的每一层都在践行同样的设计哲学：确定性优先、信号驱动、纵深防御、正交组合。
+至此，我们从 SOUL 原则出发，经过架构基石、知识领域、核心服务、Agent 智能层，最终到达平台交付。Alembic 的每一层都在践行同样的设计哲学：确定性优先、信号驱动、纵深防御、正交组合。
 :::

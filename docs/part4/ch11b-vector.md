@@ -48,7 +48,7 @@ HNSW 把这两个思想融合：**在每一层建立一个 Navigable Small World
 
 ### 超参数体系
 
-AutoSnippet 的 HNSW 实现使用以下超参数：
+Alembic 的 HNSW 实现使用以下超参数：
 
 ```typescript
 // lib/infrastructure/vector/HnswIndex.ts
@@ -69,7 +69,7 @@ mL = 1 / Math.log(M); // 层级采样因子 ≈ 0.361
 | efSearch | 搜索精度 | 更高 Recall、更慢 | 更快搜索、可能漏掉结果 |
 | mL | 层级分布 | 更多高层节点（图更高） | 更扁平的图结构 |
 
-**为什么 M=16？** 这是论文推荐的默认值，在 Recall 和速度之间取得平衡。对于 AutoSnippet 的典型规模（100-5000 条 Recipe），M=16 足够保证 > 95% 的 Recall@10。
+**为什么 M=16？** 这是论文推荐的默认值，在 Recall 和速度之间取得平衡。对于 Alembic 的典型规模（100-5000 条 Recipe），M=16 足够保证 > 95% 的 Recall@10。
 
 **为什么 M0=2M？** Layer 0 包含所有节点，是搜索的最终定位层。双倍连接数保证在最密集的层中有足够的连通性，避免搜索陷入局部最优。
 
@@ -101,7 +101,7 @@ idToIndex = new Map<string, number>();  // id → 数组索引
 
 ### 自定义堆实现
 
-HNSW 的搜索核心依赖两种堆结构，AutoSnippet 实现了完整的 MinHeap 和 MaxHeap：
+HNSW 的搜索核心依赖两种堆结构，Alembic 实现了完整的 MinHeap 和 MaxHeap：
 
 ```typescript
 class MinHeap {
@@ -138,7 +138,7 @@ class MaxHeap {
 
 ### 距离函数
 
-AutoSnippet 使用**余弦距离**作为默认度量：
+Alembic 使用**余弦距离**作为默认度量：
 
 $$d_\text{cosine}(\mathbf{a}, \mathbf{b}) = 1 - \frac{\mathbf{a} \cdot \mathbf{b}}{\lVert\mathbf{a}\rVert \times \lVert\mathbf{b}\rVert}$$
 
@@ -312,7 +312,7 @@ searchLayer(query, entryNodeIdx, ef, level):
 
 ### 邻居选择与裁剪
 
-AutoSnippet 使用的是 **Simple 选择策略**——按距离升序取前 M 个最近邻：
+Alembic 使用的是 **Simple 选择策略**——按距离升序取前 M 个最近邻：
 
 ```typescript
 selectNeighborsSimple(candidates, maxNeighbors):
@@ -321,7 +321,7 @@ selectNeighborsSimple(candidates, maxNeighbors):
 ```
 
 ::: info Simple vs. Heuristic
-HNSW 论文提出了两种邻居选择策略：Simple（按距离选最近的）和 Heuristic（考虑邻居之间的多样性）。Heuristic 在高维空间中倾向于选择方向更分散的邻居，理论上能提高 Recall。AutoSnippet 选择 Simple 策略，因为在知识库规模（< 10K）下差异不大，且实现更简单可靠。
+HNSW 论文提出了两种邻居选择策略：Simple（按距离选最近的）和 Heuristic（考虑邻居之间的多样性）。Heuristic 在高维空间中倾向于选择方向更分散的邻居，理论上能提高 Recall。Alembic 选择 Simple 策略，因为在知识库规模（< 10K）下差异不大，且实现更简单可靠。
 :::
 
 **裁剪**发生在新节点连接时——如果某个已有节点的邻居数超过了 M（或 M0），需要移除最远的邻居：
@@ -481,7 +481,7 @@ distance(a: Uint8Array, b: Uint8Array): number {
 
 ### .asvec 二进制格式
 
-AutoSnippet 设计了一套自定义二进制格式来持久化 HNSW 索引，替代了早期的 JSON 存储。文件扩展名 `.asvec`（AutoSnippet Vector）。
+Alembic 设计了一套自定义二进制格式来持久化 HNSW 索引，替代了早期的 JSON 存储。文件扩展名 `.asvec`（Alembic Vector）。
 
 **文件布局**：
 
@@ -806,7 +806,7 @@ The company's revenue grew 3% over the previous quarter.
 
 这段前缀和原始内容拼接后一起 embed，使得向量中编码了文档级的上下文信息。
 
-### AutoSnippet 的实现
+### Alembic 的实现
 
 ```typescript
 // lib/service/vector/ContextualEnricher.ts
@@ -859,7 +859,7 @@ Anthropic 论文报告的效果：
 | + Contextual Retrieval | 降低 35% |
 | + Contextual Retrieval + Reranking | 降低 67% |
 
-AutoSnippet 实现了 Contextual Retrieval 部分（不含 reranking），作为 IndexingPipeline 的可选步骤。
+Alembic 实现了 Contextual Retrieval 部分（不含 reranking），作为 IndexingPipeline 的可选步骤。
 
 ---
 
@@ -920,7 +920,7 @@ embedBatch(items):
 
 一个容易被忽视的约束：**生成存储向量和生成查询向量的必须是同一个模型的同一个版本**。不同厂商（甚至同厂商不同版本）的 embedding 模型，即使输出维度碰巧相同（比如都是 768 维），向量空间也完全不兼容——第 42 维在 Gemini 中可能编码"代码相关性"，在 OpenAI 中可能编码"情感倾向"。跨模型算余弦距离得到的是随机噪声，不是相似度。
 
-AutoSnippet 通过 `aiProvider` 抽象保证了这一点：`BatchEmbedder` 构建索引和 `VectorService` 搜索时共享同一个 provider 实例。如果用户切换了 provider（比如从 Gemini 换到 OpenAI），`HnswVectorAdapter` 在维度不匹配时会报错并提示 `asd embed --clear --force` 重建索引。
+Alembic 通过 `aiProvider` 抽象保证了这一点：`BatchEmbedder` 构建索引和 `VectorService` 搜索时共享同一个 provider 实例。如果用户切换了 provider（比如从 Gemini 换到 OpenAI），`HnswVectorAdapter` 在维度不匹配时会报错并提示 `asd embed --clear --force` 重建索引。
 
 ::: warning 模型版本也算
 `gemini-embedding-001` 和假设的 `gemini-embedding-002` 同样不兼容——模型更新会导致向量空间重新训练。升级 embedding 模型后必须全量重建索引。
@@ -1088,7 +1088,7 @@ reconcile():
 
 ### 为什么不用 FAISS / Annoy / Qdrant？
 
-AutoSnippet 是通过 `npm install -g` 分发的 CLI 工具，必须在任何 macOS/Linux/Windows 环境下开箱即用。
+Alembic 是通过 `npm install -g` 分发的 CLI 工具，必须在任何 macOS/Linux/Windows 环境下开箱即用。
 
 | 方案 | 问题 |
 |:---|:---|
@@ -1106,7 +1106,7 @@ AutoSnippet 是通过 `npm install -g` 分发的 CLI 工具，必须在任何 ma
 
 当用户搜索 `dispatch_sync` 时，他们期望找到包含这个精确标识符的 Recipe。向量搜索可能把 `dispatch_async` 排得更高（因为语义相似度接近），而关键词搜索能准确命中精确匹配。
 
-AutoSnippet 的解法是 RRF 融合（详见 ch11），向量搜索和关键词搜索各自召回、排名融合。向量引擎只负责"语义这一路"的能力，最终排序由两路共同决定。
+Alembic 的解法是 RRF 融合（详见 ch11），向量搜索和关键词搜索各自召回、排名融合。向量引擎只负责"语义这一路"的能力，最终排序由两路共同决定。
 
 ### 为什么自定义二进制格式而不是 SQLite / LevelDB？
 
@@ -1120,7 +1120,7 @@ AutoSnippet 的解法是 RRF 融合（详见 ch11），向量搜索和关键词�
 
 ### Embedding 必须依赖 AI API 吗？
 
-AutoSnippet 当前使用 OpenAI / Gemini 的 embedding API 生成语义向量。这是否意味着向量搜索必须依赖外部 AI 服务？不一定。
+Alembic 当前使用 OpenAI / Gemini 的 embedding API 生成语义向量。这是否意味着向量搜索必须依赖外部 AI 服务？不一定。
 
 **本地 Embedding 模型**是最实用的替代方案。Hugging Face 的 Transformers.js 可以在纯 Node.js 环境中运行 ONNX 格式的小模型：
 
@@ -1138,13 +1138,13 @@ AutoSnippet 当前使用 OpenAI / Gemini 的 embedding API 生成语义向量。
 - **词向量平均**（Word2Vec / FastText）：预训练词向量文件几百 MB，查表 + 平均即可，有基础语义能力但丢失词序信息
 - **随机投影哈希**（LSH）：纯数学降维，速度最快但语义能力最弱
 
-AutoSnippet 选择 AI API 的原因是：embedding 质量最高，且 AutoSnippet 本身已经依赖 AI（用于 Constitution 审查、上下文富化等），embedding 的边际成本很低。本地模型作为零 AI 降级方案，是一个可行的未来方向。
+Alembic 选择 AI API 的原因是：embedding 质量最高，且 Alembic 本身已经依赖 AI（用于 Constitution 审查、上下文富化等），embedding 的边际成本很低。本地模型作为零 AI 降级方案，是一个可行的未来方向。
 
 ---
 
 ## 小结
 
-向量引擎是 AutoSnippet 搜索系统的语义理解层。它的设计围绕三个核心约束展开：
+向量引擎是 Alembic 搜索系统的语义理解层。它的设计围绕三个核心约束展开：
 
 1. **零外部依赖**——纯 JavaScript HNSW 实现，`npm install` 即可用，无需编译工具链或外部服务。
 2. **知识库规模适配**——为 100-5000 条 Recipe 优化，而非百万级通用向量数据库。M=16、efSearch=100 的超参数在这个规模下提供 > 95% Recall 和 1-10ms 延迟。

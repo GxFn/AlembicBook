@@ -12,7 +12,7 @@ ZONE 2 — Two parallel horizontal paths:
 UPPER PATH — "按需查询 (MCP)" (pale green background strip):
 Left: "IDE Agent" icon (laptop with sparkle) sends arrow labeled "CallToolRequest{name, args}" to:
 Center: A rounded rectangle labeled "MCP Server" containing:
-  - Top bar: "autosnippet-v3 · stdio · 18 工具"
+  - Top bar: "alembic-v3 · stdio · 18 工具"
   - Small grid of tool names in 2 rows: "search · knowledge · guard · structure · graph · call_context · task · skill · bootstrap · rescan · evolve · dimension_complete · wiki · panorama · health · submit_knowledge · enrich_candidates · knowledge_lifecycle"
   - Below: "Tier 过滤: Agent(16) · Admin(18)"
 Arrow from MCP Server to:
@@ -32,25 +32,25 @@ From CursorDeliveryPipeline, 7 arrows fan out rightward to 7 channel boxes stack
 
 Channel A (red accent): "① alwaysApply 规则"
   Detail: "800 token · ≤15 条 · confidence×0.4 + authority×0.3 + useCount×0.2"
-  Arrow to: ".cursor/rules/autosnippet-project-rules.mdc"
+  Arrow to: ".cursor/rules/alembic-project-rules.mdc"
 
 Channel B (orange accent): "② 主题规则 (When/Do/Don't)"
   Detail: "750 token/文件 · ≤5 条/主题 · 6 主题"
   Small text: "networking · ui · data · architecture · conventions · general"
-  Arrow to: ".cursor/rules/autosnippet-patterns-{topic}.mdc"
+  Arrow to: ".cursor/rules/alembic-patterns-{topic}.mdc"
 
 Channel B+ (orange-light accent): "③ 调用图架构"
   Detail: "自动推断分层 · 出入度分析"
   Small text: "Foundation → Service → Controller → Application"
-  Arrow to: ".cursor/rules/autosnippet-patterns-call-architecture.mdc"
+  Arrow to: ".cursor/rules/alembic-patterns-call-architecture.mdc"
 
 Channel C (blue accent): "④ 技能同步"
   Detail: "SKILL.md + references/RECIPES.md"
-  Arrow to: ".cursor/skills/autosnippet-{name}/"
+  Arrow to: ".cursor/skills/alembic-{name}/"
 
 Channel D (blue-light accent): "⑤ 开发文档"
   Detail: "dev-document 类型 Recipe"
-  Arrow to: ".cursor/skills/autosnippet-devdocs/references/"
+  Arrow to: ".cursor/skills/alembic-devdocs/references/"
 
 Channel F (purple accent): "⑥ Agent 指令集"
   Detail: "≤15 规则 + ≤10 模式 + 工具列表 + 技能列表"
@@ -61,7 +61,7 @@ Channel F (purple accent): "⑥ Agent 指令集"
 
 Channel Mirror (gray accent, dashed border): "⑦ Mirror"
   Detail: "asd mirror · 手动触发"
-  Small text: "复制 .cursor/rules/ + skills/ 中 autosnippet-* 前缀文件"
+  Small text: "复制 .cursor/rules/ + skills/ 中 alembic-* 前缀文件"
   Dashed arrow to: ".trae/ · .qoder/"
 
 ZONE 3 — "IDE 接入" (right, pale purple background):
@@ -77,10 +77,10 @@ Four IDE icons stacked vertically, each with connection lines showing which path
 
 "Claude Code" — solid lines from:
   · MCP (stdio, .claude/mcp.json)
-  · Channel F (CLAUDE.md, 标记边界注入 autosnippet:begin/end)
+  · Channel F (CLAUDE.md, 标记边界注入 asd:begin/end)
 
 "Trae / Qoder" — dashed lines from:
   · Channel Mirror (复制 .cursor/ 文件)
   · Channel F (AGENTS.md)
 
-Bottom annotation bar: "FileProtection · 签名检测 · 标记边界注入 (<!-- autosnippet:begin/end -->) · 全量覆盖写入 · 幂等性"
+Bottom annotation bar: "FileProtection · 签名检测 · 标记边界注入 (<!-- asd:begin/end -->) · 全量覆盖写入 · 幂等性"

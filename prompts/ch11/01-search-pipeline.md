@@ -4,7 +4,7 @@ A left-to-right flow diagram showing the complete search pipeline, divided into 
 
 LEFT SIDE — "召回阶段" (Recall Phase):
 A rounded box labeled "用户查询" with a search icon.
-Two parallel arrows fan out from it (NOT three — AutoSnippet abandoned BM25), each going to a separate lane:
+Two parallel arrows fan out from it (NOT three — Alembic abandoned BM25), each going to a separate lane:
 
 Lane 1 (pale blue fill): "FieldWeighted 字段加权"
   Tags inside: "trigger ×5.0", "title ×3.0", "tags ×2.0", "description IDF ×1.5"

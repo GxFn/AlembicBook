@@ -23,7 +23,7 @@
 - 一条知识"正在被评估中"和"已经完全可用"——消费方（搜索、Guard）应该给予不同的权重
 - 一条知识"正在被修改"和"正在衰退"——前者只是暂时不稳定，后者可能需要永久退出
 
-AutoSnippet 设计了六态生命周期模型：
+Alembic 设计了六态生命周期模型：
 
 ```text
 pending → staging → active → evolving → decaying → deprecated
@@ -104,7 +104,7 @@ export function isValidTransition(from: string, to: string): boolean {
 1. **AI 幻觉风险**：Agent 可能产生错误的判断，用一段有问题的代码替换了正确的代码。由于修改是原地发生的，旧内容不可恢复。
 2. **静默漂移**：知识的内容在没有任何人知道的情况下发生了变化。下次 Guard 根据修改后的规则检查代码时，开发者完全不知道规则已经变了。
 
-AutoSnippet 的安全设计是：**Agent 永远不能直接修改已有知识，只能提出进化提案（Evolution Proposal）**。
+Alembic 的安全设计是：**Agent 永远不能直接修改已有知识，只能提出进化提案（Evolution Proposal）**。
 
 进化提案是一种"附加"机制——它不修改原有知识的任何字段，而是创建一条独立的提案记录，关联到目标 Recipe。提案有六种类型：
 
@@ -307,7 +307,7 @@ interface CreateRecipeResult {
 
 如果调用方指定了 `options.supersedes`（被替代的旧 Recipe ID），在新 Recipe 创建成功后自动创建 `supersede` 类型的进化提案，关联新旧 Recipe。
 
-这个设计的核心价值是**入口统一**——Agent 通过 `submit_knowledge` 工具调用和用户通过 MCP `autosnippet_submit_knowledge` 走完全相同的校验管线。没有"捷径"可以绕过 Schema Validation 或 Similarity Check 直接创建 Recipe。
+这个设计的核心价值是**入口统一**——Agent 通过 `submit_knowledge` 工具调用和用户通过 MCP `asd_submit_knowledge` 走完全相同的校验管线。没有"捷径"可以绕过 Schema Validation 或 Similarity Check 直接创建 Recipe。
 
 ### RecipeLifecycleSupervisor
 
@@ -568,7 +568,7 @@ Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误
 - **修改正确的概率 << 幻觉错误的成本**：Agent 修改对了，知识库改善一点点；Agent 修改错了，可能导致后续所有基于此 Recipe 的代码检查和生成都出错。
 - **静默漂移的可追溯性**：如果允许直接修改，要准确回答"这条知识为什么变成现在这样"需要完整的 diff 历史——而进化提案机制天然记录了每次变更的原因、来源和判据。
 
-提案机制的代价是增加了中间步骤和延迟。一个 `enhance` 类型的改进需要等待 24-48 小时的观察期才能生效。在 AutoSnippet 的设计判断中，**知识库的准确性比更新的及时性更重要**——一条过时但正确的知识，远好于一条新但错误的知识。
+提案机制的代价是增加了中间步骤和延迟。一个 `enhance` 类型的改进需要等待 24-48 小时的观察期才能生效。在 Alembic 的设计判断中，**知识库的准确性比更新的及时性更重要**——一条过时但正确的知识，远好于一条新但错误的知识。
 
 ### staging 期的价值
 
@@ -580,7 +580,7 @@ Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误
 
 ## 小结
 
-知识生命周期是 AutoSnippet 中最能体现"信号驱动"设计哲学的子系统。六态状态机不是复杂性的来源，而是复杂性的管理工具——每个状态对应一种明确的知识状态语义，每次转换都有可追溯的触发条件和审计日志。
+知识生命周期是 Alembic 中最能体现"信号驱动"设计哲学的子系统。六态状态机不是复杂性的来源，而是复杂性的管理工具——每个状态对应一种明确的知识状态语义，每次转换都有可追溯的触发条件和审计日志。
 
 进化提案机制将 AI 的能力（发现、建议、评估）和人类的判断（确认、否决）分离到不同的阶段——低风险的变更自动化，高风险的交给人。这不是对 AI 能力的不信任，而是对知识库准确性的工程保障。
 

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  title: 'AutoSnippet 技术解构',
+  title: 'Alembic 技术解构',
   description: '从架构到实现 — AI 知识引擎的深度技术文档',
   lang: 'zh-CN',
   base: '/',
@@ -16,7 +16,7 @@ export default defineConfig({
 
   themeConfig: {
     logo: '/logo.svg',
-    siteTitle: 'AutoSnippet Book',
+    siteTitle: 'Alembic Book',
 
     nav: [
       { text: '首页', link: '/' },
@@ -25,7 +25,7 @@ export default defineConfig({
       {
         text: '相关链接',
         items: [
-          { text: 'AutoSnippet GitHub', link: 'https://github.com/GxFn/AutoSnippet' },
+          { text: 'Alembic GitHub', link: 'https://github.com/GxFn/Alembic' },
           { text: '博客', link: 'https://gaoxuefeng.com' },
         ],
       },
@@ -37,7 +37,7 @@ export default defineConfig({
         text: '起点与哲学',
         collapsed: false,
         items: [
-          { text: 'AutoSnippet 介绍', link: '/part1/ch01-introduction' },
+          { text: 'Alembic 介绍', link: '/part1/ch01-introduction' },
           { text: '本地记忆主权', link: '/part1/ch02b-privacy-memory' },
           { text: 'SOUL 原则', link: '/part1/ch02-soul' },
         ],
@@ -114,7 +114,7 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: 'https://github.com/GxFn/autosnippet-book/edit/main/docs/:path',
+      pattern: 'https://github.com/GxFn/alembic-book/edit/main/docs/:path',
       text: '在 GitHub 上编辑此页',
     },
 
@@ -137,7 +137,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/GxFn/AutoSnippet' },
+      { icon: 'github', link: 'https://github.com/GxFn/Alembic' },
     ],
 
     footer: {

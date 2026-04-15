@@ -1,9 +1,9 @@
-Title at top in bold Chinese: "AutoSnippet 工程规模"
+Title at top in bold Chinese: "Alembic 工程规模"
 
 A data dashboard card layout with metric cards arranged around a central badge. Clean, minimal, knowledge-card style.
 
 CENTER BADGE:
-A hexagon or shield shape with "AutoSnippet" text and a small sparkle icon. Below: "本地知识引擎 · 12 万行 TypeScript"
+A hexagon or shield shape with "Alembic" text and a small sparkle icon. Below: "本地知识引擎 · 12 万行 TypeScript"
 
 METRIC CARDS arranged in a grid (4-4-3 layout), each card is a small rounded rectangle with a bold number, a label, and a brief subtitle:
 

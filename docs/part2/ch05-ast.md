@@ -1,20 +1,20 @@
 # 代码理解 — 多语言 AST · Discovery · 增强
 
-> AutoSnippet 如何"看懂"一个项目：从语法树到架构全景。
+> Alembic 如何"看懂"一个项目：从语法树到架构全景。
 
 ## 问题场景
 
-AutoSnippet 要从代码中提取知识，第一步是理解代码。但"理解"有层次——你可以用正则表达式找到 `class` 关键字，但你无法知道这个类继承了谁、实现了什么接口、被哪些方法调用。更困难的是，系统要同时理解 10+ 种编程语言，每种语言的语法和语义模型都不同。
+Alembic 要从代码中提取知识，第一步是理解代码。但"理解"有层次——你可以用正则表达式找到 `class` 关键字，但你无法知道这个类继承了谁、实现了什么接口、被哪些方法调用。更困难的是，系统要同时理解 10+ 种编程语言，每种语言的语法和语义模型都不同。
 
 一个 Swift 项目有 `protocol`、`extension`、`@propertyWrapper`；一个 Java 项目有 `interface`、`@Annotation`、`record`；一个 Rust 项目有 `trait`、`impl` 块、`derive` 宏。如果为每种语言写一套独立的分析系统，代码维护成本会随语言数量线性增长。如果用正则做字符串匹配，跨行声明和嵌套结构会产生大量误报。
 
-AutoSnippet 的策略是：用 Tree-sitter 的 WASM 引擎做确定性语法解析，然后通过统一的抽象类型把 10+ 种语言的语法差异收敛到一个接口——上层的知识提取、模式检测和架构分析完全不需要关心底层是 Swift 还是 Python。
+Alembic 的策略是：用 Tree-sitter 的 WASM 引擎做确定性语法解析，然后通过统一的抽象类型把 10+ 种语言的语法差异收敛到一个接口——上层的知识提取、模式检测和架构分析完全不需要关心底层是 Swift 还是 Python。
 
 ## 设计决策回溯：从专用解析器到通用 WASM
 
 在讲述 Tree-sitter WASM 方案之前，值得回溯一段关键的技术决策历程——它解释了为什么系统没有走"每种语言一个专业解析器"的路线。
 
-**项目初期，AutoSnippet 使用的是 Swift SPM（Swift Package Manager）专用解析器**来处理 Swift 项目的依赖关系——解析 `Package.swift` 中的 target 定义、依赖声明和模块结构。这个解析器能准确还原 SPM 的依赖图，为后续的模块分析提供了可靠的基础数据。
+**项目初期，Alembic 使用的是 Swift SPM（Swift Package Manager）专用解析器**来处理 Swift 项目的依赖关系——解析 `Package.swift` 中的 target 定义、依赖声明和模块结构。这个解析器能准确还原 SPM 的依赖图，为后续的模块分析提供了可靠的基础数据。
 
 但仅仅是这一个 SPM 解析器，就暴露了专用方案的致命问题：
 
@@ -23,7 +23,7 @@ AutoSnippet 的策略是：用 Tree-sitter 的 WASM 引擎做确定性语法解�
 
 转折点出现在 **Tree-sitter WASM 方案的评估**。Tree-sitter 的 WASM 模式将每种语言的语法规则编译为一个独立的 `.wasm` 文件（单个文件约 500KB–1.5MB），这些文件是预编译的、跨平台一致的、无需原生编译链。一旦把 `web-tree-sitter` 作为依赖引入，只需将对应语言的 `.wasm` 文件放入 `resources/grammars/` 目录，系统就能解析该语言——**从支持 1 种语言到支持 11 种语言，只花了一个下午**。
 
-当然，这是一个 trade-off。以 Swift 为例，Tree-sitter 的 Swift grammar 无法像 SwiftSyntax 那样区分 `protocol` 继承列表中的父协议和关联类型约束；它也无法解析宏展开后的语法结构。但这些"精度损失"在 AutoSnippet 的使用场景中是可接受的——系统的目标不是构建 IDE 级别的 100% 精确语义分析，而是为 **AI 推理提供足够准确的结构化上下文**。Tree-sitter 能告诉 AI"这个文件有一个 `NetworkClient` 类，继承了 `BaseClient`，包含 `sendRequest` 方法"，这对 AI 理解架构和提取知识已经足够了。
+当然，这是一个 trade-off。以 Swift 为例，Tree-sitter 的 Swift grammar 无法像 SwiftSyntax 那样区分 `protocol` 继承列表中的父协议和关联类型约束；它也无法解析宏展开后的语法结构。但这些"精度损失"在 Alembic 的使用场景中是可接受的——系统的目标不是构建 IDE 级别的 100% 精确语义分析，而是为 **AI 推理提供足够准确的结构化上下文**。Tree-sitter 能告诉 AI"这个文件有一个 `NetworkClient` 类，继承了 `BaseClient`，包含 `sendRequest` 方法"，这对 AI 理解架构和提取知识已经足够了。
 
 这个决策可以总结为一条设计原则：**在 AI 辅助场景中，覆盖广度比单点精度更有价值**。一个覆盖 11 种语言、每种语言达到"够用"精度的解析系统，远比一个只覆盖 1 种语言、拥有编译器级精度的解析系统更有用——因为 AI 有能力弥补结构解析的缺失，但它无法凭空理解一种完全没有结构信息的语言。
 
@@ -33,7 +33,7 @@ AutoSnippet 的策略是：用 Tree-sitter 的 WASM 引擎做确定性语法解�
 
 Tree-sitter 有两种 Node.js 绑定方式：NAPI 原生绑定和 WASM 绑定。NAPI 的性能更好（约快 2-3 倍），但它需要为每个平台（macOS arm64、macOS x64、Linux x64、Windows x64）编译原生二进制文件，并且 Node.js 大版本升级时需要重新编译。
 
-AutoSnippet 选择了 WASM 方案：
+Alembic 选择了 WASM 方案：
 
 ```typescript
 // lib/core/ast/parser-init.ts
@@ -330,7 +330,7 @@ Python 的 `decorated_definition` 是一个包含 decorator 和实际定义的�
 
 ## 结构分析链
 
-![AutoSnippet 结构分析链](/images/ch05/01-structural-analysis-chain.png)
+![Alembic 结构分析链](/images/ch05/01-structural-analysis-chain.png)
 
 AST 解析只是第一步。单文件的语法树需要经过 5 个阶段的分析才能变成可用的项目理解：
 
@@ -957,7 +957,7 @@ Language Server Protocol（LSP）提供了精确的语义分析——类型推�
 2. **依赖项目配置** — LSP 需要项目的构建配置（tsconfig.json 完整配置、build.gradle 依赖解析），无法在 setup 阶段运行
 3. **启动延迟** — Language Server 初始化需要数秒到数十秒
 
-AutoSnippet 的代码理解发生在 Bootstrap 阶段——这时系统可能还没有完整的项目配置。Tree-sitter 只需要源文件文本，不需要编译器、不需要依赖解析、不需要类型检查。它的精确度低于 LSP（没有类型信息），但足以提取结构信息和模式。
+Alembic 的代码理解发生在 Bootstrap 阶段——这时系统可能还没有完整的项目配置。Tree-sitter 只需要源文件文本，不需要编译器、不需要依赖解析、不需要类型检查。它的精确度低于 LSP（没有类型信息），但足以提取结构信息和模式。
 
 ### 为什么不用正则
 
@@ -997,7 +997,7 @@ AI 的价值在更上层：从 AST 结果推断架构模式、生成知识描述
 
 ## 小结
 
-AutoSnippet 的代码理解是一个从精确到模糊、从局部到全局的渐进过程：
+Alembic 的代码理解是一个从精确到模糊、从局部到全局的渐进过程：
 
 - **Tree-sitter WASM** 提供跨平台一致的语法解析，11 种语言共享一套加载和缓存机制
 - **统一抽象类型** (`AstFileSummary`) 把语言差异封装在解析器内部，上层服务面对统一接口

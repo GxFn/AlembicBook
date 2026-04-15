@@ -9,7 +9,7 @@
 ## 目录结构
 
 ```
-autosnippet-book/
+alembic-book/
 ├── prompts/
 │   ├── style-prompt-suffix.md      # 全局风格约束（每次 prompt 必须附加）
 │   └── ch06/                        # 各章 prompt 文件（按需创建）
@@ -150,7 +150,7 @@ bun /Users/gaoxuefeng/Documents/github/baoyu-skills/skills/baoyu-imagine/scripts
 | 02 | `ch07/02-evolution-proposal-flow.md` | `ch07/02-flow-evolution-proposal-flow.png` | flow | 进化提案机制（发现 → 创建 → 评估执行三阶段） |
 | 03 | `ch07/03-decay-scoring-model.md` | `ch07/03-data-decay-scoring-model.png` | data | DecayDetector 四维评分模型 + 五级健康等级 |
 
-**生成命令**（在 `autosnippet-book/` 目录下执行）：
+**生成命令**（在 `alembic-book/` 目录下执行）：
 
 ```bash
 # 01 — 六态状态机

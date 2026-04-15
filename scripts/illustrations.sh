@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-#  AutoSnippet Book — 插图生成与修正工具
+#  Alembic Book — 插图生成与修正工具
 #  自动发现 prompts/chXX/*.md，按顺序生成对应图片
 #
 #  用法:
@@ -164,7 +164,7 @@ $FORCE && LABEL="重新生成"
 $DRY_RUN && LABEL="[预览] $LABEL"
 
 echo "=========================================="
-echo "  AutoSnippet Book 插图${LABEL}"
+echo "  Alembic Book 插图${LABEL}"
 echo "  待处理 ${TODO_COUNT} / ${TOTAL} 张"
 echo "=========================================="
 echo ""

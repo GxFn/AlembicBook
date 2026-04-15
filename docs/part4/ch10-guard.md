@@ -253,7 +253,7 @@ Disabled Rules (用户关闭)       ← 过滤排除
 **Disabled Rules**：用户可以通过配置文件关闭特定规则：
 
 ```json
-// .autosnippet/config.json
+// .asd/config.json
 { "guard": { "disabledRules": ["swift-no-console-log", "go-no-err-ignored"] } }
 ```
 
@@ -389,7 +389,7 @@ Guard 不是一个孤立的检查工具——它通过两个机制形成闭环�
 
 ### Agent ↔ Guard 自动修复
 
-当 Agent 通过 MCP 调用 `autosnippet_guard` 进行代码审查时，如果发现违规，Agent 会尝试自动修复。整个过程最多 5 轮：
+当 Agent 通过 MCP 调用 `asd_guard` 进行代码审查时，如果发现违规，Agent 会尝试自动修复。整个过程最多 5 轮：
 
 ```yaml
 Round 1: Agent 生成代码
@@ -458,7 +458,7 @@ interface RuleMetrics {
 
 判定阈值：误报率 ≥ 40% 且至少触发 5 次才会标记为 problematic。这避免了对低频规则的过早判断——一条只触发过 2 次的规则，即使 1 次误报，也不足以得出"精确率 50%"的结论。
 
-RuleLearner 的数据持久化在 `AutoSnippet/guard-learner.json`，跟随 Git 版本控制——项目成员共享规则健康度数据。
+RuleLearner 的数据持久化在 `Alembic/guard-learner.json`，跟随 Git 版本控制——项目成员共享规则健康度数据。
 
 ## 三维合规报告
 
@@ -534,7 +534,7 @@ interface ModuleCoverage {
 | **Global Rule Exclusion** | 全局禁用某条规则 | `config.json` |
 
 ```json
-// AutoSnippet/guard-exclusions.json
+// Alembic/guard-exclusions.json
 {
   "pathExclusions": ["test/**", "*.generated.swift", "Pods/**"],
   "ruleExclusions": {

@@ -23,14 +23,14 @@
 
 ### 三模式统合
 
-AutoSnippet 的搜索引擎提供五种模式（`auto`、`keyword`、`weighted`、`semantic`、`context`），但核心设计思想是**两种召回策略的统合**：
+Alembic 的搜索引擎提供五种模式（`auto`、`keyword`、`weighted`、`semantic`、`context`），但核心设计思想是**两种召回策略的统合**：
 
 | 策略 | 强项 | 弱项 |
 |:---|:---|:---|
 | **字段加权** | 精确匹配“dispatch_sync”一定能找到，trigger/title 高权重命中 | “网络请求”找不到 “HTTP call” |
 | **向量语义** | “网络请求”能匹配到 “HTTP call” | “dispatch_sync”精确匹配时反而分数不高 |
 
-两种策略各有盲区——只用一种永远有漏洞。AutoSnippet 用 **RRF（Reciprocal Rank Fusion）** 把两种策略的排名融合为一个统一分数：
+两种策略各有盲区——只用一种永远有漏洞。Alembic 用 **RRF（Reciprocal Rank Fusion）** 把两种策略的排名融合为一个统一分数：
 
 ```typescript
 // lib/service/search/HybridRetriever.ts
@@ -142,7 +142,7 @@ if (confidence >= 60) {
 | **content** | 1.0 | 内容匹配，IDF 加权 |
 | **facets** | 0.5 | language/category 精确匹配 |
 
-传统 BM25 的做法是把所有字段拼接为一段文本，然后整体计分。但对于结构化知识库来说这行不通——BM25 把字段拼接后做 tokenize 去重，导致 TF（词频）永远为 1，BM25F 的字段 boost 完全失效。因此 AutoSnippet 放弃了 BM25，改用 `FieldWeightedScorer` 独立字段评分策略。
+传统 BM25 的做法是把所有字段拼接为一段文本，然后整体计分。但对于结构化知识库来说这行不通——BM25 把字段拼接后做 tokenize 去重，导致 TF（词频）永远为 1，BM25F 的字段 boost 完全失效。因此 Alembic 放弃了 BM25，改用 `FieldWeightedScorer` 独立字段评分策略。
 
 `FieldWeightedScorer` 采用独立评分策略：对每个字段单独计算匹配分，再加权合并。trigger 和 title 使用精确匹配 + token 重叠双重评分，description 和 content 使用 IDF 加权的 token 重叠：
 
@@ -217,7 +217,7 @@ $$\text{rankerScore} = \sum_{s \in \text{signals}} w_s \times v_s$$
 
 ### 三级重排架构
 
-RRF 融合给出了一个初步排名。但初步排名不够精确——相关度只是排名依据的冰山一角。AutoSnippet 用三级重排管线逐步精炼结果：
+RRF 融合给出了一个初步排名。但初步排名不够精确——相关度只是排名依据的冰山一角。Alembic 用三级重排管线逐步精炼结果：
 
 ```yaml
 召回 (FieldWeighted + Vector, RRF 融合)
@@ -292,7 +292,7 @@ contextScore = baseScore × (1 + boost);   // 最多 +30%
 
 ### 纯 JavaScript HNSW
 
-AutoSnippet 是一个通过 `npm install` 分发的 CLI 工具。所有依赖必须是纯 JavaScript——不能要求用户编译 C++ 扩展、安装 CUDA 驱动或配置 Python 环境。这排除了 FAISS、Annoy、Milvus 等常见向量数据库。
+Alembic 是一个通过 `npm install` 分发的 CLI 工具。所有依赖必须是纯 JavaScript——不能要求用户编译 C++ 扩展、安装 CUDA 驱动或配置 Python 环境。这排除了 FAISS、Annoy、Milvus 等常见向量数据库。
 
 `HnswIndex` 是一个完整的 HNSW（Hierarchical Navigable Small World）近似最近邻索引，纯 TypeScript 实现，零外部依赖。
 
@@ -498,7 +498,7 @@ Guard 需要检查 "dispatch_sync" 相关规则
 | RRF 融合 + 元数据补全 | 5–15ms | 5–15ms |
 | **总延迟（auto + semantic）** | **2.4–22.5s** | **230–380ms** |
 
-AutoSnippet 支持 **Embedding 双轨配置**——LLM 和 Embedding 可以使用不同的 Provider。典型配置是 LLM 走云端 Gemini（强推理），Embedding 走本地 Ollama + qwen3-embedding:0.6b（低延迟零成本）。这让语义搜索摆脱了对云端 API 的延迟依赖——HNSW 在 ~50 条规模上几乎零开销，Embedding 本地化后延迟从秒级降到毫秒级。云端 API 仍然可用作后备，断路器打开时自动降级为纯 weighted。
+Alembic 支持 **Embedding 双轨配置**——LLM 和 Embedding 可以使用不同的 Provider。典型配置是 LLM 走云端 Gemini（强推理），Embedding 走本地 Ollama + qwen3-embedding:0.6b（低延迟零成本）。这让语义搜索摆脱了对云端 API 的延迟依赖——HNSW 在 ~50 条规模上几乎零开销，Embedding 本地化后延迟从秒级降到毫秒级。云端 API 仍然可用作后备，断路器打开时自动降级为纯 weighted。
 
 **三种模式在不同查询类型上的真实表现**：
 
@@ -520,9 +520,9 @@ AutoSnippet 支持 **Embedding 双轨配置**——LLM 和 Embedding 可以使�
 
 ### 为什么不用 Elasticsearch
 
-Elasticsearch 是搜索领域的标准方案，支持 BM25、向量搜索、字段加权、聚合分析。AutoSnippet 不用它有两个原因：
+Elasticsearch 是搜索领域的标准方案，支持 BM25、向量搜索、字段加权、聚合分析。Alembic 不用它有两个原因：
 
-1. **安装成本**。AutoSnippet 通过 `npm install -g autosnippet` 安装，整个工具是一个 Node.js package。如果依赖 Elasticsearch，用户还需要安装 Java（ES 的运行时）、下载 ES 二进制包、配置并启动 ES 服务——这对于一个 CLI 工具来说成本不可接受。
+1. **安装成本**。Alembic 通过 `npm install -g alembic` 安装，整个工具是一个 Node.js package。如果依赖 Elasticsearch，用户还需要安装 Java（ES 的运行时）、下载 ES 二进制包、配置并启动 ES 服务——这对于一个 CLI 工具来说成本不可接受。
 2. **规模不匹配**。知识库的典型规模是 50–500 条 Recipe。ES 为百万级文档优化的分片和集群机制，对这个规模完全多余。纯内存的 FieldWeighted + HNSW 在这个量级上的延迟（1–10ms）比 ES 的 HTTP 往返（50–200ms）快一到两个数量级。
 
 ### 为什么不纯用向量搜索
@@ -530,7 +530,7 @@ Elasticsearch 是搜索领域的标准方案，支持 BM25、向量搜索、字�
 向量搜索能理解语义，但有三个致命弱点：
 
 1. **关键词精确匹配差**。用户输入 `@swift-no-main-thread-sync` 时期望 trigger 精确命中。向量搜索把这个字符串编码为 768 维向量后，可能和 `@swift-no-force-cast` 的向量距离很近（都是 Swift 安全规则），但用户要的是**精确这一条**。实测数据：trigger `@video-player-reuse` 在 weighted 中以 12.98 分精确命中，在 semantic 中排第一的却是另一个条目。
-2. **延迟不可控**（云端 API 场景）。实测云端 Embedding API 延迟从 2.3 秒到 22.3 秒不等，中位数约 6 秒——而 HNSW 图搜索本身只需 8–19ms。不过，AutoSnippet 的 Embedding 双轨配置支持使用本地模型（如 Ollama + qwen3-embedding:0.6b），延迟降至 180–300ms，使语义搜索成本变得可接受。
+2. **延迟不可控**（云端 API 场景）。实测云端 Embedding API 延迟从 2.3 秒到 22.3 秒不等，中位数约 6 秒——而 HNSW 图搜索本身只需 8–19ms。不过，Alembic 的 Embedding 双轨配置支持使用本地模型（如 Ollama + qwen3-embedding:0.6b），延迟降至 180–300ms，使语义搜索成本变得可接受。
 3. **依赖 AI 服务**。向量搜索的前提是 embedding API 可用。断路器打开、网络故障、API Key 过期时，纯向量搜索完全瘫痪。实测中偶发 `fetch failed` 导致搜索降级耗时高达 40 秒。FieldWeighted 是纯本地计算，零外部依赖——它是搜索系统的安全兜底。
 
 RRF 融合让两者互补：关键词精确匹配时 FieldWeighted 得分碾压，语义模糊查询时向量搜索补位。$k=60$ 的平滑效果确保了——一条在两种策略中都排前列的 Recipe 一定比只在一种策略中排第一的 Recipe 分数更高。查询路由（Weighted-First Confidence Gate）则更进一步——先快速判断 weighted 是否已经足够好，不必每次都付出 embed 延迟代价。

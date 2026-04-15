@@ -1,7 +1,7 @@
 {
-  "name": "autosnippet-book",
+  "name": "alembic-book",
   "version": "1.0.0",
-  "description": "AutoSnippet 技术解构 — 从架构到实现的深度文档",
+  "description": "Alembic 技术解构 — 从架构到实现的深度文档",
   "type": "module",
   "scripts": {
     "dev": "vitepress dev docs",
@@ -10,10 +10,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/GxFn/autosnippet-book.git"
+    "url": "git+https://github.com/GxFn/alembic-book.git"
   },
   "keywords": [
-    "autosnippet",
+    "alembic",
     "vitepress",
     "documentation",
     "knowledge-engine",
@@ -22,9 +22,9 @@
   "author": "GaoXuefeng <https://github.com/GxFn>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/GxFn/autosnippet-book/issues"
+    "url": "https://github.com/GxFn/alembic-book/issues"
   },
-  "homepage": "https://github.com/GxFn/autosnippet-book#readme",
+  "homepage": "https://github.com/GxFn/alembic-book#readme",
   "devDependencies": {
     "markdown-it-mathjax3": "^4.3.2",
     "vitepress": "^1.6.4"

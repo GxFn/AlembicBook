@@ -1,4 +1,4 @@
-Title at top center in bold Chinese: "AutoSnippet 七层分层架构"
+Title at top center in bold Chinese: "Alembic 七层分层架构"
 
 A vertical stack diagram with 7 layers arranged from top (Layer 1) to bottom (Layer 7). Each layer is a wide rounded rectangle spanning ~80% of the image width, centered horizontally. Layers are separated by thin dashed horizontal lines. Each layer has "Layer N" label in a small rounded pill on the left side.
 

@@ -30,7 +30,7 @@ BaseKnowledge
 2. **生命周期复制**：四种类型都需要 pending → active → deprecated 的状态机、都需要审核流程、都需要衰退检测。你不得不在基类中实现，但基类的字段又不完全适用于所有子类。
 3. **分类边界模糊**：一条"所有 HTTP 请求必须通过 `NetworkKit` 封装"的知识，它是 Convention 还是 Pattern？如果答案取决于你怎么看待它，那分类本身就不该是类型层面的硬约束。
 
-AutoSnippet 选择了另一条路：**统一实体 + 分类标签**。
+Alembic 选择了另一条路：**统一实体 + 分类标签**。
 
 ![继承体系 vs 统一实体](/images/ch06/02-inheritance-vs-unified.png)
 
@@ -184,7 +184,7 @@ increment(counter: StatsCounter, delta = 1): Stats {
 
 ### FieldSpec：字段的唯一权威来源
 
-AutoSnippet 对每个字段的约束不是散落在代码各处的 `if` 检查，而是集中定义在一个声明式规范中——`FieldSpec`：
+Alembic 对每个字段的约束不是散落在代码各处的 `if` 检查，而是集中定义在一个声明式规范中——`FieldSpec`：
 
 ```typescript
 // lib/domain/knowledge/FieldSpec.ts
@@ -301,7 +301,7 @@ function codeFingerprint(code: string) {
 
 KnowledgeEntry 在内存中是 TypeScript 对象，但持久化形式是 Markdown 文件。这个选择不是偶然的：
 
-1. **Human-readable**：打开 `.autosnippet/recipes/` 目录，直接用文本编辑器就能阅读知识内容
+1. **Human-readable**：打开 `.asd/recipes/` 目录，直接用文本编辑器就能阅读知识内容
 2. **Git diff friendly**：Markdown 的变更在 `git diff` 中清晰可读，不像 JSON 那样整个对象重排
 3. **可编辑**：开发者可以直接编辑 Recipe 文件，系统会在下次加载时解析变更
 
@@ -402,7 +402,7 @@ publish(publisher: string) {
 目录结构反映了这种状态分离：
 
 ```text
-.autosnippet/
+.asd/
 ├── candidates/     # lifecycle = pending | staging
 │   ├── entry-a.md
 │   └── entry-b.md
@@ -534,7 +534,7 @@ JSON Schema 是通用的结构验证标准，FieldSpec 看起来像是在重新�
 
 ### 为什么 Markdown 而非纯 JSON
 
-知识库的 `.autosnippet/` 目录会被提交到 Git。如果 Recipe 是 JSON 文件：
+知识库的 `.asd/` 目录会被提交到 Git。如果 Recipe 是 JSON 文件：
 
 ```json
 {"title":"CookieProviding 请求封装规范","content":{"markdown":"本项目使用...","rationale":"Coordinator 模式..."},"trigger":"@cookie-providing-pattern"}

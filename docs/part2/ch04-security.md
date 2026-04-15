@@ -4,13 +4,13 @@
 
 ## 问题场景
 
-AutoSnippet 通过 MCP 协议把 61+ 工具暴露给 Cursor、VS Code Copilot、Claude Code 等外部 AI Agent。这意味着一个你无法完全控制的 AI 正在调用你的系统——它可能尝试删除 Recipe、覆盖已有知识、在文件系统上执行危险命令。
+Alembic 通过 MCP 协议把 61+ 工具暴露给 Cursor、VS Code Copilot、Claude Code 等外部 AI Agent。这意味着一个你无法完全控制的 AI 正在调用你的系统——它可能尝试删除 Recipe、覆盖已有知识、在文件系统上执行危险命令。
 
 问题不是"AI 会不会作恶"，而是"如何在 AI 犯错时限制爆炸半径"。
 
 传统 Web 应用的安全模型假设攻击者是人——他们需要绕过认证、注入 SQL、提权。MCP 场景的安全模型面对的是一个更奇怪的对象：一个有正当访问权限的 AI Agent，它的行为取决于用户给出的自然语言指令。用户可能说"帮我清理一下知识库"，AI 理解为"删除所有过时的 Recipe"——这不是攻击，但如果没有防护，后果一样灾难性。
 
-AutoSnippet 对此的回应是六层纵深防御——不是在入口放一扇门然后信任所有进入者，而是在每个关键路径上都设置独立检查。
+Alembic 对此的回应是六层纵深防御——不是在入口放一扇门然后信任所有进入者，而是在每个关键路径上都设置独立检查。
 
 ## Constitution：规则与角色
 
@@ -448,7 +448,7 @@ PathGuard 是文件系统层面的安全屏障——即使请求通过了前四�
 
 // 白名单：项目内允许写入的目录
 const PROJECT_WRITE_SCOPE_PREFIXES = [
-  '.autosnippet',  // 运行时 DB、记忆、对话
+  '.asd',  // 运行时 DB、记忆、对话
   '.cursor',       // Cursor IDE 集成
   '.vscode',       // VSCode 集成
   '.github',       // Copilot instructions
@@ -468,7 +468,7 @@ assertSafe(targetPath: string) {
   // 1. 在项目目录内 → 通过
   if (this.#isUnder(resolved, this.#projectRoot!)) { return; }
 
-  // 2. 在 AutoSnippet 包目录内 → 通过
+  // 2. 在 Alembic 包目录内 → 通过
   if (this.#packageRoot && this.#isUnder(resolved, this.#packageRoot)) { return; }
 
   // 3. 在白名单目录内 → 通过
@@ -495,9 +495,9 @@ assertProjectWriteSafe(targetPath: string) {
 
   // 开发仓库保护
   if (this.#isDevRepo) {
-    if (firstSegment === '.autosnippet') {
+    if (firstSegment === '.asd') {
       throw new PathGuardError(resolved, this.#projectRoot!,
-        'Dev repo 保护: 禁止在源码仓库内创建 .autosnippet/ 运行时数据');
+        'Dev repo 保护: 禁止在源码仓库内创建 .asd/ 运行时数据');
     }
     // ... kbDir 也被阻止
   }
@@ -526,13 +526,13 @@ assertProjectWriteSafe(targetPath: string) {
 |------|---------|---------|------|
 | 写入 `/var/log/evil.txt` | ❌ 越界 | — | 拒绝 |
 | 写入 `src/main.ts` | ✅ 项目内 | ❌ 非白名单 | 拒绝 |
-| 写入 `.autosnippet/db.sqlite` | ✅ 项目内 | ✅ 白名单 | 允许 |
+| 写入 `.asd/db.sqlite` | ✅ 项目内 | ✅ 白名单 | 允许 |
 | 写入 `.cursor/rules/api.md` | ✅ 项目内 | ✅ 白名单 | 允许 |
-| 写入 `AutoSnippet/recipes/r1.md` | ✅ 项目内 | ✅ kbDir | 允许 |
+| 写入 `Alembic/recipes/r1.md` | ✅ 项目内 | ✅ kbDir | 允许 |
 | 写入 `.gitignore` | ✅ 项目内 | ✅ 根级文件 | 允许 |
-| Dev repo 写入 `.autosnippet/` | ✅ 项目内 | ❌ Dev保护 | 拒绝 |
+| Dev repo 写入 `.asd/` | ✅ 项目内 | ❌ Dev保护 | 拒绝 |
 
-关键是第二行：即使文件在项目内，AutoSnippet 也**不能写入 `src/` 等业务代码目录**。知识引擎只操作自己的数据（`.autosnippet/`、知识库目录、IDE 配置），不触碰用户的源代码。
+关键是第二行：即使文件在项目内，Alembic 也**不能写入 `src/` 等业务代码目录**。知识引擎只操作自己的数据（`.asd/`、知识库目录、IDE 配置），不触碰用户的源代码。
 
 ## ConfidenceRouter：知识质量门控
 
@@ -602,7 +602,7 @@ async route(entry: KnowledgeEntry): Promise<RouteResult> {
 
 ## 六层安全链路全景
 
-![AutoSnippet 6 级决策管线](/images/ch04/01-six-layer-security.png)
+![Alembic 6 级决策管线](/images/ch04/01-six-layer-security.png)
 
 六层按请求路径串联，每层解决一个特定维度的安全问题：
 
@@ -747,7 +747,7 @@ SafetyPolicy（Layer 4）在 Agent 执行工具前拦截。即使 SafetyPolicy �
 
 ### 为什么不用 OAuth / JWT
 
-AutoSnippet 是本地化工具——它运行在开发者的机器上，通过 stdio 与 MCP 客户端通信。没有网络请求，没有 HTTP header，没有 cookie。OAuth 和 JWT 解决的是"跨网络认证"问题，而 AutoSnippet 的安全问题是"同一台机器上不同信任级别的进程间通信"。
+Alembic 是本地化工具——它运行在开发者的机器上，通过 stdio 与 MCP 客户端通信。没有网络请求，没有 HTTP header，没有 cookie。OAuth 和 JWT 解决的是"跨网络认证"问题，而 Alembic 的安全问题是"同一台机器上不同信任级别的进程间通信"。
 
 Constitution 的角色标识直接通过 MCP 请求的 `actor` 字段传递——MCP 服务器在初始化时确定调用者角色（通常是 `external_agent`），不需要 token 交换。
 
@@ -781,7 +781,7 @@ Constitution 的角色标识直接通过 MCP 请求的 `actor` 字段传递—�
 
 ## 小结
 
-AutoSnippet 的安全不是一扇门，而是一条层层设卡的通道：
+Alembic 的安全不是一扇门，而是一条层层设卡的通道：
 
 - **Constitution** 用 YAML 定义规则，跟随 Git 版本控制，启动时加载到内存
 - **Gateway** 是唯一入口，4 步管线确保每次操作都被验证、守护、路由和审计
