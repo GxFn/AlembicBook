@@ -10,7 +10,7 @@ AutoSnippet 是一个 **AI 驱动的项目知识引擎**——它从代码中提
 
 AutoSnippet 本质上做两件事：**一次构建有限答案，持续回答无限问题**。
 
-代码经过 AST 分析和 Agent 审核后，沉淀为知识有机体（Knowledge Organism）。之后通过 MCP 协议被各种 IDE Agent 消费——Guard 检查合规、Search 检索知识、Agent 回答问题。
+代码经过 AST 分析和 Agent 推理挖掘后，经由人工审核，沉淀为知识有机体（Knowledge Organism）。之后通过 MCP 协议被各种 IDE Agent 消费——Guard 检查合规、Search 检索知识、Agent 回答问题。
 
 ![核心工作流](/images/ch01/01-core-workflow.png)
 
