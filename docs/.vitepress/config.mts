@@ -38,6 +38,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: 'AutoSnippet 介绍', link: '/part1/ch01-introduction' },
+          { text: '本地记忆主权', link: '/part1/ch02b-privacy-memory' },
           { text: 'SOUL 原则', link: '/part1/ch02-soul' },
         ],
       },

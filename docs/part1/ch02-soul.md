@@ -544,3 +544,7 @@ Guard 引擎本身就是 SOUL 哲学的产物——它的设计决策（四层�
 ::: tip 下一章
 [架构全景 — DDD 分层与模块拓扑](../part2/ch03-architecture)
 :::
+
+::: info 上一章
+[本地记忆主权 — 当 AI 平台争夺你的上下文](./ch02b-privacy-memory)
+:::

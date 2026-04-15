@@ -18,7 +18,7 @@ hero:
 features:
   - icon: 🧠
     title: Part I · 起点与哲学
-    details: 问题定义、SOUL 原则、5 项设计哲学如何化为 12 万行代码中的工程决策
+    details: 问题定义、本地记忆主权与隐私设计、SOUL 原则、5 项设计哲学如何化为 12 万行代码中的工程决策
   - icon: 🏗️
     title: Part II · 工程基石
     details: 7 层 DDD 架构、六层纵深防御安全管线、10 语言 Tree-sitter AST 分析
@@ -33,7 +33,7 @@ features:
     details: ReAct 推理循环、Capability × Strategy × Policy 正交组合、61+ 工具与记忆系统
   - icon: 🚀
     title: Part VI · 平台与交付
-    details: MCP 协议实现、六通道知识交付、Dashboard · CLI · 多端接入
+    details: MCP 协议实现、六通道知识交付、Task 意图生命周期、Dashboard · CLI · 多端接入
   - icon: 📊
     title: Part VII · 真实数据
     details: BiliDili 冷启动全记录——840 万 Token、14 维度、101 候选的真实执行数据与洞察

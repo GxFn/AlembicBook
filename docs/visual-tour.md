@@ -26,6 +26,12 @@ AutoSnippet 本质上做两件事：**一次构建有限答案，持续回答无
 
 ![SOUL 宪章](/images/ch02/01-soul-charter.png)
 
+### 本地记忆主权
+
+AutoSnippet 的所有知识、记忆、行为信号都存储在项目本地——四层记忆架构（知识库 → 行为信号 → Agent 记忆 → 会话上下文）从临时到永久递进，信息密度逐层提升。PathGuard 文件沙箱 + stdio 零网络架构确保数据不外泄。
+
+<!-- ![本地记忆主权](/images/ch02b/01-local-memory-sovereignty.png) -->
+
 ## Part II · 工程基石
 
 ### 七层分层架构
@@ -161,6 +167,12 @@ Agent 的行为由三个正交维度决定：Capability（能做什么）× Stra
 通过 MCP（Model Context Protocol）将知识交付到 6 种 IDE Agent：Cursor、Windsurf、Copilot、Qodo、Cline、Trae。每种 IDE 有各自的配置格式，但消费的是同一个知识库。
 
 ![MCP 交付全景](/images/ch17/01-mcp-delivery-overview.png)
+
+### Task 意图生命周期
+
+MCP 工具中最特殊的 `autosnippet_task` 管理 Agent 自身的行为——五阶段闭环：Prime（IntentExtractor 意图识别 + PrimeSearchPipeline 多查询知识检索）→ Create（生成任务锚点）→ 行为自动采集（工具调用、搜索查询、文件引用、意图漂移检测）→ Close（IntentChain 持久化到 SignalBus → JSONL）→ Guard Review（git diff 增量审计 + inline Recipe 修复）。Close 返回 `nextAction.required: true` 强制 Agent 执行 Guard——协议层驱动，不依赖 Agent 自觉。
+
+![Task 意图生命周期链](/images/ch17/02-task-lifecycle-chain.png)
 
 ### 四端接入
 
