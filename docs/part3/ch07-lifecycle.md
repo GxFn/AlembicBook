@@ -191,11 +191,11 @@ const TIMEOUT_TARGET = {
 
 **active → decaying**
 
-这是最关键的自动转换——它由 `DecayDetector` 的评分驱动。当 `DecayDetector` 评估一条 `active` 状态的 Recipe 分数低于 60 分时，通过 `EvolutionGateway.submit({ action: 'deprecate' })` 发起进化决策。`EvolutionGateway` 根据置信度决定是创建提案（观察期 7 天）还是直接执行（高置信度 ≥ 0.8 立即废弃）。
+这是最关键的自动转换——它由 `DecayDetector` 的评分驱动。当 `DecayDetector` 评估一条 `active` 状态的 Recipe 分数低于 60 分时，通过 `EvolutionGateway.submit({ action: 'deprecate' })` 发起进化决策。`EvolutionGateway` 根据置信度决定是创建提案（信号驱动评估，无固定过期时间）还是直接执行（高置信度 ≥ 0.8 立即废弃）。
 
 **decaying → active（自动恢复）**
 
-如果处于 `decaying` 状态的 Recipe 重新被搜索命中或被 Guard 使用（`searchHit` 或 `guardHit` 信号），`ProposalExecutor` 在评估废弃提案时发现衰退分数回升（当前分数比提案创建时高出 10 分以上），自动拒绝提案——Recipe 恢复到 `active`。这个自动恢复机制是信号驱动设计的典型体现——不需要人工干预，使用行为本身就是最好的信号。
+如果处于 `decaying` 状态的 Recipe 重新被搜索命中或被 Guard 使用（`searchHit` 或 `guardHit` 信号），`ProposalExecutor` 在评估废弃提案时发现衰退分数回升（当前分数比提案创建时高出 10 分以上），自动拒绝提案——Recipe 恢复到 `active`。此外，§9.1 保护机制会在源文件被直接修改（`direct`/`pattern` 级影响）时直接拒绝废弃提案，无需等待分数回升。这些自动恢复机制是信号驱动设计的典型体现——不需要人工干预，使用行为和编辑行为本身就是最好的信号。
 
 **decaying → deprecated**
 
@@ -439,86 +439,125 @@ type DecayStrategy =
 
 | 事件类型 | 处理策略 | 是否涉及 Agent |
 |:---|:---|:---|
-| `renamed` | ContentPatcher 自动修复路径，更新 sourceRefs/reasoning | 否 — 纯代码逻辑 |
+| `renamed` | ContentPatcher 自动修复路径，更新 sourceRefs/reasoning/markdown | 否 — 纯代码逻辑 |
 | `deleted` | 全部 sourceRef 失效时 → Gateway.submit(deprecate, conf=0.9) | 否 — 纯代码逻辑 |
-| `modified` | 结构化影响分析，发射 quality signal，返回影响摘要 | 否 — 纯代码分析 |
+| `modified` | diff-based 影响评估 + quality signal + pattern 级持久化提案 | 否 — 纯代码分析 |
 | `created` | 跳过（新文件不影响已有 Recipe） | — |
 
 其中 `renamed` 和 `deleted` 是确信路径——系统有足够信息做出自动决策。`modified` 是最复杂的事件类型，需要分析改动文件对每条关联 Recipe 的影响程度。
 
-**影响级别分析**
+**v3 Diff-Based 影响分析**
 
-当文件被修改时，`FileChangeHandler` 通过 `SourceRefRepository.findBySourcePath(path)` 找到所有引用该文件的 Recipe，然后对每条 Recipe 计算影响级别：
+当文件被修改时，`FileChangeHandler` 通过 `SourceRefRepository.findBySourcePath(path)` 找到所有引用该文件的 Recipe，然后用 **diff-based 内容影响评估**计算影响级别——分析「这次改了什么」（diff），而非「文件整体和 Recipe 有多像」。
+
+核心流程分四步：
 
 ```typescript
-// lib/service/evolution/FileChangeHandler.ts
-#analyzeModifiedImpact(
-  modifiedPath: string,
-  entry: { coreCode?: string; reasoning?: unknown; trigger?: string },
-  isSourceRef = false
-): ImpactLevel {
-  // Rule 0: sourceRef 精确匹配 → direct
-  if (isSourceRef) { return 'direct'; }
+// lib/service/evolution/ContentImpactAnalyzer.ts
+export function assessFileImpact(
+  projectRoot: string,
+  relativePath: string,
+  recipeTokens: RecipeTokens
+): DiffImpactResult | null {
+  // 1. git diff -U0 获取文件行级变更
+  const diffText = getFileDiff(projectRoot, relativePath);
+  if (!diffText) { return null; }  // 无 git / untracked → 跳过
 
-  // Rule 1: coreCode 中包含文件路径或符号名 → direct
-  const stem = basename.replace(/\.[^.]+$/, '');
-  if (coreCode.includes(modifiedPath) || (stem.length >= 4 && coreCode.includes(stem))) {
-    return 'direct';
-  }
+  // 2. 解析 diff hunks
+  const hunks = parseDiffHunks(diffText);
 
-  // Rule 2: reasoning.sources 中包含路径 → reference
-  if (sources.some(s => s === modifiedPath || s.endsWith(`/${basename}`))) {
-    return 'reference';
-  }
+  // 3. 从变更行提取代码标识符（diff tokens）
+  const diffTokens = tokenizeDiffLines(hunks);
 
-  // Rule 3: trigger 片段匹配路径 → pattern
-  if (trigger.length >= 3 && modifiedPath.toLowerCase().includes(trigger.toLowerCase())) {
-    return 'pattern';
-  }
-
-  return 'pattern'; // 防御性兜底
+  // 4. 与 Recipe tokens 做加权交集
+  return assessDiffImpact(diffTokens, recipeTokens);
 }
 ```
+
+Recipe tokens 从全字段提取——`coreCode`、`content.markdown` 中的代码块、`content.pattern`、`content.steps[].code`，覆盖知识实体的全部代码语义：
+
+```typescript
+// lib/service/evolution/ContentImpactAnalyzer.ts
+export function extractRecipeTokens(entry: {
+  coreCode?: string;
+  content?: { markdown?: string; pattern?: string; steps?: Array<{ code?: string }> };
+}): RecipeTokens { ... }
+```
+
+影响评分公式：`score = |T_R ∩ T_Δ| / |T_R|`，其中 `T_R` 是 Recipe 特征标识符集合，`T_Δ` 是 diff 变更行标识符集合。分级：
+
+- `score ≥ 0.3` → `pattern`（diff 动到了 30%+ 的 Recipe 关键标识符）
+- `score > 0` → `reference`（diff 动到了少量 Recipe 标识符）
+- 无法获取 diff → 跳过（不做降级）
 
 三个影响级别对应不同的 signal 权重：
 
 | impactLevel | signal weight | 含义 |
 |:---|:---|:---|
-| `direct` | 0.7 | 改动的文件路径在 `Recipe.sourceRefs` 中精确匹配，或 `coreCode` 中显式出现 |
-| `reference` | 0.4 | 改动文件在 `Recipe.reasoning.sources` 中，但不在 sourceRefs / coreCode 中 |
-| `pattern` | 0.2 | 文件名命中 `Recipe.trigger` 关键词，但无显式引用 |
+| `direct` | 0.8 | 文件删除且无其他引用 → 最高权重 |
+| `pattern` | 0.6 | diff 动到了 30%+ 的 Recipe 关键标识符 → 高权重 |
+| `reference` | 0.3 | diff 有少量 Recipe 标识符命中 → 低权重 |
 
-每条受影响的 Recipe 都会产生一条结构化的 quality signal：
+`pattern` 级别除了发射 signal，还会通过 `EvolutionGateway` 持久化为 update 提案——确保即使弹窗被用户忽略，后续增量扫描仍然能处理：
 
 ```typescript
-signalBus.send('quality', 'FileChangeHandler', weight, {
+// FileChangeHandler.ts — pattern 级别持久化
+await this.#gateway.submit({
+  recipeId: ref.recipeId,
+  action: 'update',
+  source: 'file-change',
+  confidence: Math.min(0.5 + score, 0.9),
+  description: reason,
+  evidence: [{ modifiedPath, score, matchedTokens, detectedAt: Date.now() }],
+});
+```
+
+所有级别都发射 quality signal（`ProposalExecutor` 消费）：
+
+![v3 Diff-Based 文件变更影响分析](/images/ch07/04-diff-based-impact-analysis.png)
+
+```typescript
+signalBus.send('quality', 'FileChangeHandler', IMPACT_WEIGHTS[impactLevel], {
   target: recipeId,
   metadata: {
     reason: 'source_modified',
-    modifiedPath: path,
-    impactLevel: 'direct' | 'reference' | 'pattern',
+    modifiedPath,
+    impactLevel,  // 'direct' | 'pattern' | 'reference'
   }
 })
 ```
 
-这些 signal 有三个消费方：`ProposalExecutor` 在评估提案时将其作为证据、增量扫描的进化前置用它过滤需要 Agent 验证的 Recipe、VSCode 扩展根据影响摘要展示弹窗引导开发者审视。
+这些 signal 有三个消费方：`ProposalExecutor` 在评估提案时将其作为证据（§9.1：`direct`/`pattern` signal 阻止 deprecate 提案执行）、增量扫描的进化前置用它过滤需要 Agent 验证的 Recipe、VSCode 扩展根据影响摘要展示弹窗引导开发者审视。
 
 **VSCode 弹窗进化建议**
 
-当文件修改导致 `impactLevel = 'direct'` 时，HTTP 响应将影响摘要返回给 VSCode 扩展，扩展展示两按钮弹窗：
+当文件修改导致 `impactLevel` 为 `'direct'` 或 `'pattern'` 时，HTTP 响应将影响摘要返回给 VSCode 扩展，扩展展示三按钮弹窗：
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│  ⚡ Alembic: 2 Recipe(s) may need review.                 │
-│     Review affected Recipes?                              │
+│  ⚡ Alembic: 检测到 PaginationController 等受近期编辑     │
+│     影响，建议进化评估。                                   │
 │                                                           │
-│  ┌──────────┐  ┌──────────────┐                         │
-│  │  Review  │  │  Auto Check   │                         │
-│  └──────────┘  └──────────────┘                         │
+│  ┌──────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │  Review  │  │  Auto Check   │  │ Don't Show Again │   │
+│  └──────────┘  └──────────────┘  └──────────────────┘   │
 └───────────────────────────────────────────────────────────┘
 ```
 
-弹窗的防骚扰设计有四层过滤：只有 `direct` 才弹（`reference`/`pattern` 只发 signal）；只有 IDE 编辑事件弹（git 批量不弹）；对同一 Recipe 的弹窗间隔至少 10 分钟；多条 direct 影响折叠为一条弹窗。
+弹窗的防骚扰设计有六层过滤：
+
+1. **G0 全局开关**：`alembic.enableReactivePopup` 设置 + session 级静默（点击 "Don't Show Again" 后本次 session 不再弹窗）
+2. **C1 来源过滤**：仅 `ide-edit` 来源允许弹窗（git 批量操作不弹）
+3. **C2 影响级别**：`direct`（文件删除）或 `pattern`（30%+ Recipe token 被 diff 修改）才弹窗，`reference` 只发 signal
+4. **G1 全局冷却**：任意两次弹窗之间至少 2 分钟
+5. **C3 递增退避**：每个 Recipe 独立退避——首次忽略后需等 1 天才可再弹，第 2 次需等 2 天……第 N 次需等 min(N, 7) 天
+6. **折叠合并**：多条影响折叠为一条弹窗，最多预览 3 条标题
+
+按钮行为：
+- **Review** → 打开 IDE Chat，预填包含受影响 Recipe 的 evolve prompt；重置该 Recipe 的退避计数
+- **Auto Check** → 开启终端执行 `asd evolve-check --recipes <ids>`；重置退避计数
+- **Don't Show Again** → session 级静默，提示用户如需永久关闭可在设置中禁用 `alembic.enableReactivePopup`
+- **关闭/忽略** → 该 Recipe 退避计数 +1，未处理的 Recipe 由增量扫描统一处理
 
 ### RecipeSimilarity：统一相似度算法
 
@@ -561,9 +600,10 @@ interface EvolutionDecision {
   action: EvolutionAction;
   confidence: number;         // 0-1
   source: ProposalSource;     // 'ide-agent' | 'decay-scan' | 'relevance-audit' | 'file-change' | ...
-  reason: string;
-  evidence?: Record<string, unknown>[];
-  suggestedChanges?: unknown;  // update 时的内容补丁
+  description?: string;
+  reason?: string;
+  evidence?: Record<string, unknown>[];  // update 时附带 suggestedChanges 等信息
+  replacedByRecipeId?: string;           // supersede 场景：被替代 Recipe 的 ID
 }
 ```
 
@@ -571,6 +611,7 @@ interface EvolutionDecision {
 
 ```
 EvolutionDecision 到达
+  → 前置检查：Recipe 是否存在？不存在 → error
   → switch (action):
     'valid':
       更新 lastVerifiedAt 时间戳（无提案，不触发状态转换）
@@ -579,17 +620,41 @@ EvolutionDecision 到达
       创建 update Proposal → EvolutionPolicy.resolveInitialStatus() 
         → confidence ≥ 0.7 → 直接 'observing'（自动开始信号驱动评估）
         → confidence < 0.7  → 'pending'（等待人工审阅）
+      Dedup 拦截？→ #tryUpgradeExistingProposal()（见下文）
     
     'deprecate':
       EvolutionPolicy.shouldImmediateExecute(confidence ≥ 0.8)?
         → YES: 直接调用 LifecycleStateMachine.transition(→ deprecated)
                Guard 拒绝? → 降级为创建 Proposal
-        → NO:  创建 deprecate Proposal（7 天观察）
+        → NO:  创建 deprecate Proposal（信号驱动评估，无固定过期时间）
 ```
 
 `valid` action 是一个轻量操作——Agent 在增量扫描的 Phase A 中对健康的 Recipe 调用 `submit({ action: 'valid' })`，只刷新时间戳证明"我验证过了"，不创建任何提案。这是 Phase A 过滤效率的关键：80% 的健康 Recipe 走 `valid` 路径，只消耗一次时间戳写入。
 
-高置信度废弃（`confidence ≥ 0.8`）的立即执行路径是一个重要的优化。当 `RelevanceAuditor` 判定某条 Recipe 为 `dead`（所有证据消失，分数 < 20，置信度 0.95），没有必要等 7 天——直接废弃。但即使在这条快速路径上，废弃操作仍然必须通过 `LifecycleStateMachine` 的守卫检查——如果 Guard 拒绝了这次转换（比如该 Recipe 处于不允许直接废弃的状态），系统会自动降级为创建提案。
+高置信度废弃（`confidence ≥ 0.8`）的立即执行路径是一个重要的优化。当 `RelevanceAuditor` 判定某条 Recipe 为 `dead`（所有证据消失，分数 < 20，置信度 0.95），没有必要等观察期——直接废弃。但即使在这条快速路径上，废弃操作仍然必须通过 `LifecycleStateMachine` 的守卫检查——如果 Guard 拒绝了这次转换（比如该 Recipe 处于不允许直接废弃的状态），系统会自动降级为创建提案。
+
+**Evidence 升级机制（Dedup 后追加证据）**
+
+当 `ProposalRepository.create()` 因去重规则返回 `null` 时（已存在同类型 Proposal），Gateway 不会静默丢弃，而是尝试升级已有 Proposal 的 evidence：
+
+```typescript
+// EvolutionGateway.ts — #tryUpgradeExistingProposal()
+// 典型场景：FileChangeHandler 先创建了仅含检测元数据的 update Proposal（无 suggestedChanges），
+// 之后 Agent 增量扫描产出了带 suggestedChanges 的更丰富 evidence。
+const newHasChanges = newEvidence.some(
+  e => typeof e.suggestedChanges === 'string'
+);
+const existingHasChanges = match.evidence.some(
+  e => typeof e.suggestedChanges === 'string'
+);
+if (newHasChanges && !existingHasChanges) {
+  // 追加 Agent 的 evidence（保留原始检测记录）
+  this.#proposalRepo.updateEvidence(match.id, [...match.evidence, ...newEvidence]);
+  return { outcome: 'proposal-upgraded', proposalId: match.id };
+}
+```
+
+这解决了一个实际问题：`FileChangeHandler` 在文件保存时立即创建 Proposal，但此时只有 diff 检测元数据（`score`、`matchedTokens`）；后续 Agent 增量扫描可能产出更丰富的证据（包含 `suggestedChanges` 内容补丁）。如果没有升级机制，Agent 的 `suggestedChanges` 会被去重规则丢弃，`ContentPatcher` 就无法执行实际的内容更新。
 
 ### ProposalExecutor — 信号驱动的提案评估
 
@@ -601,9 +666,12 @@ const TRIGGER_SIGNAL_TYPES = new Set(['guard', 'search', 'decay', 'quality', 'us
 
 subscribeToSignals(signalBus: SignalBus): void {
   // 长期订阅，在 UiStartupTasks Stage 6 启动
-  this.#subscription = signalBus.subscribe(
-    signal => TRIGGER_SIGNAL_TYPES.has(signal.type),
-    signal => this.#onSignal(signal)
+  this.#unsubscribe = signalBus.subscribe(
+    'guard|search|decay|quality|usage|lifecycle',  // regex pattern 过滤
+    (signal: Signal) => {
+      if (!signal.target) { return; }
+      void this.#onSignal(signal);
+    }
   );
 }
 ```
@@ -626,11 +694,18 @@ signal(type: 'guard' | 'search' | ..., target: recipeId)
           ✗ 静默等待下一个信号（不拒绝，不退避）
     
     'deprecate':
+      §9.1 保护检查：signal.metadata.reason === 'source_modified'
+        && (impactLevel === 'direct' || impactLevel === 'pattern')?
+        → YES: Proposal 立即标记 REJECTED
+          （源文件仍在被积极编辑/核心模式被修改 → Recipe 仍然相关）
+        → NO: 继续正常评估
       EvolutionPolicy.evaluateDeprecate(currentDecay, snapshotDecay)
         → 'deprecated' (dead，score ≤ 19):  直接废弃
         → 'decaying' (severe，score ≤ 40):  active → decaying（15 天缩短 grace）
         → 'reject' (recovered，分数回升 > 10):  Proposal 标记 REJECTED
 ```
+
+§9.1 保护机制是 `ProposalExecutor` 的关键增强：当 `FileChangeHandler` 发出的 `source_modified` signal 附带 `direct` 或 `pattern` 级影响时，说明该 Recipe 的源文件仍在被积极修改——此时废弃提案应该被拒绝，而非继续等待信号。这避免了"开发者正在重构代码 → 系统误判 Recipe 不再相关"的场景。
 
 `EvolutionPolicy` 的评估函数是纯函数——不访问数据库，不产生副作用，只根据输入的度量做出判断：
 
@@ -820,14 +895,14 @@ Agent 在项目冷启动时提取了一条关于 `CookieProviding` 的 Recipe，
 4. **T+0**：`EvolutionPolicy.shouldImmediateExecute(0.9)` → true，直接通过 `LifecycleStateMachine.transition(→ deprecated)` 执行
 5. **T+N（下次扫描）**：`SourceRefReconciler.reconcile()` 补充发现其他间接引用了 `NetworkManager` 的 Recipe，标记为 `stale`
 6. **T+N**：`RelevanceAuditor` 在 Phase A 审计中发现这些 Recipe 的 `codeFilesExist` 和 `symbolsAlive` 严重下降 → `decay` 或 `severe` 等级
-7. **T+N**：Agent 验证确认 → `EvolutionGateway.submit({ action: 'deprecate' })` → 创建 Proposal，观察期 7 天
-8. **T+N+7 天**：`ProposalExecutor` 在信号评估中确认 decay score 无回升 → `decaying → deprecated`
+7. **T+N**：Agent 验证确认 → `EvolutionGateway.submit({ action: 'deprecate' })` → 创建 Proposal（信号驱动评估）
+8. **T+N+信号评估**：`ProposalExecutor` 在信号评估中确认 decay score 无回升 → `decaying → deprecated`
 
 ### 场景 3：Agent 驱动的知识更新
 
 Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误处理的示例。
 
-1. **T+0**：Agent 通过 `asd_evolve` MCP 工具调用 `EvolutionGateway.submit({ action: 'update', confidence: 0.8, suggestedChanges: {...} })`
+1. **T+0**：Agent 通过 `asd_evolve` MCP 工具调用 `EvolutionGateway.submit({ action: 'update', confidence: 0.8, evidence: [{ suggestedChanges: '...' }] })`
 2. **T+0**：`EvolutionPolicy.resolveInitialStatus('update', 0.8)` → `'observing'`（≥ 0.7 自动进入观察）
 3. **T+0**：`EvolutionPolicy.assessRisk('update', 0.8)` → `'low'`（观察窗口 24h）
 4. **T+数小时**：Guard 检查命中该 Recipe，发射 `guard` signal → `ProposalExecutor.#onSignal()` 触发评估
@@ -852,12 +927,14 @@ Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高
 
 1. **T+0**：开发者保存文件，VSCode 扩展收集 `modified` 事件（`eventSource: 'ide-edit'`）
 2. **T+2s**：事件缓冲区 flush，POST 到 `/api/v1/file-changes`
-3. **T+2s**：`FileChangeHandler` 查找引用该文件的 Recipe，发现两条：Recipe A（sourceRef 直接引用）→ `impactLevel = direct`；Recipe B（仅在 reasoning.sources 中引用）→ `impactLevel = reference`
-4. **T+2s**：对 Recipe A 发射 `quality` signal（weight=0.7），对 Recipe B 发射 signal（weight=0.4）
-5. **T+2s**：HTTP 响应返回影响摘要给 VSCode 扩展
-6. **T+2s**：扩展检测到 `eventSource = 'ide-edit'` + 存在 `direct` 级影响 → 展示弹窗："⚡ Alembic: 1 Recipe(s) may need review"
-7. **T+选择**：开发者点击 "Review" → IDE Chat 打开，预填 prompt 包含受影响 Recipe 的标题和变更路径
-8. **T+下次 rescan**：Phase A 中，这两条 Recipe 因为有近期 `source_modified` signal 被选入 Agent 验证队列，Agent 读取新代码后决定 Recipe A 需要更新 → `propose_evolution`
+3. **T+2s**：`FileChangeHandler` 查找引用该文件的 Recipe，发现两条：Recipe A（sourceRef 直接引用）和 Recipe B（仅在 reasoning.sources 中引用）
+4. **T+2s**：`ContentImpactAnalyzer.assessFileImpact()` 对每条 Recipe 执行 diff-based 影响评估——获取 `git diff -U0`，解析变更行 tokens，与 Recipe tokens（`coreCode` + `content.markdown` 代码块）做加权交集。Recipe A 得分 0.45 → `impactLevel = pattern`；Recipe B 得分 0.08 → `impactLevel = reference`
+5. **T+2s**：对 Recipe A 发射 `quality` signal（weight=0.6），对 Recipe B 发射 signal（weight=0.3）
+6. **T+2s**：Recipe A 的 `pattern` 级影响触发 `EvolutionGateway.submit({ action: 'update', source: 'file-change' })`，持久化为 update 提案
+7. **T+2s**：HTTP 响应返回影响摘要给 VSCode 扩展
+8. **T+2s**：扩展检测到 `eventSource = 'ide-edit'` + 存在 `pattern` 级影响 → 展示弹窗："⚡ Alembic: 检测到 PaginationController 受近期编辑影响，建议进化评估。"
+9. **T+选择**：开发者点击 "Review" → IDE Chat 打开，预填 prompt 包含受影响 Recipe 的标题和变更路径；退避计数重置
+10. **T+下次 rescan**：Phase A 中，这两条 Recipe 因为有近期 `source_modified` signal 被选入 Agent 验证队列，Agent 读取新代码后决定 Recipe A 需要更新 → `propose_evolution`（Gateway 发现已有 Proposal → evidence 升级，追加 suggestedChanges）
 
 这个场景展示了文件变更如何从 IDE 端事件一路触发到知识进化——signal 既是实时弹窗的触发器，也是下次增量扫描中进化前置的输入。
 
@@ -865,86 +942,14 @@ Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高
 
 前面分散介绍了各个子系统。以下是完整的架构视角，展示从文件变更到知识进化的全链路：
 
-```
-                     ┌──── IDE / 编辑器 ────┐
-                     │  文件 create/rename/  │
-                     │  delete/modify        │
-                     └──────────┬────────────┘
-                                │
-                    POST /api/v1/file-changes
-                                │
-                                ▼
-              ┌──────────────────────────────┐
-              │     FileChangeHandler        │
-              │                              │
-              │  renamed → ContentPatcher    │  ← 确信路径
-              │  deleted → Gateway(0.9)      │  ← 确信路径
-              │  modified → 影响分析         │  ← 结构化 signal
-              │    → impactLevel 分级         │
-              │    → SignalBus.send(quality)  │
-              │    → 影响摘要响应             │
-              └──────────┬───────────────────┘
-                         │
-          ┌──────────────┼──────────────────────┬──────────────────┐
-          │              │                       │                  │
-     Signal 沉淀    用户触发 rescan        Proposal 信号评估   VSCode 弹窗建议
-          │              │                       │           (impactLevel=direct)
-          ▼              ▼                       ▼                  │
-   ┌─────────────┐  ┌────────────────────┐  ProposalExecutor ┌─────┴─────┐
-   │ 影响摘要累积  │  │  Phase A: 进化前置  │  #onSignal()     │ Review     │
-   │ (per Recipe) │  │                    │                  │ Auto Check │
-   └─────────────┘  │  RelevanceAuditor   │                  └───────────┘
-                    │  + 文件修改 signal   │
-                    │  → 过滤候选 Recipe   │
-                    │    healthy → valid   │
-                    │    dead → deprecated │
-                    │    decay/impacted    │
-                    │    → Agent 验证      │
-                    └──────────┬──────────┘
-                               │
-              ┌────────────────┼───────────────┐
-              │                │               │
-        EvolutionGateway  Phase B: 纯新增  EvolutionGateway
-        submit(valid)     │                submit(update/
-        → lastVerifiedAt  │                deprecate)
-                          │                → Proposal 创建
-                    ┌─────┴──────────┐     → 信号驱动评估
-                    │                │     → StateMachine
-                    │  Analyze       │
-                    │  → QualityGate │
-                    │  → Produce     │
-                    │  → RejectionGate│
-                    └────────┬───────┘
-                             │
-                             ▼
-                    ┌────────────────────────────┐
-                    │ RecipeProductionGateway     │
-                    │                            │
-                    │ Layer 1: 结构化过滤         │
-                    │   fingerprint 去重          │
-                    │   批内互重叠阻止            │
-                    │   统一相似度算法            │
-                    │                            │
-                    │ Layer 1.5: 字段级分析       │
-                    │   trigger/doClause/coreCode │
-                    │                            │
-                    │ Layer 2: 语义融合           │
-                    │   内部 → ConsolidationGate  │
-                    │   外部 → MCP 尾部指令       │
-                    │          → asd_consolidate  │
-                    └──────────┬─────────────────┘
-                               │
-               ┌───────────────┼───────────────────┐
-               │               │                   │
-          create 新 Recipe  merge/update     pendingSemanticReview
-               │            Proposal              │
-               ▼               ▼              MCP nextAction
-        ConfidenceRouter  EvolutionGateway        │
-        → staging/pending → Proposal 创建         ▼
-                          → 信号驱动评估     外部 Agent 执行
-                          → StateMachine     asd_consolidate
-                                             → keep/merge/reject
-```
+![知识进化全链路数据流](/images/ch07/05-full-dataflow-pipeline.png)
+
+整个流程分为四个层次：
+
+- **触发层**：IDE 文件事件通过 HTTP 到达 `FileChangeHandler`，按事件类型分流——rename/delete 走确信路径，modified 走 diff-based 影响分析
+- **信号层**：`FileChangeHandler` 产出的 quality signal 被四个消费方并行接收——Signal 沉淀、增量扫描前置、ProposalExecutor 信号评估、VSCode 弹窗
+- **决策层**：`RelevanceAuditor` 在 Phase A 中过滤候选 Recipe，`EvolutionGateway` 统一接收进化决策（含 evidence 升级），Phase B 新增候选经过 `RecipeProductionGateway` 三层过滤
+- **落地层**：最终产出三种结果——新 Recipe 通过 `ConfidenceRouter` 进入 staging/pending、merge/update 通过 `EvolutionGateway` 创建提案、灰色地带交由外部 Agent 通过 `asd_consolidate` 决策
 
 ## 权衡与替代方案
 
@@ -963,7 +968,7 @@ Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高
 - **修改正确的概率 << 幻觉错误的成本**：Agent 修改对了，知识库改善一点点；Agent 修改错了，可能导致后续所有基于此 Recipe 的代码检查和生成都出错。
 - **静默漂移的可追溯性**：如果允许直接修改，要准确回答"这条知识为什么变成现在这样"需要完整的 diff 历史——而进化提案机制天然记录了每次变更的原因、来源和判据。
 
-提案机制的代价是增加了中间步骤和延迟。一个 `update` 类型的改进需要至少 24 小时的观察期才能生效（低风险），废弃操作需要 7 天。在 Alembic 的设计判断中，**知识库的准确性比更新的及时性更重要**——一条过时但正确的知识，远好于一条新但错误的知识。
+提案机制的代价是增加了中间步骤和延迟。一个 `update` 类型的改进需要至少 24 小时的观察期才能生效（低风险），废弃操作需要经历信号驱动的评估期（`decaying` 状态最长 30 天超时兜底）。在 Alembic 的设计判断中，**知识库的准确性比更新的及时性更重要**——一条过时但正确的知识，远好于一条新但错误的知识。
 
 ### staging 期的价值
 

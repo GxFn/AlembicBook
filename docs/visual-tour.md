@@ -1,6 +1,6 @@
 # 图解速览 — 一张图读懂 Alembic
 
-> 25 张手绘风格架构图，5 分钟快速理解整个系统。
+> 27 张手绘风格架构图，5 分钟快速理解整个系统。
 
 Alembic 是一个 **AI 驱动的项目知识引擎**——它从代码中提取知识、持续进化知识、在开发时交付知识。本文用图解方式，沿着系统的六大部分快速走一遍。
 
@@ -74,21 +74,33 @@ Alembic 的所有知识、记忆、行为信号都存储在项目本地——四
 
 ### 六态生命周期
 
-每条知识的生命周期是六态状态机：`pending` → `active` → `evolved`（或 `deprecated` → `archived`），以及特殊的 `superseded` 状态。状态转换由信号驱动，不可逆。
+每条知识的生命周期是六态状态机：`pending → staging → active → evolving → decaying → deprecated`。状态转换由信号驱动，每次转换通过 `LifecycleStateMachine` 唯一权威执行并记录不可变审计日志。
 
 ![六态生命周期](/images/ch07/01-six-state-lifecycle.png)
 
 ### 进化提案流程
 
-当系统检测到知识需要更新时（衰退、冲突、冗余），自动生成 EvolutionProposal，经过 StagingManager 的置信度分级宽限期后，触发实际状态转换。
+当系统检测到知识需要更新时（衰退、文件变更、冗余），通过 `EvolutionGateway` 统一入口创建 EvolutionProposal（update / deprecate 两种类型）。`ProposalExecutor` 信号驱动评估提案，`EvolutionPolicy` 纯函数判定风险等级和观察窗口。
 
 ![进化提案流程](/images/ch07/02-evolution-proposal-flow.png)
 
 ### 衰退评分模型
 
-衰退检测基于 6 种策略加权计算 0-100 分数，映射到 5 个级别（healthy → critical）。包括无命中衰退、搜索稀疏、技术版本偏移等维度。
+衰退检测基于四维加权评分（freshness 0.3 + usage 0.3 + quality 0.2 + authority 0.2）计算 0-100 分数，映射到 5 个级别（healthy → dead）。六种衰退策略（no_recent_usage、high_false_positive、symbol_drift、source_ref_stale、superseded、contradiction）任一命中即产生衰退信号。
 
 ![衰退评分模型](/images/ch07/03-decay-scoring-model.png)
+
+### Diff-Based 文件变更影响分析
+
+文件修改时，ContentImpactAnalyzer 通过 `git diff -U0` 获取变更行 tokens，与 Recipe tokens（coreCode + markdown 代码块）做加权交集，分为三个影响级别：direct（0.8）、pattern（0.6）、reference（0.3）。pattern 级别持久化为 update 提案，所有级别发射 quality signal 供 ProposalExecutor、增量扫描和 VSCode 弹窗消费。
+
+![Diff-Based 影响分析](/images/ch07/04-diff-based-impact-analysis.png)
+
+### 全链路数据流
+
+从 IDE 文件事件到知识进化的完整链路，分为四层：触发层（FileChangeHandler 按事件分流）→ 信号层（quality signal 四消费方并行）→ 决策层（RelevanceAuditor + EvolutionGateway + RecipeProductionGateway）→ 落地层（staging/pending、提案创建、外部 Agent 融合决策）。
+
+![全链路数据流](/images/ch07/05-full-dataflow-pipeline.png)
 
 ### 维度框架
 
