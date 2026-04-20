@@ -11,6 +11,11 @@
 #    bash scripts/illustrations.sh --force      # 强制重新生成所有插图
 #    bash scripts/illustrations.sh --list       # 列出所有插图状态
 #    bash scripts/illustrations.sh --dry-run    # 预览将要执行的操作
+#
+#  单图模式:
+#    bash scripts/illustrations.sh ch07/06-scenario-promotion-path   # 生成单张（缺失时）
+#    bash scripts/illustrations.sh -f ch07/06-scenario-promotion-path # 强制重新生成单张
+#    bash scripts/illustrations.sh ch07/06 ch07/10                   # 多张（前缀匹配）
 # ============================================================================
 
 set -euo pipefail
@@ -28,45 +33,97 @@ AR="3:4"
 QUALITY="2k"
 PROMPTS_DIR="prompts"
 IMAGES_DIR="docs/public/images"
+RESIZE_WIDTH=880
 
 # ---- 参数解析 ----
 FORCE=false
 DRY_RUN=false
 LIST_ONLY=false
+NO_RESIZE=false
 declare -a CHAPTERS=()
+declare -a SLUGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --force|-f)   FORCE=true; shift ;;
-    --dry-run|-n) DRY_RUN=true; shift ;;
-    --list|-l)    LIST_ONLY=true; shift ;;
+    --force|-f)     FORCE=true; shift ;;
+    --dry-run|-n)   DRY_RUN=true; shift ;;
+    --list|-l)      LIST_ONLY=true; shift ;;
+    --no-resize)    NO_RESIZE=true; shift ;;
     --help|-h)
-      echo "用法: bash scripts/illustrations.sh [选项] [章节...]"
+      echo "用法: bash scripts/illustrations.sh [选项] [目标...]"
       echo ""
       echo "选项:"
       echo "  --force, -f    强制重新生成（覆盖已有图片）"
       echo "  --dry-run, -n  预览模式（不实际生成）"
       echo "  --list, -l     列出所有插图状态"
+      echo "  --no-resize    跳过生成后的自动压缩"
       echo "  --help, -h     显示帮助"
       echo ""
-      echo "章节:"
-      echo "  ch01 ch06 ...  指定要处理的章节（默认全部）"
+      echo "目标（三种格式，可混用）:"
+      echo "  ch06                                  整个章节"
+      echo "  ch07/06-scenario-promotion-path       单张图片（精确匹配）"
+      echo "  ch07/06                               前缀匹配（ch07 下所有 06- 开头的图）"
       echo ""
       echo "示例:"
-      echo "  bash scripts/illustrations.sh                # 生成所有缺失的插图"
-      echo "  bash scripts/illustrations.sh ch06           # 只处理 ch06"
-      echo "  bash scripts/illustrations.sh --force ch14   # 重新生成 ch14 的插图"
+      echo "  bash scripts/illustrations.sh                          # 生成所有缺失的"
+      echo "  bash scripts/illustrations.sh ch06                     # 只处理 ch06"
+      echo "  bash scripts/illustrations.sh -f ch07/06               # 强制重新生成单张"
+      echo "  bash scripts/illustrations.sh ch07/06 ch07/10          # 多张"
+      echo "  bash scripts/illustrations.sh -f ch07/06 --no-resize   # 重新生成但不压缩"
       exit 0
       ;;
-    ch[0-9]*)     CHAPTERS+=("$1"); shift ;;
-    *)            echo "❌ 未知参数: $1"; exit 1 ;;
+    # ch07/06-xxx 或 ch07/06 — 单图（含路径分隔符的）
+    ch[0-9][0-9]/*)  SLUGS+=("$1"); shift ;;
+    # ch07 — 章节
+    ch[0-9]*)        CHAPTERS+=("$1"); shift ;;
+    *)               echo "❌ 未知参数: $1"; exit 1 ;;
   esac
 done
+
+# ---- 辅助函数 ----
+slug_matches() {
+  # 检查 prompt 文件是否匹配任一 slug 模式
+  # slug 格式: "ch07/06-scenario-promotion-path" 或 "ch07/06"（前缀匹配）
+  local prompt_file="$1"
+  local chapter=$(basename "$(dirname "$prompt_file")")
+  local name=$(basename "$prompt_file" .md)
+  local full="${chapter}/${name}"
+
+  for slug in "${SLUGS[@]}"; do
+    # 精确匹配
+    [[ "$full" == "$slug" ]] && return 0
+    # 前缀匹配: ch07/06 匹配 ch07/06-scenario-promotion-path
+    [[ "$full" == "${slug}"* ]] && return 0
+  done
+  return 1
+}
+
+resize_image() {
+  local img="$1"
+  local current_width
+  current_width=$(sips -g pixelWidth "$img" 2>/dev/null | awk '/pixelWidth/{print $2}')
+  if [[ -n "$current_width" && "$current_width" -gt "$RESIZE_WIDTH" ]]; then
+    local size_before
+    size_before=$(stat -f%z "$img")
+    sips --resampleWidth "$RESIZE_WIDTH" "$img" --out "$img" >/dev/null 2>&1
+    local size_after
+    size_after=$(stat -f%z "$img")
+    local saved=$(( (size_before - size_after) / 1024 ))
+    local new_height
+    new_height=$(sips -g pixelHeight "$img" 2>/dev/null | awk '/pixelHeight/{print $2}')
+    echo "  📐 压缩: ${current_width}px → ${RESIZE_WIDTH}x${new_height}px (节省 ${saved}KB)"
+  else
+    echo "  📐 无需压缩 (${current_width:-?}px ≤ ${RESIZE_WIDTH}px)"
+  fi
+}
 
 # ---- 收集任务 ----
 # 自动发现 prompts/chXX/*.md，映射到 docs/public/images/chXX/*.png
 declare -a PROMPT_FILES=()
 declare -a IMAGE_FILES=()
+
+HAS_SLUG_FILTER=${#SLUGS[@]}
+HAS_CHAPTER_FILTER=${#CHAPTERS[@]}
 
 for prompt_file in "$PROMPTS_DIR"/ch[0-9][0-9]/*.md; do
   [[ -f "$prompt_file" ]] || continue
@@ -75,8 +132,10 @@ for prompt_file in "$PROMPTS_DIR"/ch[0-9][0-9]/*.md; do
   # 提取章节号: prompts/ch06/01-xxx.md → ch06
   chapter=$(basename "$(dirname "$prompt_file")")
 
-  # 章节过滤
-  if [[ ${#CHAPTERS[@]} -gt 0 ]]; then
+  # 过滤：slug 优先，其次 chapter，无过滤则全选
+  if [[ $HAS_SLUG_FILTER -gt 0 ]]; then
+    slug_matches "$prompt_file" || continue
+  elif [[ $HAS_CHAPTER_FILTER -gt 0 ]]; then
     local_match=false
     for ch in "${CHAPTERS[@]}"; do
       [[ "$chapter" == "$ch" ]] && local_match=true && break
@@ -213,10 +272,14 @@ for idx in "${TODO_IDX[@]}"; do
     echo ""
     echo "  ✅ 成功"
 
-    # 验证输出
+    # 验证输出 + 自动压缩
     if [[ -f "$image" ]]; then
-      size=$(du -h "$image" | cut -f1 | xargs)
-      echo "  📐 文件大小: $size"
+      if $NO_RESIZE; then
+        size=$(du -h "$image" | cut -f1 | xargs)
+        echo "  📐 文件大小: $size (跳过压缩)"
+      else
+        resize_image "$image"
+      fi
     fi
   else
     FAILED=$((FAILED + 1))

@@ -878,6 +878,8 @@ for (const overlap of batchResult.internalOverlaps) {
 
 ### 场景 1：新建候选的晋升之路
 
+![新建候选的晋升之路](/images/ch07/06-scenario-promotion-path.png)
+
 Agent 在项目冷启动时提取了一条关于 `CookieProviding` 的 Recipe，置信度 0.85。
 
 1. **T+0**：Recipe 创建，状态 `pending`
@@ -886,6 +888,8 @@ Agent 在项目冷启动时提取了一条关于 `CookieProviding` 的 Recipe，
 4. **T+72h 后**：Recipe 以全权重参与搜索和 Guard 检查
 
 ### 场景 2：重构导致的自然衰退
+
+![重构导致的自然衰退](/images/ch07/07-scenario-natural-decay.png)
 
 团队决定弃用 `NetworkManager`，用原生 async/await 重写网络层。
 
@@ -900,6 +904,8 @@ Agent 在项目冷启动时提取了一条关于 `CookieProviding` 的 Recipe，
 
 ### 场景 3：Agent 驱动的知识更新
 
+![Agent 驱动的知识更新](/images/ch07/08-scenario-agent-update.png)
+
 Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误处理的示例。
 
 1. **T+0**：Agent 通过 `asd_evolve` MCP 工具调用 `EvolutionGateway.submit({ action: 'update', confidence: 0.8, evidence: [{ suggestedChanges: '...' }] })`
@@ -912,6 +918,8 @@ Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误
 
 ### 场景 4：提交时的重复拦截
 
+![提交时的重复拦截](/images/ch07/09-scenario-duplicate-intercept.png)
+
 Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高度相似。
 
 1. **T+0**：候选通过 `RecipeProductionGateway` 提交
@@ -922,6 +930,8 @@ Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高
 6. **T+0**：外部 Agent 读取候选和 Recipe A 的代码上下文，判断候选确实是子集 → `reject`
 
 ### 场景 5：文件修改触发的实时进化审视
+
+![文件修改触发的实时进化审视](/images/ch07/10-scenario-realtime-evolution.png)
 
 开发者正在 VSCode 中重构 `PaginationController.swift`，改变了核心 API。
 
