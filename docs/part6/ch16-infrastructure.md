@@ -190,7 +190,7 @@ maxConcurrency = 2   // 最多 2 个批次并行（p-limit 背压控制）
 5. 批量写入：VectorStore.batchUpsert()
 ```
 
-**增量检测**是关键优化——用户修改一条知识后执行 `asd embed`，只有该条知识会重新生成向量，其余跳过。这把重复索引的时间从分钟级降到秒级。
+**增量检测**是关键优化——用户修改一条知识后执行 `alembic embed`，只有该条知识会重新生成向量，其余跳过。这把重复索引的时间从分钟级降到秒级。
 
 ### 缓存体系——三层协作
 
@@ -202,7 +202,7 @@ Alembic 的缓存体系由三个组件构成，分别解决不同层次的问题
 
 **CacheCoordinator**——跨进程缓存失效，处理多进程一致性。这是最有趣的组件。
 
-Alembic 可能同时运行多个进程——MCP Server 在后台持续服务 IDE 请求，用户在终端执行 `asd guard` 命令。两个进程共享同一个 SQLite 数据库文件，但内存缓存各自独立。当 CLI 进程写入新的 Guard 规则后，MCP Server 的缓存不知道数据库已经变了。
+Alembic 可能同时运行多个进程——MCP Server 在后台持续服务 IDE 请求，用户在终端执行 `alembic guard` 命令。两个进程共享同一个 SQLite 数据库文件，但内存缓存各自独立。当 CLI 进程写入新的 Guard 规则后，MCP Server 的缓存不知道数据库已经变了。
 
 CacheCoordinator 利用 SQLite 内置的 `PRAGMA data_version` 解决这个问题：
 
@@ -351,7 +351,7 @@ reloadAiProvider(newProvider) {
 }
 ```
 
-用户在 Dashboard 切换 AI 模型后，AgentFactory、SearchEngine 等依赖 AI 的服务会在下次请求时自动用新配置重建——无需重启进程。
+用户在 Dashboard 切换 AI 模型后，AgentService / AgentRuntimeBuilder、SearchEngine 等依赖 AI 的服务会在下次请求时自动用新配置重建——无需重启进程。
 
 ### ServiceMap 类型安全
 
@@ -365,7 +365,7 @@ export interface ServiceMap {
   searchEngine: SearchEngine;
   vectorStore: VectorStore;
   guardCheckEngine: GuardCheckEngine;
-  agentFactory: AgentFactory;
+  agentFactory: AgentService / AgentRuntimeBuilder;
   toolRegistry: ToolRegistry;
   // ... 60+ 更多服务
 }
@@ -420,7 +420,7 @@ class AiProviderManager {
 }
 ```
 
-**MockProvider** 不是简单的空操作——它实现了 9 种现实场景的模拟响应（scan、search、chat、structured output 等），让 Dashboard 和集成测试在没有 AI 密钥的环境下也能完整运行。用户在 Dashboard 切换到 Mock 模式后，所有 AI 依赖的服务（AgentFactory、SearchEngine 等）通过 DI 级联清除自动用 MockProvider 重建。
+**MockProvider** 不是简单的空操作——它实现了 9 种现实场景的模拟响应（scan、search、chat、structured output 等），让 Dashboard 和集成测试在没有 AI 密钥的环境下也能完整运行。用户在 Dashboard 切换到 Mock 模式后，所有 AI 依赖的服务（AgentService / AgentRuntimeBuilder、SearchEngine 等）通过 DI 级联清除自动用 MockProvider 重建。
 
 **三层依赖注入绑定**避免了 AiProviderManager 与 ServiceContainer 之间的循环依赖：
 

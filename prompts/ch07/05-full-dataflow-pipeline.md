@@ -71,7 +71,7 @@ Bold text: "RecipeProductionGateway"
 Inside three layer labels:
 "Layer 1: 结构化过滤（fingerprint 去重 · 批内互重叠 · 相似度）"
 "Layer 1.5: 字段级分析（trigger · doClause · coreCode）"
-"Layer 2: 语义融合（ConsolidationGate · MCP → asd_consolidate）"
+"Layer 2: 语义融合（ConsolidationGate · MCP → alembic_consolidate）"
 
 TIER 4 — Label on left margin: "落地层"
 
@@ -90,7 +90,7 @@ Below: "→ Proposal → StateMachine"
 Right — rounded rectangle, soft orange (#FED7AA) fill:
 Bold text: "pendingSemanticReview"
 Below: "→ MCP nextAction"
-Below: "→ asd_consolidate"
+Below: "→ alembic_consolidate"
 
 At the very bottom, a thin dashed line connecting all three boxes, with a centered annotation:
 "所有状态转换通过 LifecycleStateMachine 唯一权威执行"

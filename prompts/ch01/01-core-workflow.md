@@ -41,7 +41,7 @@ A thick solid arrow pointing RIGHT from Step A, labeled "扫描" above the arrow
 Step B (upper-center, pale yellow (#F9E79F) fill):
 A taller rounded rectangle split into two stacked sections:
 - Top section: a tree-branch icon + bold "Tree-sitter AST" + smaller "10 语言统一解析"
-- Bottom section: a brain/sparkle icon + bold "Agent 25 维分析" + smaller "61+ 工具 · ReAct 循环"
+- Bottom section: a brain/sparkle icon + bold "Agent 25 维分析" + smaller "Profile · ToolRouter · ReAct 循环"
 
 A thick solid arrow pointing RIGHT from Step B, labeled "候选" above the arrow.
 

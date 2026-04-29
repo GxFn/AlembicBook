@@ -60,7 +60,7 @@ Channel F (purple accent): "⑥ Agent 指令集"
     ".github/copilot-instructions.md" (label: "→ GitHub Copilot")
 
 Channel Mirror (gray accent, dashed border): "⑦ Mirror"
-  Detail: "asd mirror · 手动触发"
+  Detail: "alembic mirror · 手动触发"
   Small text: "复制 .cursor/rules/ + skills/ 中 alembic-* 前缀文件"
   Dashed arrow to: ".trae/ · .qoder/"
 
@@ -77,10 +77,10 @@ Four IDE icons stacked vertically, each with connection lines showing which path
 
 "Claude Code" — solid lines from:
   · MCP (stdio, .claude/mcp.json)
-  · Channel F (CLAUDE.md, 标记边界注入 asd:begin/end)
+  · Channel F (CLAUDE.md, 标记边界注入 alembic:begin/end)
 
 "Trae / Qoder" — dashed lines from:
   · Channel Mirror (复制 .cursor/ 文件)
   · Channel F (AGENTS.md)
 
-Bottom annotation bar: "FileProtection · 签名检测 · 标记边界注入 (<!-- asd:begin/end -->) · 全量覆盖写入 · 幂等性"
+Bottom annotation bar: "FileProtection · 签名检测 · 标记边界注入 (<!-- alembic:begin/end -->) · 全量覆盖写入 · 幂等性"

@@ -7,15 +7,15 @@ UPPER PANEL — "工具体系" (pale blue tinted area):
 ═══════════════════════════════════════════════
 
 LEFT — ToolRegistry:
-A large rounded rectangle labeled "ToolRegistry" containing a grid of 12 small module boxes arranged in 3 rows × 4 columns:
+A large rounded rectangle labeled "ToolRouter" containing a grid of 12 small module boxes arranged in 3 rows × 4 columns:
   Row 1: "ast-graph (11)", "lifecycle (10)", "infrastructure (7)", "query (6)"
   Row 2: "composite (6)", "project-access (5)", "guard (4)", "system (3)"
   Row 3: "evolution (3)", "knowledge-graph (2)", "ai-analysis (2)", "scan-recipe (1)"
 Below the grid: small text "60 工具 × 12 模块"
 
-Arrow from ToolRegistry labeled "Capability 白名单过滤" pointing right to the pipeline.
+Arrow from ToolRegistry labeled "Manifest + 白名单治理" pointing right to the pipeline.
 
-CENTER — ToolExecutionPipeline:
+CENTER — Runtime ToolPipeline + ToolRouter:
 A vertical chain of numbered steps, split into "before 钩子" (pre-execute) and "after 钩子" (post-execute) sections, with [execute] in the middle:
 
   before 钩子:

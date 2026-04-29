@@ -134,7 +134,7 @@ interface Signal {
 | `ComplianceReporter` | guard · quality | 合规性报告生成 |
 | `MultiSignalRanker` | quality · usage | 搜索结果多信号精排 |
 | `PanoramaService` | guard · lifecycle · usage | 全景视图缓存失效 |
-| `KnowledgeMetabolism` | decay · quality · anomaly | 知识新陈代谢（衰退 · 矛盾 · 冗余检测） |
+| `Rescan / Evolution` | decay · quality · anomaly | 通过重扫计划、进化审计和提案执行治理知识衰退、矛盾与冗余 |
 | `SignalCollector` | `*`（全部） | Skill 推荐引擎维度快照 |
 | Intent JSONL | intent | Intent 信号持久化到 JSONL 文件 |
 

@@ -4,7 +4,7 @@
 
 ## 问题场景
 
-Alembic 通过 MCP 协议把 61+ 工具暴露给 Cursor、VS Code Copilot、Claude Code 等外部 AI Agent。这意味着一个你无法完全控制的 AI 正在调用你的系统——它可能尝试删除 Recipe、覆盖已有知识、在文件系统上执行危险命令。
+Alembic 通过 MCP 协议把 59 个内部工具 + ToolRouter暴露给 Cursor、VS Code Copilot、Claude Code 等外部 AI Agent。这意味着一个你无法完全控制的 AI 正在调用你的系统——它可能尝试删除 Recipe、覆盖已有知识、在文件系统上执行危险命令。
 
 问题不是"AI 会不会作恶"，而是"如何在 AI 犯错时限制爆炸半径"。
 
@@ -422,7 +422,7 @@ validateToolCall(toolName, args) {
   if (!safety) { return { ok: true }; }
 
   // 拦截 shell 命令
-  if (toolName === 'run_safe_command' && args?.command) {
+  if (toolName === 'terminal_run' && args?.command) {
     const check = safety.checkCommand(args.command);
     if (!check.safe) { return { ok: false, reason: check.reason }; }
   }

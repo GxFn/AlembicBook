@@ -26,7 +26,7 @@ Alembic 的代码组织在 `lib/` 目录下，形成 7 个逻辑层。每层有�
 │  lib/injection/ — ServiceContainer + 9 模块     │
 ├─────────────────────────────────────────────────┤
 │  Layer 4: Agent                                 │
-│  lib/agent/ — AgentRuntime · Memory · 61+ Tools │
+│  lib/agent/ — AgentService · Profiles · Runtime · Memory │
 ├─────────────────────────────────────────────────┤
 │  Layer 5: Service                               │
 │  lib/service/ — 16 子域的业务编排                │
@@ -57,7 +57,7 @@ Alembic 的代码组织在 `lib/` 目录下，形成 7 个逻辑层。每层有�
 
 ```typescript
 // bin/mcp-server.ts
-process.env.ASD_MCP_MODE = '1';  // 标记 MCP 模式
+process.env.ALEMBIC_MCP_MODE = '1';  // 标记 MCP 模式
 
 const { startMcpServer } = await import('../lib/external/mcp/McpServer.js');
 startMcpServer().then((server) => {
@@ -206,7 +206,7 @@ export interface ServiceMap {
   guardCheckEngine: GuardCheckEngine;
   // ═══ AgentModule ═══
   toolRegistry: ToolRegistry;
-  agentFactory: AgentFactory;
+  agentFactory: AgentService / AgentRuntimeBuilder;
   // ═══ SignalModule ═══
   signalBus: SignalBus;
   hitRecorder: HitRecorder;
@@ -220,7 +220,7 @@ export interface ServiceMap {
 
 ### Layer 4: Agent — 智能中枢
 
-Agent 层是系统的"大脑"——`AgentRuntime` 驱动 ReAct 推理循环，`ToolRegistry` 管理 61+ 个工具，`AgentFactory` 通过正交组合创建不同配置的 Agent 实例。
+Agent 层是系统的"大脑"——`AgentRuntime` 驱动 ReAct 推理循环，`AgentService / AgentRuntimeBuilder` 编译 Profile 并构建 Runtime，`ToolRouter` 通过统一治理层路由 59 个内部工具、19 个 MCP 工具以及 Dashboard/Terminal/Skill 等能力。
 
 Agent 层只依赖 Service 层和 Infrastructure 层，不直接操作数据库或文件系统。所有副作用通过工具调用间接执行——Agent 调用 `submit_knowledge` 工具，工具内部委托 `KnowledgeService.create()`，服务操作 `KnowledgeRepository`，仓储写入 SQLite。
 
@@ -345,7 +345,7 @@ if (newRoot && existingRoot && newRoot !== existingRoot) {
 
 ## 请求生命周期
 
-一条 MCP 请求（例如 `asd_search({ query: "API 接口" })`）从接收到响应的完整路径：
+一条 MCP 请求（例如 `alembic_search({ query: "API 接口" })`）从接收到响应的完整路径：
 
 ```text
 IDE Agent (Cursor / Copilot)
@@ -388,22 +388,22 @@ Alembic 使用 Node.js 的 `package.json` `imports` 字段定义路径别名，�
 ```json
 // package.json
 "imports": {
-  "#shared/*":   { "asd-dev": "./lib/shared/*",         "default": "./dist/lib/shared/*" },
-  "#infra/*":    { "asd-dev": "./lib/infrastructure/*",  "default": "./dist/lib/infrastructure/*" },
-  "#service/*":  { "asd-dev": "./lib/service/*",         "default": "./dist/lib/service/*" },
-  "#agent/*":    { "asd-dev": "./lib/agent/*",           "default": "./dist/lib/agent/*" },
-  "#domain/*":   { "asd-dev": "./lib/domain/*",          "default": "./dist/lib/domain/*" },
-  "#inject/*":   { "asd-dev": "./lib/injection/*",       "default": "./dist/lib/injection/*" },
-  "#core/*":     { "asd-dev": "./lib/core/*",            "default": "./dist/lib/core/*" },
-  "#external/*": { "asd-dev": "./lib/external/*",        "default": "./dist/lib/external/*" },
-  "#platform/*": { "asd-dev": "./lib/platform/*",        "default": "./dist/lib/platform/*" },
-  "#repo/*":     { "asd-dev": "./lib/repository/*",      "default": "./dist/lib/repository/*" },
-  "#types/*":    { "asd-dev": "./lib/types/*",           "default": "./dist/lib/types/*" },
-  "#http/*":     { "asd-dev": "./lib/http/*",            "default": "./dist/lib/http/*" }
+  "#shared/*":   { "alembic-dev": "./lib/shared/*",         "default": "./dist/lib/shared/*" },
+  "#infra/*":    { "alembic-dev": "./lib/infrastructure/*",  "default": "./dist/lib/infrastructure/*" },
+  "#service/*":  { "alembic-dev": "./lib/service/*",         "default": "./dist/lib/service/*" },
+  "#agent/*":    { "alembic-dev": "./lib/agent/*",           "default": "./dist/lib/agent/*" },
+  "#domain/*":   { "alembic-dev": "./lib/domain/*",          "default": "./dist/lib/domain/*" },
+  "#inject/*":   { "alembic-dev": "./lib/injection/*",       "default": "./dist/lib/injection/*" },
+  "#core/*":     { "alembic-dev": "./lib/core/*",            "default": "./dist/lib/core/*" },
+  "#external/*": { "alembic-dev": "./lib/external/*",        "default": "./dist/lib/external/*" },
+  "#platform/*": { "alembic-dev": "./lib/platform/*",        "default": "./dist/lib/platform/*" },
+  "#repo/*":     { "alembic-dev": "./lib/repository/*",      "default": "./dist/lib/repository/*" },
+  "#types/*":    { "alembic-dev": "./lib/types/*",           "default": "./dist/lib/types/*" },
+  "#http/*":     { "alembic-dev": "./lib/http/*",            "default": "./dist/lib/http/*" }
 }
 ```
 
-两个条件导出的含义：`asd-dev` 是开发态（`npm run dev:link` 时设置 `--conditions=asd-dev`），直接从 `lib/` 源码加载，支持 HMR；`default` 是发布态，从 `dist/` 编译产物加载。
+两个条件导出的含义：`alembic-dev` 是开发态（`npm run dev:link` 时设置 `--conditions=alembic-dev`），直接从 `lib/` 源码加载，支持 HMR；`default` 是发布态，从 `dist/` 编译产物加载。
 
 使用示例：
 
@@ -489,7 +489,7 @@ export function isAlembicDevRepo(dir: string): boolean {
 |------|----------|
 | `DatabaseConnection` | DB 路径重定向到 `$TMPDIR/alembic-dev/` |
 | `PathGuard` | 阻止创建 `.asd/` 和知识库目录 |
-| `SetupService` | 拒绝执行 `asd setup` |
+| `SetupService` | 拒绝执行 `alembic setup` |
 
 这样，开发者可以在 Alembic 源码仓库内正常运行 MCP 服务器（IDE 的 Agent 需要它），但所有运行时数据被隔离到临时目录，不会污染 git 工作树。
 

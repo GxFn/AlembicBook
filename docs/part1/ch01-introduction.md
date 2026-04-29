@@ -50,13 +50,13 @@ Alembic 反转了这个等式。
 npm install -g alembic
 
 cd your-project
-asd setup     # 初始化工作空间 + 数据库 + MCP 配置
-asd ui        # 启动后台服务，IDE 和 MCP 工具依赖此服务运行
+alembic setup     # 初始化工作空间 + 数据库 + MCP 配置
+alembic ui        # 启动后台服务，IDE 和 MCP 工具依赖此服务运行
 ```
 
-> **Trae / Qoder 用户：** `asd setup` 后运行 `asd mirror`，将 `.cursor/` 配置同步到 `.trae/` / `.qoder/`。
+> **Trae / Qoder 用户：** `alembic setup` 后运行 `alembic mirror`，将 `.cursor/` 配置同步到 `.trae/` / `.qoder/`。
 
-安装完成后，打开 IDE 的 **Agent Mode**（Cursor Composer / VS Code Copilot Chat / Trae），跟 Agent 对话即可——`asd setup` 已通过 MCP 协议将 Alembic 注册为工具服务。
+安装完成后，打开 IDE 的 **Agent Mode**（Cursor Composer / VS Code Copilot Chat / Trae），跟 Agent 对话即可——`alembic setup` 已通过 MCP 协议将 Alembic 注册为工具服务。
 
 > **首次使用：** 需在 IDE 的 MCP 设置中手动开启 `alembic` 服务。
 
@@ -68,7 +68,7 @@ asd ui        # 启动后台服务，IDE 和 MCP 工具依赖此服务运行
 
 Agent 扫描整个项目，提取出团队的编码模式、架构约定、调用习惯，同时生成项目 Wiki。冷启动只做一次，之后就进入日常使用。
 
-冷启动背后是一条完整的管线：文件收集 → 10 语言 AST 解析（Tree-sitter）→ 25 维度框架分析 → 61+ 工具编排的 Agent 推理循环 → 人工审核。Agent 不是简单的"让 LLM 读代码然后总结"，而是在结构化分析的基础上做确定性标记，只把真正不确定的部分交给 LLM 消解。
+冷启动背后是一条完整的管线：文件收集 → 10 语言 AST 解析（Tree-sitter）→ 25 维度框架分析 → 59 个内部工具 + ToolRouter编排的 Agent 推理循环 → 人工审核。Agent 不是简单的"让 LLM 读代码然后总结"，而是在结构化分析的基础上做确定性标记，只把真正不确定的部分交给 LLM 消解。
 
 ### 日常：说一句话就行
 
@@ -83,7 +83,7 @@ Agent 写完代码后，Guard 合规引擎会自动检查 diff——发现违规
 
 ### 越用越好
 
-候选在 Dashboard（`asd ui`）中审核并批准 → 变成 **Recipe** → AI 生成代码时自动参照 → 你发现新的好写法 → 继续沉淀 → AI 越来越像团队的人。这些知识是本地 Markdown 文件，跟 git 走，不会随对话消失，也不占上下文窗口——知识库再大也不会拖慢 AI。
+候选在 Dashboard（`alembic ui`）中审核并批准 → 变成 **Recipe** → AI 生成代码时自动参照 → 你发现新的好写法 → 继续沉淀 → AI 越来越像团队的人。这些知识是本地 Markdown 文件，跟 git 走，不会随对话消失，也不占上下文窗口——知识库再大也不会拖慢 AI。
 
 ## 进化架构
 
@@ -134,7 +134,7 @@ IDE Agent 的每个行为，都会触发有机体内不同器官的协同响应�
 
 **消化 — Governance**
 
-新知识进入有机体后的代谢引擎。ContradictionDetector 检测矛盾，RedundancyAnalyzer 分析冗余，DecayDetector 评估衰退（6 策略 + 4 维评分），ConfidenceRouter 数值路由（≥ 0.85 自动发布，< 0.2 拒绝）。ProposalExecutor 到期自动执行进化提案（7 种类型，差异化观察窗口）。六态生命周期：`pending → staging → active → evolving/decaying → deprecated`。*→ [Ch06 KnowledgeEntry](../part3/ch06-knowledge-entry) · [Ch07 生命周期](../part3/ch07-lifecycle)*
+新知识进入有机体后的治理链路。ConfidenceRouter 负责候选知识路由，RedundancyAnalyzer 与 ConsolidationAdvisor 处理重复和融合，DecayDetector 评估衰退，EvolutionGateway 创建进化提案，ProposalExecutor 根据信号执行或拒绝提案。六态生命周期：`pending → staging → active → evolving/decaying → deprecated`。*→ [Ch06 KnowledgeEntry](../part3/ch06-knowledge-entry) · [Ch07 生命周期](../part3/ch07-lifecycle)*
 
 **神经 — Signal + Intent**
 
@@ -165,9 +165,9 @@ IDE Agent 的每个行为，都会触发有机体内不同器官的协同响应�
 ### Guard CLI
 
 ```bash
-asd guard src/             # 检查目录
-asd guard:staged           # pre-commit 只查暂存文件
-asd guard:ci --min-score 90   # CI 质量门禁
+alembic guard src/             # 检查目录
+alembic guard:staged           # pre-commit 只查暂存文件
+alembic guard:ci --min-score 90   # CI 质量门禁
 ```
 
 ### 多语言 AST
@@ -206,7 +206,7 @@ asd guard:ci --min-score 90   # CI 质量门禁
 | 维度 | 数据 |
 |------|------|
 | AST 支持语言 | 10 种（Go · Python · Java · Kotlin · Swift · TS · JS · Rust · ObjC · Dart） |
-| Agent 工具 | 61+ |
+| Agent 工具 | 59 个内部工具 + 19 个 MCP 工具 |
 | 知识维度框架 | 25 维（13 通用 + 7 语言特定 + 5 框架特定） |
 | 搜索信号 | 6 维加权 |
 | Guard 检测层 | 4 层（正则 → 代码级 → AST → 跨文件） |
@@ -239,7 +239,7 @@ Alembic 自身就是一个架构频繁调整的项目，知识库需要设计更
 
 ### Git 流水线集成
 
-多人开发场景下，Guard 检查接入 CI/CD（`asd guard:ci`），Recipe 变更走 Pull Request 审核流程，知识库与代码仓库保持同步的版本控制。
+多人开发场景下，Guard 检查接入 CI/CD（`alembic guard:ci`），Recipe 变更走 Pull Request 审核流程，知识库与代码仓库保持同步的版本控制。
 
 ## 本书结构
 

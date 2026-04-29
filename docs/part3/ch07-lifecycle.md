@@ -313,7 +313,7 @@ interface CreateRecipeResult {
 
 如果调用方指定了 `options.supersedes`（被替代的旧 Recipe ID），在新 Recipe 创建成功后自动创建 `deprecate` 类型的进化提案，关联新旧 Recipe。
 
-这个设计的核心价值是**入口统一**——Agent 通过 `submit_knowledge` 工具调用和用户通过 MCP `asd_submit_knowledge` 走完全相同的校验管线。没有"捷径"可以绕过 Schema Validation 或 Similarity Check 直接创建 Recipe。
+这个设计的核心价值是**入口统一**——Agent 通过 `submit_knowledge` 工具调用和用户通过 MCP `alembic_submit_knowledge` 走完全相同的校验管线。没有"捷径"可以绕过 Schema Validation 或 Similarity Check 直接创建 Recipe。
 
 ### LifecycleStateMachine — 唯一权威
 
@@ -555,7 +555,7 @@ signalBus.send('quality', 'FileChangeHandler', IMPACT_WEIGHTS[impactLevel], {
 
 按钮行为：
 - **Review** → 打开 IDE Chat，预填包含受影响 Recipe 的 evolve prompt；重置该 Recipe 的退避计数
-- **Auto Check** → 开启终端执行 `asd evolve-check --recipes <ids>`；重置退避计数
+- **Auto Check** → 开启终端执行 `alembic evolve-check --recipes <ids>`；重置退避计数
 - **Don't Show Again** → session 级静默，提示用户如需永久关闭可在设置中禁用 `alembic.enableReactivePopup`
 - **关闭/忽略** → 该 Recipe 退避计数 +1，未处理的 Recipe 由增量扫描统一处理
 
@@ -846,10 +846,10 @@ for (const overlap of batchResult.internalOverlaps) {
 
 **内部 Agent 路径**（增量扫描 pipeline 内）：在 Produce Stage 之后增加 ConsolidationGate，Agent 读取候选和相关现有 Recipe，做语义比对并输出 `create / merge / reject` 决策。
 
-**外部 Agent 路径**（MCP 调用 `asd_submit_knowledge`）：服务端完成 Layer 1 + 1.5 后，将无法确定的候选标记为 `pendingSemanticReview`，通过 MCP 响应中的 `nextAction` 尾部指令引导外部 Agent 调用 `asd_consolidate` 工具完成语义融合。
+**外部 Agent 路径**（MCP 调用 `alembic_submit_knowledge`）：服务端完成 Layer 1 + 1.5 后，将无法确定的候选标记为 `pendingSemanticReview`，通过 MCP 响应中的 `nextAction` 尾部指令引导外部 Agent 调用 `alembic_consolidate` 工具完成语义融合。
 
 ```typescript
-// asd_submit_knowledge 响应（含尾部指令）
+// alembic_submit_knowledge 响应（含尾部指令）
 {
   data: {
     created: [{ id: 'r1', title: 'Recipe A' }, ...],
@@ -864,7 +864,7 @@ for (const overlap of batchResult.internalOverlaps) {
     }]
   },
   nextAction: {
-    tool: 'asd_consolidate',
+    tool: 'alembic_consolidate',
     args: { reviewItems: [...] },
     required: false,
     reason: '发现疑似重叠，建议阅读代码后判断是否需要合并',
@@ -908,7 +908,7 @@ Agent 在项目冷启动时提取了一条关于 `CookieProviding` 的 Recipe，
 
 Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误处理的示例。
 
-1. **T+0**：Agent 通过 `asd_evolve` MCP 工具调用 `EvolutionGateway.submit({ action: 'update', confidence: 0.8, evidence: [{ suggestedChanges: '...' }] })`
+1. **T+0**：Agent 通过 `alembic_evolve` MCP 工具调用 `EvolutionGateway.submit({ action: 'update', confidence: 0.8, evidence: [{ suggestedChanges: '...' }] })`
 2. **T+0**：`EvolutionPolicy.resolveInitialStatus('update', 0.8)` → `'observing'`（≥ 0.7 自动进入观察）
 3. **T+0**：`EvolutionPolicy.assessRisk('update', 0.8)` → `'low'`（观察窗口 24h）
 4. **T+数小时**：Guard 检查命中该 Recipe，发射 `guard` signal → `ProposalExecutor.#onSignal()` 触发评估
@@ -926,7 +926,7 @@ Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高
 2. **T+0**：Layer 1 — `RecipeSimilarity.compute()` 得分 0.52（灰色地带，不足以判定重复）
 3. **T+0**：Layer 1.5 — `RecipeSimilarity.analyzeFields()` 发现 `doClauseSubset = true` + `categoryMatch = true`
 4. **T+0**：`ConsolidationAdvisor.analyze()` → action: `'insufficient'`，标记为 `pendingSemanticReview`
-5. **T+0**：MCP 响应中附带 `nextAction: { tool: 'asd_consolidate' }`
+5. **T+0**：MCP 响应中附带 `nextAction: { tool: 'alembic_consolidate' }`
 6. **T+0**：外部 Agent 读取候选和 Recipe A 的代码上下文，判断候选确实是子集 → `reject`
 
 ### 场景 5：文件修改触发的实时进化审视
@@ -959,7 +959,7 @@ Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高
 - **触发层**：IDE 文件事件通过 HTTP 到达 `FileChangeHandler`，按事件类型分流——rename/delete 走确信路径，modified 走 diff-based 影响分析
 - **信号层**：`FileChangeHandler` 产出的 quality signal 被四个消费方并行接收——Signal 沉淀、增量扫描前置、ProposalExecutor 信号评估、VSCode 弹窗
 - **决策层**：`RelevanceAuditor` 在 Phase A 中过滤候选 Recipe，`EvolutionGateway` 统一接收进化决策（含 evidence 升级），Phase B 新增候选经过 `RecipeProductionGateway` 三层过滤
-- **落地层**：最终产出三种结果——新 Recipe 通过 `ConfidenceRouter` 进入 staging/pending、merge/update 通过 `EvolutionGateway` 创建提案、灰色地带交由外部 Agent 通过 `asd_consolidate` 决策
+- **落地层**：最终产出三种结果——新 Recipe 通过 `ConfidenceRouter` 进入 staging/pending、merge/update 通过 `EvolutionGateway` 创建提案、灰色地带交由外部 Agent 通过 `alembic_consolidate` 决策
 
 ## 权衡与替代方案
 

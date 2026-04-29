@@ -343,174 +343,40 @@ baseline = 0.8 × baseline + 0.2 × count  // 指数移动平均
 
 这能捕获什么？比如：Guard 命中信号通常每分钟 5-10 条（有人在正常写代码），突然一分钟内 50 条——可能有人在大规模重构代码，或者引入了一个与多条 Recipe 冲突的大改动。这个 `anomaly` 信号会触发 Metabolism 的分析流程。
 
-## KnowledgeMetabolism：知识代谢
+## 知识进化治理：信号、审计与 Rescan
 
-### 治理编排
+旧实现里曾有一个集中式 `KnowledgeMetabolism` 调度器。当前代码已经把这层拆开：日常信号、文件变化、相关性审计、提案执行分别由更明确的服务承担，重扫流程成为知识治理的主路径。
 
-`KnowledgeMetabolism` 是代谢系统的调度中心。它订阅 `decay|quality|anomaly` 信号，收到信号后**防抖 30 秒**再执行完整的代谢循环：
+当前相关组件是：
 
-```typescript
-// lib/service/evolution/KnowledgeMetabolism.ts
-#scheduleMetabolism(): void {
-  if (this.#running) { return; }      // 防止并发执行
-  if (this.#debounceTimer) { return; } // 已有调度
+| 组件 | 职责 |
+|:---|:---|
+| `FileChangeHandler` | 接收文件变更，产生影响信号；结构性变化交给后续 rescan |
+| `RelevanceAuditor` | 在 `alembic_rescan` 时验证 Recipe 与当前代码事实是否仍相关 |
+| `EvolutionGateway` | 统一创建 evolution / deprecation / consolidation 类提案 |
+| `ProposalExecutor` | 执行已确认或到期的提案 |
+| `DecayDetector`、`RedundancyAnalyzer`、`ConsolidationAdvisor` | 提供衰退、冗余和合并建议 |
+| `KnowledgeRescanPlanner` | 把 audit verdict、coverage gap、manual request、file diff 输入合并为维度执行计划 |
 
-  this.#debounceTimer = setTimeout(() => {
-    if (this.#pendingTriggers.length > 0) {
-      void this.runFullCycle();
-    }
-  }, 30_000);  // 30 秒防抖
-}
+换句话说，知识代谢不再是一个后台“周期性大循环”，而是两条链路：
+
+```text
+日常链路:
+  文件变化 / Guard / 使用反馈
+    → SignalBus / HitRecorder
+    → EvolutionGateway / ProposalExecutor
+
+重扫链路:
+  alembic_rescan
+    → snapshotRecipes()
+    → rescanClean()
+    → ProjectIntelligenceCapability.run()
+    → RelevanceAuditor
+    → KnowledgeRescanPlan
+    → evolution prescreen + gap fill
 ```
 
-防抖的意义：代码重构可能在几秒内触发大量 guard 和 quality 信号——每个信号都跑一次完整代谢循环太浪费。30 秒的缓冲让这些信号聚合后一次性处理。
-
-完整的代谢循环包含三个检测器和一个提案生成器：
-
-```yaml
-runFullCycle():
-  ├── ① DecayDetector.evaluate()    → 衰退评分
-  ├── ② ContradictionDetector.scan() → 矛盾检测
-  ├── ③ RedundancyAnalyzer.analyze() → 冗余分析
-  └── ④ 汇总 → EvolutionProposal[]  → 持久化
-
-输出: MetabolismReport {
-  contradictions: ContradictionResult[]
-  redundancies: RedundancyResult[]
-  decayResults: DecayScoreResult[]
-  proposals: EvolutionProposal[]
-  summary: { totalScanned, contradictionCount, redundancyCount,
-             decayingCount, proposalCount }
-}
-```
-
-### DecayDetector：六策略衰退检测
-
-衰退是知识的自然老化——随着项目演进，一些 Recipe 描述的代码模式被淘汰，一些规则不再适用。`DecayDetector` 用六种策略检测衰退：
-
-| 策略 | 触发条件 | 宽限期 |
-|:---|:---|:---|
-| 无使用 | 90 天无 guardHit/searchHit | 标准 30 天 |
-| 高误报 | 误报率 > 40% 且触发 ≥ 10 次 | 缩短 15 天 |
-| 符号漂移 | ReverseGuard 检测到 API 移除 | 自定义 |
-| 源引用过期 | sourceRefs 状态为 stale | 按数量 |
-| 被替代 | 存在 `deprecated_by` 关系 | 立即 |
-| 矛盾 | ContradictionDetector 发现硬冲突 | 经 Metabolism |
-
-衰退不是二元的——`DecayDetector` 为每条 Recipe 计算一个 **0–100 的衰退分数**，基于四个维度：
-
-$$\text{decayScore} = (\text{freshness} \times 0.3 + \text{usage} \times 0.3 + \text{quality} \times 0.2 + \text{authority} \times 0.2) \times 100$$
-
-| 维度 | 权重 | 计算方式 |
-|:---|:---|:---|
-| freshness | 0.3 | $(100 - \text{daysOld}) / 100$ |
-| usage | 0.3 | $(\text{hits} / \text{historicalAvg})$，钳制到 [0, 1] |
-| quality | 0.2 | QualityScorer 的评分 |
-| authority | 0.2 | reasoning.confidence |
-
-分数映射到五个级别：
-
-| 分数 | 级别 | 动作 | 宽限期 |
-|:---|:---|:---|:---|
-| 80–100 | healthy | 无操作 | — |
-| 60–79 | watch | Dashboard 警告 | — |
-| 40–59 | decaying | active → decaying | 30 天 |
-| 20–39 | severe | active → decaying | 15 天 |
-| 0–19 | dead | 直接 → deprecated | 立即 |
-
-`watch` 级别不触发状态变更——它只是一个预警信号，让用户在 Dashboard 上看到"这条 Recipe 正在老化"。只有 `decaying` 及以下才会触发 Ch07 中讲述的生命周期状态转换。
-
-### ContradictionDetector：四维矛盾检测
-
-随着知识库增长，不同 Recipe 之间可能产生矛盾。典型场景：早期的 Recipe 说"使用 NSLock 做同步"，后来的 Recipe 说"禁止使用 NSLock，改用 actor"。两条 Recipe 都是 active 的，但建议相反。
-
-`ContradictionDetector` 从四个维度检测矛盾：
-
-| 维度 | 检测方式 | 示例 |
-|:---|:---|:---|
-| **否定模式** | 正则匹配中英文否定词 | "不再使用"、"deprecated" |
-| **主题重叠** | Jaccard ≥ 0.3 且 ≥ 2 个共同非停用词 | 两条都关于"同步"+"并发" |
-| **条款交叉** | `doClause` 与另一条的 `dontClause` 文本匹配 | A.do = B.dont |
-| **Guard 正则冲突** | guard pattern 完全相同但 severity 不同 | 同一模式，一条 error 一条 warning |
-
-否定模式用两组正则覆盖中英文：
-
-```typescript
-// lib/service/evolution/ContradictionDetector.ts
-const NEGATION_ZH = /不(再)?使用|禁止|废弃|移除|取消|停止|不要|不采用|弃用|淘汰/;
-const NEGATION_EN = /\b(don'?t|do\s+not|never|no\s+longer|removed?|deprecated?|stop|avoid|disable|abandon|drop)\b/i;
-```
-
-矛盾分为两个置信度级别：
-
-- **硬矛盾**（≥ 0.8）：立即升级，需要人工介入
-- **软矛盾**（0.4–0.8）：警告级别，需要审查
-
-发现矛盾后，系统向 SignalBus 发送 `lifecycle` 信号，触发生命周期流程——通常导致较旧的一条 Recipe 进入 `decaying` 状态。
-
-### RedundancyAnalyzer：四维冗余分析
-
-知识库中可能出现两条 Recipe 说的是同一件事——只是措辞不同、代码示例不同。`RedundancyAnalyzer` 用四个维度的加权融合检测冗余：
-
-| 维度 | 权重 | 阈值 | 度量方式 |
-|:---|:---|:---|:---|
-| Title 相似度 | 0.2 | Jaccard ≥ 0.7 | 标题 token 集合的 Jaccard 相似度 |
-| Clause 相似度 | 0.3 | ≥ 0.6 | doClause + dontClause 文本匹配 |
-| Code 相似度 | 0.3 | ≥ 0.8 | $1 - \text{Levenshtein}(a, b) / \max(\lvert a\rvert, \lvert b\rvert)$ |
-| Guard 匹配 | 0.2 | 精确相等 | guard pattern 是否完全相同 |
-
-综合分数超过 **0.65** 就标记为冗余对：
-
-$$\text{similarity} = 0.2 \times d_{\text{title}} + 0.3 \times d_{\text{clause}} + 0.3 \times d_{\text{code}} + 0.2 \times d_{\text{guard}}$$
-
-Code 相似度用**归一化 Levenshtein 距离**——编辑距离除以较长字符串的长度。这比 Jaccard 更适合代码比较，因为代码中变量名的微小差异不应该导致低相似度。
-
-冗余检测的输出是 `merge` 提案——建议把两条高度相似的 Recipe 合并为一条，保留质量更高的那条作为基础。
-
-### 进化提案
-
-三个检测器的输出汇总为**进化提案**（`EvolutionProposal`）：
-
-```typescript
-interface EvolutionProposal {
-  type: 'merge' | 'enhance' | 'deprecate' | 'contradiction' | 'correction';
-  targetRecipeId: string;
-  relatedRecipeIds: string[];
-  confidence: number;          // [0, 1]
-  source: 'contradiction' | 'redundancy' | 'decay' | 'enhancement';
-  description: string;
-  evidence: string[];
-  proposedAt: number;
-  expiresAt: number;           // 7 天 TTL
-}
-```
-
-**提案有 7 天有效期**——超时未处理的提案自动过期。这避免了提案无限堆积的问题——如果一个提案 7 天内没有被用户或 Agent 处理，它可能已经不再相关了。
-
-`EnhancementSuggester` 补充了另一类提案——不是"删除坏知识"而是"改进好知识"：
-
-| 策略 | 触发条件 | 优先级 |
-|:---|:---|:---|
-| 缺代码示例 | `kind='rule'` + guardHits ≥ 5 + coreCode 为空 | 中/高 |
-| 低采纳率 | searchHits ≥ 10 + adoptions = 0 | 中/高 |
-| 低权威性 | authority 低于同 category 第 25 百分位 | 中 |
-| 被替代引用 | 存在 `deprecated_by` 关系 | 低 |
-
-"缺代码示例"的逻辑很巧妙：一条规则被 Guard 命中 5 次以上，说明它是有用的；但没有 `coreCode`，Agent 在修复违规时缺少参考代码。系统建议为这条规则添加代码示例。
-
-### StagingManager：置信度分级宽限
-
-代谢系统产出的提案不会直接生效——它需要经过 `StagingManager` 的**宽限期**：
-
-| 置信度 | 宽限期 | 逻辑 |
-|:---|:---|:---|
-| ≥ 0.90 | 24 小时 | 高置信度，快速确认 |
-| 0.85–0.89 | 72 小时 | 中等置信度，需要更多观察 |
-| < 0.85 | 更长 | 低置信度，等待更多证据 |
-
-宽限期内 Recipe 处于 `staging` 状态——还没有正式变更。如果在宽限期内 Guard 检测到这条 Recipe 被使用了（反面证据），`rollback()` 把它退回 `pending` 状态。只有宽限期到期且无反面证据时，`checkAndPromote()` 才把 Recipe 正式提升为 `active`。
-
-这个机制防止代谢系统"误杀"——一条 Recipe 可能 90 天没被搜索到，但它可能是一条关于年度部署流程的规则，本来就不会被频繁使用。24–72 小时的宽限期给了系统一个"后悔窗口"。
+`rescan` 的价值在于它带着当前项目事实重新审计所有保留 Recipe：健康的继续保留，watch 的进入观察，decay/severe/dead 进入进化或废弃路径；同时按维度计算覆盖缺口，只让需要补齐的维度继续执行。
 
 ## Panorama 与 Metabolism 的互动
 

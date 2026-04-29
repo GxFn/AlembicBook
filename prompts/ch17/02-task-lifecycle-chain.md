@@ -24,7 +24,7 @@ Sub-component B: "PrimeSearchPipeline" box with subtitle "多查询并行搜索"
 Output arrow down labeled "relatedKnowledge (≤5) + guardRules (≤3) + _taskRules"
 
 STAGE 2 — "② Create — 任务锚点" (small pale yellow rounded rectangle):
-Simple box: "生成 taskId: asd-{timestamp}-{counter}"
+Simple box: "生成 taskId: alembic-{timestamp}-{counter}"
 Below: "绑定到 IntentState · 纯内存 · Zero DB"
 Short arrow down.
 
@@ -48,7 +48,7 @@ A box containing:
   Arrow right labeled "SignalBus.send('intent')" to:
   Right side: A file icon labeled ".asd/signals/intent.jsonl"
 
-Below the box, a prominent arrow down with bold label "nextAction: { tool: asd_guard, required: true }"
+Below the box, a prominent arrow down with bold label "nextAction: { tool: alembic_guard, required: true }"
 
 STAGE 5 — "⑤ Guard Review — 质量门禁" (bottom, pale yellow background rounded rectangle):
 Left side: "git diff" small icon with arrow labeled "staged + unstaged + untracked" pointing to:
@@ -62,5 +62,5 @@ Below: A circular arrow (loop) labeled "fix → review → fix (最多 5 轮)" w
 Right margin annotations (outside main flow, connected by dashed lines):
 
 Annotation at Stage 1: "反向驱动: _taskRules 注入行为指令"
-Annotation at Stage 3: "漂移信号 → 代谢引擎 → 知识有效性评估"
+Annotation at Stage 3: "漂移信号 → Rescan/Evolution → 知识有效性评估"
 Annotation at Stage 4-5: "协议强制: close 返回值驱动 Agent 调用 guard"

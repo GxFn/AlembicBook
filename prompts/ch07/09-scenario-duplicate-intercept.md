@@ -39,7 +39,7 @@ LAYER 2 — Narrow rounded rectangle, pale yellow (#FEF3C7) fill, with a robot i
 Bold label on left: "Layer 2"
 Bold text: "语义融合分析"
 Below: "外部 Agent 读取代码上下文"
-Below: "asd_consolidate → 判定为子集"
+Below: "alembic_consolidate → 判定为子集"
 
 Arrow down ↓
 

@@ -1,246 +1,107 @@
-# MCP 工具清单
+# MCP 工具参考
 
-> Alembic 通过 MCP 协议暴露的 18 个工具完整列表。
+> 当前 MCP Server 在 `lib/external/mcp/tools.ts` 中声明 19 个工具：17 个 Agent 层工具，2 个 Admin 层工具。工具名统一使用 `alembic_*` 前缀。
 
-工具分为两个层级：**Agent Tier**（16 个，IDE Agent 日常使用）和 **Admin Tier**（2 个，管理员操作）。每个工具调用都经过 Gateway 四阶段管线（Validate → Guard → Route → Audit）。
+## Agent 层工具
 
-## Agent Tier（16 个工具）
+### `alembic_health`
 
-### asd_health
+服务健康检查与知识库统计。常用于首次确认 Alembic 后台是否可用，以及判断知识库是否为空。
 
-检查服务状态和知识库统计（条目总数、kind/lifecycle 分布）。`total=0` 时需要冷启动。
+### `alembic_search`
 
-**参数**：无
+知识搜索。支持 auto、keyword、bm25、semantic、context 等模式，返回按 kind 分组的 Recipe / Fact / Pattern。
 
-### asd_search
+### `alembic_knowledge`
 
-知识库搜索，支持 5 种模式。
+知识浏览与使用记录。支持 list、get、insights、confirm_usage。
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `query` | string | ✅ | — | 搜索关键词或自然语言描述 |
-| `mode` | enum | — | `"auto"` | auto / keyword / weighted / semantic / context |
-| `kind` | enum | — | `"all"` | all / rule / pattern / fact |
-| `limit` | int | — | `10` | 返回数量（1-100） |
-| `language` | string | — | — | 按编程语言过滤 |
-| `sessionId` | string | — | — | 会话 ID（context 模式用） |
-| `sessionHistory` | array | — | — | 会话历史 |
+### `alembic_structure`
 
-### asd_knowledge
+项目结构查询。支持 targets、files、metadata。
 
-知识条目管理：list / get / insights / confirm_usage。
+### `alembic_graph`
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `operation` | enum | — | `"list"` | list / get / insights / confirm_usage |
-| `id` | string | — | — | get / insights / confirm_usage 时必填 |
-| `kind` | enum | — | — | all / rule / pattern / fact |
-| `language` | string | — | — | 按语言过滤 |
-| `category` | string | — | — | 按分类过滤 |
-| `knowledgeType` | string | — | — | 按知识类型过滤 |
-| `status` | string | — | — | 按状态过滤 |
-| `complexity` | string | — | — | 按复杂度过滤 |
-| `limit` | int | — | `20` | 返回数量（1-200） |
-| `usageType` | enum | — | — | adoption / application（confirm_usage 用） |
-| `feedback` | string | — | — | 使用反馈 |
+知识关系图谱查询。支持 query、impact、path、stats。
 
-### asd_structure
+### `alembic_call_context`
 
-项目结构发现：targets / files / metadata。
+函数/方法调用上下文查询。支持 callers、callees、impact、both。
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `operation` | enum | — | `"targets"` | targets / files / metadata |
-| `targetName` | string | — | — | files 操作时指定目标名 |
-| `includeSummary` | boolean | — | `true` | 包含摘要 |
-| `includeContent` | boolean | — | `false` | 包含文件内容 |
-| `contentMaxLines` | int | — | `100` | 内容截取行数 |
-| `maxFiles` | int | — | `500` | 最大文件数（1-5000） |
+### `alembic_guard`
 
-### asd_graph
+代码合规检查。无参数时自动检查 git diff 增量文件；也支持 files、code、reverse_audit、coverage_matrix。
 
-知识关系图谱查询：query / impact / path / stats。
+### `alembic_submit_knowledge`
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `operation` | enum | ✅ | — | query / impact / path / stats |
-| `nodeId` | string | — | — | query / impact 时指定节点 ID |
-| `nodeType` | string | — | `"recipe"` | 节点类型 |
-| `fromId` | string | — | — | path 起点 |
-| `toId` | string | — | — | path 终点 |
-| `direction` | enum | — | `"both"` | out / in / both |
-| `maxDepth` | int | — | `3` | 最大深度（1-10） |
-| `relation` | string | — | — | 关系类型过滤 |
+统一知识提交管线。支持单条或批量 items，走 V3 字段校验、合并/重叠分析、ConfidenceRouter 和 evolution/consolidation 后续动作。
 
-### asd_call_context
+### `alembic_skill`
 
-函数/方法调用链查询：callers / callees / both / impact。
+Skill 管理。只读操作包括 list、load、suggest；写操作包括 create、update、delete。
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `methodName` | string | ✅ | — | 函数/方法名称，支持部分匹配 |
-| `direction` | enum | — | `"both"` | callers / callees / both / impact |
-| `maxDepth` | int | — | `2` | 最大深度（1-5） |
+### `alembic_bootstrap`
 
-### asd_guard
+冷启动入口。外部 Agent 路径返回 Mission Briefing；内部路径由 HTTP/CLI/Dashboard 调用对应 workflow 自动填充。
 
-代码合规检查。支持：无参数（git diff）、files、code、reverse_audit、coverage_matrix、compliance_report。
+### `alembic_rescan`
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `operation` | enum | — | — | check / review / reverse_audit / coverage_matrix / compliance_report |
-| `files` | string[] | — | — | 文件路径列表 |
-| `code` | string | — | — | 代码片段 |
-| `language` | string | — | — | 语言标识 |
-| `filePath` | string | — | — | 文件路径 |
-| `maxFiles` | number | — | — | reverse_audit / coverage_matrix 扫描上限 |
+知识重扫入口。保留现有 Recipe，清理衍生缓存，重新构建项目上下文，执行 Recipe relevance audit，并返回 rescan Mission Briefing 或内部 gap-fill 计划。
 
-### asd_submit_knowledge
+### `alembic_evolve`
 
-提交知识条目（单条/批量统一管线）。自动融合分析检测重叠。
+批量 Recipe 进化决策。用于 propose_evolution、confirm_deprecation、skip 等操作。
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `items` | object[] | ✅ | — | 知识条目数组（1~N） |
-| `target_name` | string | — | — | 来源标识 |
-| `source` | string | — | `"mcp"` | 来源标记 |
-| `skipConsolidation` | boolean | — | `false` | 跳过融合分析 |
-| `skipDuplicateCheck` | boolean | — | `false` | 跳过去重 |
-| `client_id` | string | — | — | 客户端 ID |
-| `dimensionId` | string | — | — | 冷启动关联维度 |
-| `supersedes` | string | — | — | 声明替代旧 Recipe 的 ID |
+### `alembic_consolidate`
 
-### asd_skill
+外部 Agent 对语义重叠、合并、保留、拒绝等灰区候选做显式决策。
 
-技能管理：list / load / create / update / delete / suggest。
+### `alembic_dimension_complete`
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `operation` | enum | ✅ | — | list / load / create / update / delete / suggest |
-| `name` | string | — | — | Skill 名称（kebab-case） |
-| `section` | string | — | — | load 时过滤章节 |
-| `description` | string | — | — | create / update 描述 |
-| `content` | string | — | — | create / update Markdown 内容 |
-| `overwrite` | boolean | — | `false` | 覆盖已有 |
-| `createdBy` | enum | — | `"external-ai"` | manual / user-ai / system-ai / external-ai |
+外部 Agent 完成一个冷启动或重扫维度后的回调。负责绑定 Recipe、保存 checkpoint、生成 Skill、更新 session 进度并触发 completion finalizer。
 
-### asd_bootstrap
+### `alembic_wiki`
 
-冷启动——无参数。自动分析项目（AST · 依赖图 · Guard 审计），返回 Mission Briefing。
+Wiki 工作流。plan 为只读规划，finalize 会写入生成结果。
 
-**参数**：无
+### `alembic_panorama`
 
-### asd_rescan
+项目全景查询。返回模块、分层、耦合、覆盖率等汇总。
 
-增量重扫——保留现有 Recipe，重新分析项目，运行 RecipeRelevanceAuditor。
+### `alembic_task`
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `dimensions` | string[] | — | — | 指定维度列表，空=全部 |
-| `reason` | string | — | — | 触发原因 |
+意图生命周期管理。支持 prime、create、close、fail、record_decision，用于让外部 IDE Agent 在编码前后显式锚定任务和强制 Guard。
 
-### asd_evolve
+## Admin 层工具
 
-批量 Recipe 进化决策：propose_evolution / confirm_deprecation / skip。
+### `alembic_enrich_candidates`
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `decisions` | array | ✅ | — | 决策数组 |
-| `decisions[].recipeId` | string | ✅ | — | 目标 Recipe ID |
-| `decisions[].action` | enum | ✅ | — | propose_evolution / confirm_deprecation / skip |
-| `decisions[].evidence` | object | — | — | 进化证据：`{ codeSnippet, filePath, type, suggestedChanges }` |
-| `decisions[].reason` | string | — | — | 弃用原因 |
-| `decisions[].skipReason` | enum | — | — | still_valid / insufficient_info |
+候选知识富化。Admin/CI 工具链使用。
 
-### asd_dimension_complete
+### `alembic_knowledge_lifecycle`
 
-维度分析完成通知，处理 Recipe 关联、Skill 生成、检查点、跨维度提示。
+知识生命周期管理。Admin/CI 工具链使用。
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `dimensionId` | string | ✅ | — | 维度 ID |
-| `analysisText` | string | ✅ | — | 分析报告（Markdown） |
-| `sessionId` | string | — | — | Bootstrap session ID |
-| `submittedRecipeIds` | string[] | — | — | 已提交的 Recipe IDs |
-| `keyFindings` | string[] | — | — | 关键发现（3-5 项） |
-| `candidateCount` | number | — | — | 候选数量 |
-| `referencedFiles` | string[] | — | — | 引用文件列表 |
-| `crossDimensionHints` | Record | — | — | 跨维度提示 |
+## Gateway 映射
 
-### asd_wiki
+只读工具通常不需要 Gateway 写权限。写操作或高风险操作会映射到 Gateway action：
 
-Wiki 文档生成：plan / finalize。
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `operation` | enum | ✅ | — | plan / finalize |
-| `language` | enum | — | `"zh"` | zh / en |
-| `sessionId` | string | — | — | 会话 ID |
-| `articlesWritten` | string[] | — | — | finalize 时的文件列表 |
-
-### asd_panorama
-
-项目全景查询，支持 8 种操作。
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `operation` | enum | — | `"overview"` | overview / module / gaps / health / governance_cycle / decay_report / staging_check / enhancement_suggestions |
-| `module` | string | — | — | operation=module 时必填 |
-
-### asd_task
-
-任务与决策管理。**每条消息必须先调用 `prime`**。
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|:---|:---|:---|:---|:---|
-| `operation` | enum | ✅ | — | prime / create / close / fail / record_decision |
-| `title` | string | — | — | create / record_decision 标题 |
-| `description` | string | — | — | record_decision 描述 |
-| `id` | string | — | — | Task ID（close / fail） |
-| `reason` | string | — | — | close / fail 原因 |
-| `rationale` | string | — | — | record_decision 理由 |
-| `tags` | string[] | — | — | record_decision 标签 |
-| `userQuery` | string | — | — | 用户输入文本 |
-| `activeFile` | string | — | — | 当前活跃文件路径 |
-| `language` | string | — | — | 当前编程语言 |
-
-## Admin Tier（2 个工具）
-
-### asd_enrich_candidates
-
-诊断候选条目字段完整度（不调用 AI），返回每个候选的缺失字段列表。
-
-| 参数 | 类型 | 必填 | 说明 |
-|:---|:---|:---|:---|
-| `candidateIds` | string[] | ✅ | 1-20 个 Candidate ID |
-
-### asd_knowledge_lifecycle
-
-知识条目生命周期操作。
-
-| 参数 | 类型 | 必填 | 说明 |
-|:---|:---|:---|:---|
-| `id` | string | ✅ | 条目 ID |
-| `action` | enum | ✅ | submit / approve / reject / publish / deprecate / reactivate / to_draft / fast_track |
-| `reason` | string | — | reject / deprecate 理由 |
-
-## Gateway 权限映射
-
-每个工具的写操作都经过 Gateway 权限检查：
-
-| 工具 | Gateway Action | 资源 |
+| 工具 | Gateway Action | Resource |
 |:---|:---|:---|
-| `asd_submit_knowledge` | `knowledge:create` | knowledge |
-| `asd_rescan` | `knowledge:bootstrap` | knowledge |
-| `asd_dimension_complete` | `knowledge:bootstrap` | knowledge |
-| `asd_wiki`（finalize） | `knowledge:create` | knowledge |
-| `asd_evolve` | `knowledge:evolve` | knowledge |
-| `asd_guard`（files） | `guard_rule:check_code` | guard_rules |
-| `asd_skill`（create） | `create:skills` | skills |
-| `asd_skill`（update） | `update:skills` | skills |
-| `asd_skill`（delete） | `delete:skills` | skills |
-| `asd_task`（create） | `task:create` | intent |
-| `asd_task`（close/fail） | `task:update` | intent |
-| `asd_task`（record_decision） | `task:create` | intent |
-| `asd_enrich_candidates` | `knowledge:update` | knowledge |
-| `asd_knowledge_lifecycle` | `knowledge:update` | knowledge |
+| `alembic_submit_knowledge` | `knowledge:create` | `knowledge` |
+| `alembic_rescan` | `knowledge:bootstrap` | `knowledge` |
+| `alembic_dimension_complete` | `knowledge:bootstrap` | `knowledge` |
+| `alembic_wiki` finalize | `knowledge:create` | `knowledge` |
+| `alembic_evolve` | `knowledge:evolve` | `knowledge` |
+| `alembic_consolidate` | `knowledge:consolidate` | `knowledge` |
+| `alembic_guard` files 模式 | `guard_rule:check_code` | `guard_rules` |
+| `alembic_skill` create | `create:skills` | `skills` |
+| `alembic_skill` update | `update:skills` | `skills` |
+| `alembic_skill` delete | `delete:skills` | `skills` |
+| `alembic_task` create | `task:create` | `intent` |
+| `alembic_task` close/fail | `task:update` | `intent` |
+| `alembic_task` record_decision | `task:create` | `intent` |
+| `alembic_enrich_candidates` | `knowledge:update` | `knowledge` |
+| `alembic_knowledge_lifecycle` | `knowledge:update` | `knowledge` |
+
+MCP Server 自身也通过 `ToolRouter` 执行工具。`buildMcpToolCapabilities()` 会把这些声明投影为 `mcp-tool` manifest，并附加 externalTrust、surface、risk、execution 和 governance profile。

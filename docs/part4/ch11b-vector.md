@@ -920,7 +920,7 @@ embedBatch(items):
 
 一个容易被忽视的约束：**生成存储向量和生成查询向量的必须是同一个模型的同一个版本**。不同厂商（甚至同厂商不同版本）的 embedding 模型，即使输出维度碰巧相同（比如都是 768 维），向量空间也完全不兼容——第 42 维在 Gemini 中可能编码"代码相关性"，在 OpenAI 中可能编码"情感倾向"。跨模型算余弦距离得到的是随机噪声，不是相似度。
 
-Alembic 通过 `aiProvider` 抽象保证了这一点：`BatchEmbedder` 构建索引和 `VectorService` 搜索时共享同一个 provider 实例。如果用户切换了 provider（比如从 Gemini 换到 OpenAI），`HnswVectorAdapter` 在维度不匹配时会报错并提示 `asd embed --clear --force` 重建索引。
+Alembic 通过 `aiProvider` 抽象保证了这一点：`BatchEmbedder` 构建索引和 `VectorService` 搜索时共享同一个 provider 实例。如果用户切换了 provider（比如从 Gemini 换到 OpenAI），`HnswVectorAdapter` 在维度不匹配时会报错并提示 `alembic embed --clear --force` 重建索引。
 
 ::: warning 模型版本也算
 `gemini-embedding-001` 和假设的 `gemini-embedding-002` 同样不兼容——模型更新会导致向量空间重新训练。升级 embedding 模型后必须全量重建索引。

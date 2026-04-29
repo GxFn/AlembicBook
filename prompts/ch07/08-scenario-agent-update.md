@@ -12,7 +12,7 @@ RIGHT SIDE — Flow boxes:
 
 BOX 1 — Rounded rectangle, pale yellow (#FEF3C7) fill, with a robot/agent icon:
 Bold text: "Agent 发起进化"
-Below: "asd_evolve → Gateway.submit(update)"
+Below: "alembic_evolve → Gateway.submit(update)"
 Below: "confidence: 0.8 · evidence: suggestedChanges"
 
 Arrow down with two small labels branching right:

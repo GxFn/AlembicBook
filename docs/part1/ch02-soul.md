@@ -275,7 +275,7 @@ SOUL 的第三项哲学否决了这个方案。原因不是子类"不好"，而�
 Alembic 用 **Capability × Strategy × Policy** 三维正交组合替代继承树：
 
 ```typescript
-// lib/agent/AgentFactory.ts
+// lib/agent/AgentService / AgentRuntimeBuilder.ts
 createRuntime(presetName: string, overrides: RuntimeOverrides = {}) {
   const preset = getPreset(presetName, overrides);
 
@@ -298,7 +298,7 @@ createRuntime(presetName: string, overrides: RuntimeOverrides = {}) {
 }
 ```
 
-`AgentFactory` 根据 Preset 名称（`chat` / `insight` / `remote-exec`）组装出完全不同的 Agent 实例，但底层都是同一个 `AgentRuntime` 引擎。差异仅在于三个正交维度的配置：
+`AgentService / AgentRuntimeBuilder` 根据 Preset 名称（`chat` / `insight` / `remote-exec`）组装出完全不同的 Agent 实例，但底层都是同一个 `AgentRuntime` 引擎。差异仅在于三个正交维度的配置：
 
 | Preset | Capabilities | Strategy | Policies |
 |--------|-------------|----------|----------|

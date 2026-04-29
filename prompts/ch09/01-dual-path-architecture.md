@@ -91,7 +91,7 @@ Box 2 (white fill, rounded, slightly larger, with a tiny IDE-style icon in the u
 - Sub-text in parentheses: "(Cursor/Copilot)"
 - Below, smaller monospace-style text:
   "读代码 → 分析维度"
-  "submit_knowledge_batch"
+  "alembic_submit_knowledge"
   "dimension_complete"
 
 ════════════════════════════════════════

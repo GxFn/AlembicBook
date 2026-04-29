@@ -16,7 +16,7 @@ Alembic 本质上做两件事：**一次构建有限答案，持续回答无限�
 
 ### 工程规模
 
-从工程规模看，Alembic 是一个 12 万行 TypeScript 的完整系统，支持 10 种编程语言、61+ Agent 工具、9 维度知识覆盖。
+从工程规模看，Alembic 是一个 12 万行 TypeScript 的完整系统，支持 10 种编程语言、59 个内部工具 + 多类 Tool Capability、9 维度知识覆盖。
 
 ![工程规模](/images/ch01/02-engineering-scale.png)
 
@@ -162,7 +162,7 @@ Agent 的行为由三个正交维度决定：Capability（能做什么）× Stra
 
 ### 工具与记忆
 
-61+ 工具分为知识管理、代码分析、搜索检索、系统管理四大类。记忆系统包含短期记忆（对话上下文）和长期记忆（项目事实），支持跨会话持久化。
+59 个内部工具 + ToolRouter分为知识管理、代码分析、搜索检索、系统管理四大类。记忆系统包含短期记忆（对话上下文）和长期记忆（项目事实），支持跨会话持久化。
 
 ![工具与记忆全景](/images/ch15/01-tools-memory-overview.png)
 
@@ -182,7 +182,7 @@ Agent 的行为由三个正交维度决定：Capability（能做什么）× Stra
 
 ### Task 意图生命周期
 
-MCP 工具中最特殊的 `asd_task` 管理 Agent 自身的行为——五阶段闭环：Prime（IntentExtractor 意图识别 + PrimeSearchPipeline 多查询知识检索）→ Create（生成任务锚点）→ 行为自动采集（工具调用、搜索查询、文件引用、意图漂移检测）→ Close（IntentChain 持久化到 SignalBus → JSONL）→ Guard Review（git diff 增量审计 + inline Recipe 修复）。Close 返回 `nextAction.required: true` 强制 Agent 执行 Guard——协议层驱动，不依赖 Agent 自觉。
+MCP 工具中最特殊的 `alembic_task` 管理 Agent 自身的行为——五阶段闭环：Prime（IntentExtractor 意图识别 + PrimeSearchPipeline 多查询知识检索）→ Create（生成任务锚点）→ 行为自动采集（工具调用、搜索查询、文件引用、意图漂移检测）→ Close（IntentChain 持久化到 SignalBus → JSONL）→ Guard Review（git diff 增量审计 + inline Recipe 修复）。Close 返回 `nextAction.required: true` 强制 Agent 执行 Guard——协议层驱动，不依赖 Agent 自觉。
 
 ![Task 意图生命周期链](/images/ch17/02-task-lifecycle-chain.png)
 

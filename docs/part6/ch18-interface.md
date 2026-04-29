@@ -14,28 +14,28 @@ Alembic 的用户接触系统有四种途径：在终端中敲命令、在浏览
 
 ### CLI 命令体系
 
-CLI 是 Alembic 的主要安装和管理入口——用户通过 `asd` 命令完成项目初始化、知识库扫描、合规检查、向量索引等操作。Commander.js 作为参数解析框架，18+ 命令覆盖系统的全部管理功能：
+CLI 是 Alembic 的主要安装和管理入口——用户通过 `alembic` 命令完成项目初始化、知识库扫描、合规检查、向量索引等操作。Commander.js 作为参数解析框架，20+ 命令覆盖系统的全部管理功能：
 
 | 命令 | 职责 | 关键参数 |
 |:---|:---|:---|
-| `asd setup` | 初始化项目工作空间 | `--force` · `--seed` · `--repo <url>` |
-| `asd coldstart` | 9 维度冷启动分析 | `--dims` · `--skip-guard` · `--wait` · `--json` |
-| `asd rescan` | 增量重扫（保留 Recipe） | `--dims` · `--skip-guard` · `--wait` |
-| `asd ais [target]` | AI 扫描目标代码 → 自动发布 | `-m` · `--max-files` · `--dry-run` |
-| `asd search <query>` | 知识检索 | `-t type` · `-m mode` · `-l limit` · `-o format` |
-| `asd guard <file>` | 单文件 Guard 检查 | `-s scope` · `--json` |
-| `asd guard:ci [path]` | CI/CD 合规门禁 | `--fail-on-*` · `--min-coverage` · `--report` |
-| `asd guard:staged` | 检查 git 暂存文件 | `--fail-on-error` |
-| `asd ui` | 启动 Dashboard 后台服务 | `-p` · `--no-open` · `--api-only` |
-| `asd server` | 仅启动 REST API | `-p` · `-H` |
-| `asd embed` | 构建/重建向量索引 | `--force` · `--clear` · `--dry-run` |
-| `asd mirror` | IDE 配置镜像 | `--target all\|qoder\|trae` |
-| `asd cursor-rules` | 生成 Cursor 交付产物 | `--verbose` |
-| `asd sync` | 增量同步知识到数据库 | `--dry-run` · `--force` |
-| `asd upgrade` | 更新 IDE 集成 | `--skills-only` · `--mcp-only` |
-| `asd remote <url>` | 转换为独立 Git 子仓库 | URL |
-| `asd status` | 环境状态检查 | `--json` |
-| `asd health` | 系统健康报告 | `-d` · `--json` |
+| `alembic setup` | 初始化项目工作空间 | `--force` · `--seed` · `--repo <url>` |
+| `alembic coldstart` | 9 维度冷启动分析 | `--dims` · `--skip-guard` · `--wait` · `--json` |
+| `alembic rescan` | 增量重扫（保留 Recipe） | `--dims` · `--skip-guard` · `--wait` |
+| `alembic ais [target]` | AI 扫描目标代码 → 自动发布 | `-m` · `--max-files` · `--dry-run` |
+| `alembic search <query>` | 知识检索 | `-t type` · `-m mode` · `-l limit` · `-o format` |
+| `alembic guard <file>` | 单文件 Guard 检查 | `-s scope` · `--json` |
+| `alembic guard:ci [path]` | CI/CD 合规门禁 | `--fail-on-*` · `--min-coverage` · `--report` |
+| `alembic guard:staged` | 检查 git 暂存文件 | `--fail-on-error` |
+| `alembic ui` | 启动 Dashboard 后台服务 | `-p` · `--no-open` · `--api-only` |
+| `alembic server` | 仅启动 REST API | `-p` · `-H` |
+| `alembic embed` | 构建/重建向量索引 | `--force` · `--clear` · `--dry-run` |
+| `alembic mirror` | IDE 配置镜像 | `--target all\|qoder\|trae` |
+| `alembic cursor-rules` | 生成 Cursor 交付产物 | `--verbose` |
+| `alembic sync` | 增量同步知识到数据库 | `--dry-run` · `--force` |
+| `alembic upgrade` | 更新 IDE 集成 | `--skills-only` · `--mcp-only` |
+| `alembic remote <url>` | 转换为独立 Git 子仓库 | URL |
+| `alembic status` | 环境状态检查 | `--json` |
+| `alembic health` | 系统健康报告 | `-d` · `--json` |
 
 **命令设计模式**——每个命令遵循相同的三阶段结构：
 
@@ -59,7 +59,7 @@ class CliLogger {
 
 长耗时操作（`coldstart`、`embed`、`health`）使用 ora spinner 显示进度。`--json` 标志切换所有输出为机器可读的 JSON 格式，方便脚本集成和 CI/CD 管道消费。
 
-**CI/CD 集成**——`asd guard:ci` 是专门为持续集成设计的命令。它的退出码语义化：0 表示通过，非 0 表示失败（违规数超过阈值）。`--fail-on-error`、`--fail-on-warning`、`--max-warnings`、`--min-coverage` 等参数让团队可以逐步收紧合规标准——先只检查 error 级别，稳定后加入 warning 级别，最终要求 90% 以上的知识覆盖率。
+**CI/CD 集成**——`alembic guard:ci` 是专门为持续集成设计的命令。它的退出码语义化：0 表示通过，非 0 表示失败（违规数超过阈值）。`--fail-on-error`、`--fail-on-warning`、`--max-warnings`、`--min-coverage` 等参数让团队可以逐步收紧合规标准——先只检查 error 级别，稳定后加入 warning 级别，最终要求 90% 以上的知识覆盖率。
 
 ### Dashboard
 
@@ -129,10 +129,10 @@ Lark Transport 是最"非常规"的接入端——它把飞书群聊变成 Alemb
 
 ### 后台服务架构
 
-`asd ui` 命令启动一个综合的后台服务——不是多个独立进程，而是**单进程中的多个服务共存**：
+`alembic ui` 命令启动一个综合的后台服务——不是多个独立进程，而是**单进程中的多个服务共存**：
 
 ```bash
-asd ui 启动序列：
+alembic ui 启动序列：
   ① Bootstrap.initialize()     → 数据库 · 配置 · Gateway
   ② ServiceContainer.initialize() → 70+ 服务注册
   ③ HttpServer.initialize()
@@ -147,7 +147,7 @@ asd ui 启动序列：
 
 为什么单进程而非微服务？Alembic 是**本地工具**——不需要水平扩展，不需要进程隔离。单进程意味着 HTTP API、Socket.IO 和 Dashboard 共享同一个 ServiceContainer 实例——服务之间是直接的函数调用，不是 RPC。这消除了序列化开销和网络延迟。
 
-`asd server` 是 `asd ui` 的精简版——只启动 HTTP API，不启动 Dashboard 和 Vite。适合 CI/CD 环境或只需要 API 接口的场景。
+`alembic server` 是 `alembic ui` 的精简版——只启动 HTTP API，不启动 Dashboard 和 Vite。适合 CI/CD 环境或只需要 API 接口的场景。
 
 **端口管理**默认使用 3000，支持 `-p` 参数自定义。端口冲突时抛出明确的错误提示而非静默失败——用户需要知道端口已被占用。
 
@@ -283,12 +283,12 @@ review:round-* → 切换到审核阶段，显示三轮审核进度条
 
 ## 核心实现
 
-### CLI 命令——asd guard:ci
+### CLI 命令——alembic guard:ci
 
-`asd guard:ci` 是 CLI 中最复杂的命令——它不只检查单个文件，而是对整个项目执行合规审计，输出结构化报告，并根据阈值决定退出码。
+`alembic guard:ci` 是 CLI 中最复杂的命令——它不只检查单个文件，而是对整个项目执行合规审计，输出结构化报告，并根据阈值决定退出码。
 
 ```bash
-asd guard:ci [path]
+alembic guard:ci [path]
   --fail-on-error          # error 级别违规时退出码非零
   --fail-on-warning        # warning 级别违规时退出码非零
   --max-warnings <n>       # 允许的最大 warning 数
@@ -297,7 +297,7 @@ asd guard:ci [path]
   --output <file>          # 报告输出文件
 ```
 
-这个命令设计为 CI/CD 管道的一环——GitHub Actions / GitLab CI 中加入一步 `asd guard:ci --fail-on-error --min-coverage 80`，就能在合并前强制项目代码符合知识库中定义的规范。
+这个命令设计为 CI/CD 管道的一环——GitHub Actions / GitLab CI 中加入一步 `alembic guard:ci --fail-on-error --min-coverage 80`，就能在合并前强制项目代码符合知识库中定义的规范。
 
 `--report junit` 生成 JUnit XML 格式——这是 CI 系统普遍支持的测试报告格式，可以在 PR 中直接显示违规列表。
 
@@ -362,18 +362,18 @@ VSCode Extension（每 3 秒轮询）
 ### 场景 1：项目初始化到首次 Dashboard 使用
 
 ```yaml
-① 终端：asd setup
+① 终端：alembic setup
    → 创建 .asd/ 目录结构
    → 生成 MCP 配置（.cursor/mcp.json · .vscode/mcp.json · .claude/mcp.json）
    → 初始化 SQLite 数据库 + 自动迁移
-   → 提示"运行 asd ui 启动 Dashboard"
+   → 提示"运行 alembic ui 启动 Dashboard"
 
-② 终端：asd coldstart --wait
+② 终端：alembic coldstart --wait
    → 9 维度分析 → AI 填充 → 三轮审核
    → 生成 50-100 条候选知识
    → 输出扫描报告（维度 · 文件数 · 候选数）
 
-③ 终端：asd ui
+③ 终端：alembic ui
    → Express + Socket.IO + Vite Dev Server 启动
    → 自动打开浏览器 → http://localhost:3000
 
@@ -394,8 +394,8 @@ VSCode Extension（每 3 秒轮询）
    → 意图: bot_agent
 
 ③ AgentRuntime 执行：
-   → asd_search("Result 类型错误处理") → 未找到相关 Recipe
-   → asd_submit_knowledge({
+   → alembic_search("Result 类型错误处理") → 未找到相关 Recipe
+   → alembic_submit_knowledge({
        title: "统一使用 Result<T> 错误处理",
        kind: "rule",
        doClause: "Use Result<T> for error handling in all service methods",
@@ -446,9 +446,9 @@ Socket.IO 在原生 WebSocket 之上提供三个关键能力：**自动重连**�
 
 ### Dashboard 构建——Vite Dev Server vs 预构建
 
-`asd ui` 在开发模式下启动 Vite Dev Server（支持 HMR 热更新），生产模式下直接用 Express 托管预构建的 `dist/` 目录。
+`alembic ui` 在开发模式下启动 Vite Dev Server（支持 HMR 热更新），生产模式下直接用 Express 托管预构建的 `dist/` 目录。
 
-为什么不总是用预构建？因为 Alembic 的 Dashboard 代码随 npm 包一起分发——`npm install -g alembic` 时已经包含了构建好的 `dashboard/dist/`。但开发者修改 Dashboard 源码时（贡献代码），需要 HMR 的即时反馈。`asd ui` 自动检测：如果 `dashboard/src/` 存在，启动 Vite Dev Server；否则使用静态文件服务。
+为什么不总是用预构建？因为 Alembic 的 Dashboard 代码随 npm 包一起分发——`npm install -g alembic` 时已经包含了构建好的 `dashboard/dist/`。但开发者修改 Dashboard 源码时（贡献代码），需要 HMR 的即时反馈。`alembic ui` 自动检测：如果 `dashboard/src/` 存在，启动 Vite Dev Server；否则使用静态文件服务。
 
 ### 飞书集成的边界
 

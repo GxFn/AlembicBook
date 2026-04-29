@@ -12,7 +12,7 @@
 | 源文件 | 124 个 |
 | SPM Packages | 4 个本地包 |
 | Alembic 版本 | 3.3.9（两轮之间微调了调度与容错参数） |
-| 执行方式 | `asd coldstart --wait --json` |
+| 执行方式 | `alembic coldstart --wait --json` |
 
 ### 测试环境
 

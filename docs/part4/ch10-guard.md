@@ -389,7 +389,7 @@ Guard 不是一个孤立的检查工具——它通过两个机制形成闭环�
 
 ### Agent ↔ Guard 自动修复
 
-当 Agent 通过 MCP 调用 `asd_guard` 进行代码审查时，如果发现违规，Agent 会尝试自动修复。整个过程最多 5 轮：
+当 Agent 通过 MCP 调用 `alembic_guard` 进行代码审查时，如果发现违规，Agent 会尝试自动修复。整个过程最多 5 轮：
 
 ```yaml
 Round 1: Agent 生成代码

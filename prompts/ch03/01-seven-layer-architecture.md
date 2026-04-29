@@ -52,7 +52,7 @@ Right-side annotation in small italic text: "Capability × Strategy × Policy"
 Below the title, 3 rounded boxes in a row, each with a small person icon (👤) to the left of the text:
 - Box 1: "👤 AgentRuntime"
 - Box 2: "👤 Memory"
-- Box 3: "61+ Tools"
+- Box 3: "ToolRouter + 59 Internal Tools"
 
 ════════════════════════════════════════
 LAYER 5 (pale blue #A8D4F0 fill)
