@@ -31,6 +31,8 @@ CapabilityV2.allowedTools
   → ToolResultEnvelope
 ```
 
+![Tool System V2 调用路径](/images/ch15/01-tools-memory-overview.png)
+
 ## 目录边界
 
 当前工具目录分成两层：Agent V2 核心工具，以及平台表面的轻量路由。

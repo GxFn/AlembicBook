@@ -34,6 +34,8 @@ lib/workflows/
     └── presentation/
 ```
 
+![Cold Start / Rescan 工作流关系](/images/ch09/01-dual-path-architecture.png)
+
 ## 共同底座：ProjectIntelligenceCapability
 
 冷启动和重扫共享同一条项目分析能力：

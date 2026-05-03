@@ -23,6 +23,8 @@ AgentRunInput
   → V2ToolRouterAdapter
 ```
 
+![Agent Runtime 推理循环](/images/ch13/01-react-loop-architecture.png)
+
 这个拆分的意义是把“运行一个 Agent”从单类职责拆成四层：
 
 | 层级 | 代表文件 | 职责 |

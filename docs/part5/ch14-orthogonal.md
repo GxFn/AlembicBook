@@ -21,6 +21,8 @@ AgentRun = Profile(
 )
 ```
 
+![Profile × Capability × Strategy × Policy 正交组合](/images/ch14/01-orthogonal-cube.png)
+
 `AgentRuntime` 不关心自己是 Chat、Bootstrap 还是 Rescan。它只接收已经展开好的 Capability、Strategy 和 Policy，然后执行。
 
 ## Profile 是组合边界

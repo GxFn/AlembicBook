@@ -1,6 +1,6 @@
 # 图解速览 — 一张图读懂 Alembic
 
-> 27 张手绘风格架构图，5 分钟快速理解整个系统。
+> 34 张手绘风格架构图，5 分钟快速理解整个系统。
 
 Alembic 是一个 **AI 驱动的项目知识引擎**——它从代码中提取知识、持续进化知识、在开发时交付知识。本文用图解方式，沿着系统的六大部分快速走一遍。
 
@@ -118,9 +118,15 @@ Alembic 的所有知识、记忆、行为信号都存储在项目本地——四
 
 ### Bootstrap 双路径架构
 
-冷启动采用 Phase 0-4 共享管线 + 双路径分叉：内部路径（FanOut 并行 AI 填充）和外部路径（Mission Briefing 交给 IDE Agent）。两条路径最终汇聚到同一个知识库。
+Cold Start 和 Knowledge Rescan 是两条显式工作流：前者干净建库，后者保留 Recipe 并治理缺口。它们各自完成前置治理，再复用 ProjectIntelligence 做结构化分析。
 
 ![Bootstrap 双路径](/images/ch09/01-dual-path-architecture.png)
+
+### Rescan 内部治理
+
+Knowledge Rescan 的增量性主要发生在知识治理层：先保留并同步已有 Recipe，修复 SourceRef，再结合 ProjectSnapshot、impact planning、audit 和 prescreen 生成 gap/evolution 执行计划。
+
+![Rescan 内部治理链路](/images/ch09/02-rescan-internal-governance.png)
 
 ### Guard 四层检测
 
@@ -156,7 +162,7 @@ Agent 采用 ReAct（Reasoning + Acting）推理循环：思考 → 调用工具
 
 ### 正交组合
 
-Agent 的行为由三个正交维度决定：Capability（能做什么）× Strategy（怎么做）× Policy（边界约束）。三个维度独立变化、自由组合，避免了 Agent 类型的组合爆炸。
+Agent 的行为由 Profile × Capability × Strategy × Policy 四个正交输入共同决定。Profile 是任务级组合单位，编译后决定身份、工具、流程和边界，避免 Agent 类型的组合爆炸。
 
 ![正交组合立方体](/images/ch14/01-orthogonal-cube.png)
 
