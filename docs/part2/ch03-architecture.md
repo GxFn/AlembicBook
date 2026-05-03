@@ -208,7 +208,9 @@ export interface ServiceMap {
   capabilityCatalog: V2CapabilityCatalog;
   toolRouter: V2ToolRouterAdapter;
   toolRegistry: UnifiedToolCatalog;
-  agentFactory: AgentService / AgentRuntimeBuilder;
+  agentService: AgentService;
+  agentRuntimeBuilder: AgentRuntimeBuilder;
+  agentRunCoordinator: AgentRunCoordinator;
   // ═══ SignalModule ═══
   signalBus: SignalBus;
   hitRecorder: HitRecorder;
@@ -241,7 +243,7 @@ Agent 层只依赖 Service 层和 Infrastructure 层，不直接操作数据库�
 | 质量评估 | `quality/` | QualityScorer | 多维评分 · 反馈循环 |
 | 知识进化 | `evolution/` | DecayDetector | 衰退检测 · 进化提案 |
 | 全景分析 | `panorama/` | PanoramaService | 模块图 · 耦合 · 分层 |
-| 冷启动 | `bootstrap/` | BootstrapTaskManager | 14 阶段编排 |
+| 冷启动/重扫 | `bootstrap/` + `workflows/` | BootstrapTaskManager · ProjectIntelligenceCapability | task session、ProjectSnapshot、维度执行编排 |
 | 知识交付 | `delivery/` | CursorDeliveryPipeline | 6 通道 IDE 推送 |
 | Recipe 解析 | `recipe/` | RecipeParser | Markdown ↔ KnowledgeEntry |
 | 向量服务 | `vector/` | VectorService | HNSW 索引 · 上下文增强 |

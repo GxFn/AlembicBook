@@ -1,41 +1,37 @@
-Title at top in bold Chinese: "场景 1：新建候选的晋升之路"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A vertical timeline diagram showing a Recipe's journey from creation to full activation, with clear time markers on the left side and state transitions on the right. Clean layout with generous spacing.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-Style: Same hand-drawn illustration style as other ch07 diagrams. Warm white background, rounded rectangles with soft pastel fills, hand-drawn arrows, small icons.
+Visible title at top: "场景：知识自然晋升"
 
-LEFT SIDE — Time axis (vertical dashed line with time markers):
+Purpose:
+Show how a useful candidate becomes an active recipe through repeated positive evidence.
 
-T+0, T+0 (秒级), T+72h, T+72h 后
+Main layout:
+- Left: a candidate enters staging.
+- Middle timeline: search hit, guard pass, manual approve, repeated usage.
+- Above timeline: confidence and quality meters climb.
+- Right: LifecycleStateMachine promotes to active and delivery refreshes IDE rules.
 
-RIGHT SIDE — State boxes connected by downward arrows:
+Important visible labels:
+- Candidate
+- staging
+- 使用信号
+- Guard 通过
+- 人工确认
+- active Recipe
+- Delivery 更新
 
-BOX 1 — Rounded rectangle, pale yellow (#FEF3C7) fill, with a small sparkle icon:
-Bold text: "Recipe 创建"
-Below: "CookieProviding · 置信度 0.85"
-State badge on right: "pending" in gray pill
+Legend / footer:
+- 晋升来自累积证据, 不来自单次 LLM 判断
 
-Arrow down with label: "ConfidenceRouter"
-
-BOX 2 — Rounded rectangle, pale blue (#DBEAFE) fill, with a small eye icon:
-Bold text: "自动晋升到暂存"
-Below: "0.85 ≥ 阈值 → auto_approve"
-State badge on right: "staging" in blue pill
-Side annotation: "暂存期 72h"
-
-Arrow down with label: "StagingManager.checkAndPromote()"
-Side note near arrow: "无负面反馈 ✓"
-
-BOX 3 — Rounded rectangle, pale green (#D1FAE5) fill, with a checkmark icon:
-Bold text: "正式发布"
-State badge on right: "active" in green pill
-
-Arrow down
-
-BOX 4 — Rounded rectangle, white fill with green border, with a search + shield icon:
-Bold text: "全权重参与"
-Below line 1: "搜索 — 全权重命中"
-Below line 2: "Guard — 正式规则检查"
-
-BOTTOM — A small annotation box with pale gray background:
-Text (IMPORTANT — exactly this text, no extra commas): "80% 的高置信度 Recipe 走此自动路径，无需人工干预"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

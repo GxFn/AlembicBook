@@ -1,55 +1,37 @@
-Title at top in bold Chinese: "场景 2：重构导致的自然衰退"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A horizontal-then-vertical flow diagram showing how deleting a source file cascades through the system to deprecate related Recipes. Two phases clearly separated: immediate reaction (T+0) and next scan (T+N).
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-Style: Same hand-drawn illustration style as other ch07 diagrams. Warm white background, rounded rectangles with soft pastel fills, hand-drawn arrows, small icons.
+Visible title at top: "场景：知识自然衰退"
 
-TOP — Trigger event:
+Purpose:
+Show how an old recipe moves toward decay when evidence gets weak or stale.
 
-A rounded rectangle, pale red (#FEE2E2) fill, with a trash-can icon:
-Bold text: "NetworkManager.swift 被删除"
-Below: "团队重构 → async/await 原生并发"
+Main layout:
+- Left: active Recipe with sourceRefs.
+- Middle: warning signals: no recent usage, stale sourceRef, symbol drift, guard false positive.
+- Center: DecayDetector computes health.
+- Right: state moves to decaying or deprecated through proposal review.
 
-Split into two vertical lanes below, separated by a dashed vertical line:
+Important visible labels:
+- active Recipe
+- sourceRef stale
+- symbol drift
+- DecayDetector
+- decaying
+- deprecated
+- Proposal
 
-LEFT LANE — Label: "即时反应 T+0" in bold
+Legend / footer:
+- 衰退是可解释的信号结果
 
-Box 1 — Rounded rectangle, pale blue (#DBEAFE) fill:
-Bold text: "FileChangeHandler"
-Below: "deleted 事件 → 检测 sourceRef"
-
-Arrow down
-
-Box 2 — Rounded rectangle, pale yellow (#FEF3C7) fill:
-Bold text: "3 条 Recipe 全部 sourceRef 失效"
-Below: "Gateway.submit(deprecate, conf=0.9)"
-
-Arrow down
-
-Box 3 — Rounded rectangle, pale red (#FEE2E2) fill, with a lightning icon:
-Bold text: "立即废弃"
-Below: "shouldImmediateExecute(0.9) → true"
-Below: "LifecycleStateMachine → deprecated"
-
-RIGHT LANE — Label: "下次扫描 T+N" in bold
-
-Box 4 — Rounded rectangle, pale blue (#DBEAFE) fill:
-Bold text: "SourceRefReconciler"
-Below: "发现间接引用 Recipe → stale"
-
-Arrow down
-
-Box 5 — Rounded rectangle, pale yellow (#FEF3C7) fill:
-Bold text: "RelevanceAuditor · Phase A"
-Below: "codeFilesExist ↓ symbolsAlive ↓"
-Below: "→ decay / severe"
-
-Arrow down
-
-Box 6 — Rounded rectangle, pale pink (#FADBD8) fill:
-Bold text: "Agent 验证 + 信号评估"
-Below: "decay score 无回升"
-Below: "decaying → deprecated"
-
-BOTTOM — Summary annotation in gray box:
-Text: "确信路径立即执行，间接影响由下次扫描兜底"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

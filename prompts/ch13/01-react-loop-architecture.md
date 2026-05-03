@@ -1,41 +1,44 @@
-Title at top in bold Chinese: "AgentRuntime ReAct 推理循环架构"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A vertical flow diagram with a prominent central loop and surrounding subsystems.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-CENTER — CoALA 五阶段 ReAct 循环 (large circular flow, clockwise):
-Five nodes connected by thick curved arrows forming a cycle, mapped to CoALA cognitive stages:
-  "Perception 感知" (antenna icon) → "Reasoning 推理" (brain icon) → "Action 行动" (gear icon) → "Observation 观察" (eye icon) → "Reflection 反思" (mirror icon) → back to "Perception"
+Visible title at top: "Agent Runtime 推理循环"
 
-Inside the circle: "LoopContext" box listing: iteration · tokenUsage · errorCount · toolCalls · sharedState · abortSignal
+Purpose:
+Show the latest Agent execution path from service input to tool observations.
 
-LEFT SIDE — Input (four arrows converging into the loop):
-  Four channel boxes stacked vertically:
-    "HTTP" (globe icon) with "conversationId, userId"
-    "MCP" (puzzle icon) with "clientId, toolName"
-    "CLI" (terminal icon) with "cwd, sessionId"
-    "Lark" (bird icon) with "chatId, messageId"
-  All four arrows merge into a single box: "AgentMessage 统一信封" then into the loop's "Perception" node.
+Main layout:
+- Top lane: AgentService.run validates input and compiles profile.
+- Middle lane: AgentProfileCompiler → AgentRunCoordinator optional fanout → AgentRuntimeBuilder → AgentRuntime.
+- Runtime lane: Strategy stages run ReAct steps and call V2ToolRouterAdapter.
+- Tool lane: ToolRouterV2 executes code, terminal, knowledge, graph, memory, meta actions.
+- Observation loop returns compressed tool results to the next reasoning step.
 
-RIGHT SIDE — Tool Execution Pipeline (horizontal chain flowing right from "Action"):
-  A chain of boxes connected by arrows, split into pre-execute and post-execute:
-    "allowlistGate" → "safetyGate" → "cacheCheck" → [execute] → "observationRecord" → "trackerSignal" → "traceRecord" → "submitDedup"
-  Below the chain: "ToolRegistry" database icon
+Must include these implementation facts:
+- Built-in presets include chat, insight, evolution, lark, and remote-exec.
+- bootstrap-session fanout coordination happens in AgentRunCoordinator.
+- Agent tools are 6 names with action/params JSON.
 
-TOP — ExplorationTracker Phase State Machine (Analyst 策略):
-  Four connected rounded rectangles:
-    "SCAN" →(2轮骨架扫描)→ "EXPLORE" →(searchBudget 60% 耗尽)→ "VERIFY" →(证据完整)→ "SUMMARIZE"
-  Arrow from SUMMARIZE labeled "toolChoice=none" pointing down to the loop
-  Each phase labeled with its toolChoice: required / required / auto / none
+Important visible labels:
+- AgentService.run
+- ProfileCompiler
+- RunCoordinator
+- RuntimeBuilder
+- AgentRuntime
+- Strategy
+- V2ToolRouterAdapter
+- Observation
 
-TOP-RIGHT — AbortSignal 传播链 (small vertical chain):
-  "PipelineStrategy" → "AbortController" → "LoopContext" → "AiProvider._post()" → "fetch({ signal })"
-  Label: "hard timeout → 全链路取消"
+Legend / footer:
+- Profile 决定身份, Strategy 决定流程, Tool V2 决定动作面
 
-BOTTOM — Three Safety Nets (three boxes in a row):
-  Box 1: "2-Strike 错误恢复" with "Strike 1: retry 2s → Strike 2: reset + break"
-  Box 2: "三级上下文压缩" with "L1 60%: truncate → L2 80%: summarize → L3 95%: aggressive"
-  Box 3: "空响应 Rollback" with "rollbackTick() → sleep 1500ms → continue"
-
-BOTTOM-RIGHT — Preset Configurations (small table):
-  5 rows: chat (8轮/120s), insight (24~40轮/3600s), evolution (16轮/180s), lark (12轮/180s), remote-exec (6轮/60s)
-  Label: "同一引擎 · 不同配置"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

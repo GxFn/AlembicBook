@@ -1,86 +1,43 @@
-Title at top in bold Chinese: "MCP 协议与六通道交付全景"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A wide horizontal diagram divided into three major zones from left to right: Knowledge Source, Two Delivery Paths, and IDE Targets.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-ZONE 1 — "知识源" (left, pale blue background):
-A database cylinder icon labeled "SQLite · Recipe 知识库"
-Below: small text "active + staging + high-confidence pending"
-Arrow right labeled "classify by kind" splitting into two paths.
+Visible title at top: "MCP 与六通道交付"
 
-ZONE 2 — Two parallel horizontal paths:
+Purpose:
+Show how Alembic exposes local capabilities through MCP and writes knowledge back into IDE-native files.
 
-UPPER PATH — "按需查询 (MCP)" (pale green background strip):
-Left: "IDE Agent" icon (laptop with sparkle) sends arrow labeled "CallToolRequest{name, args}" to:
-Center: A rounded rectangle labeled "MCP Server" containing:
-  - Top bar: "alembic-v3 · stdio · 18 工具"
-  - Small grid of tool names in 2 rows: "search · knowledge · guard · structure · graph · call_context · task · skill · bootstrap · rescan · evolve · dimension_complete · wiki · panorama · health · submit_knowledge · enrich_candidates · knowledge_lifecycle"
-  - Below: "Tier 过滤: Agent(16) · Admin(18)"
-Arrow from MCP Server to:
-A pipeline of 4 connected boxes labeled "Gateway 四阶段":
-  "Validate" → "Guard" → "Route" → "Audit"
-  Below Guard: small branch arrow labeled "checkOnly() 权限预检"
-  Below Route: small text "→ Service 层 (业务逻辑)"
-Arrow from pipeline back left to "IDE Agent" labeled "CallToolResponse{JSON}"
+Main layout:
+- Left: IDE Agent connects over stdio MCP to alembic-local.
+- Center: MCP server exposes 19 alembic_* tools grouped into Agent tools and Admin tools.
+- Below center: McpCapabilityProjection turns tool definitions into manifests with risk, sideEffect, and trust flags.
+- Right: Delivery pipeline writes six channels: Cursor rules, Cursor skills, AGENTS.md, CLAUDE.md, Copilot instructions, mirror targets.
+- Bottom: Recipe changes refresh delivery artifacts.
 
-LOWER PATH — "主动推送 (Delivery)" (pale yellow background strip):
-Left: "CursorDeliveryPipeline" box with subtitle "deliver() 编排引擎"
-Between Pipeline and channels: Two small utility boxes:
-  Box 1: "KnowledgeCompressor" with "compressToRuleLine() · compressToWhenDoDont() · _skeletonize()"
-  Box 2: "TokenBudget" with "truncateToTokenBudget() · _rankScore() · CJK 感知"
+Must include these implementation facts:
+- Current MCP tool list has 19 tools: 17 Agent tools and 2 Admin tools.
+- Bundled local server is trusted, but outputs can contain untrusted text.
 
-From CursorDeliveryPipeline, 7 arrows fan out rightward to 7 channel boxes stacked vertically:
+Important visible labels:
+- stdio MCP
+- 19 工具
+- 17 Agent
+- 2 Admin
+- Manifest
+- sideEffect
+- Delivery
+- 6 通道
 
-Channel A (red accent): "① alwaysApply 规则"
-  Detail: "800 token · ≤15 条 · confidence×0.4 + authority×0.3 + useCount×0.2"
-  Arrow to: ".cursor/rules/alembic-project-rules.mdc"
+Legend / footer:
+- MCP 是交互面, Delivery 是持久上下文面
 
-Channel B (orange accent): "② 主题规则 (When/Do/Don't)"
-  Detail: "750 token/文件 · ≤5 条/主题 · 6 主题"
-  Small text: "networking · ui · data · architecture · conventions · general"
-  Arrow to: ".cursor/rules/alembic-patterns-{topic}.mdc"
-
-Channel B+ (orange-light accent): "③ 调用图架构"
-  Detail: "自动推断分层 · 出入度分析"
-  Small text: "Foundation → Service → Controller → Application"
-  Arrow to: ".cursor/rules/alembic-patterns-call-architecture.mdc"
-
-Channel C (blue accent): "④ 技能同步"
-  Detail: "SKILL.md + references/RECIPES.md"
-  Arrow to: ".cursor/skills/alembic-{name}/"
-
-Channel D (blue-light accent): "⑤ 开发文档"
-  Detail: "dev-document 类型 Recipe"
-  Arrow to: ".cursor/skills/alembic-devdocs/references/"
-
-Channel F (purple accent): "⑥ Agent 指令集"
-  Detail: "≤15 规则 + ≤10 模式 + 工具列表 + 技能列表"
-  Three arrows to three files:
-    "AGENTS.md" (label: "→ OpenAI Codex")
-    "CLAUDE.md" (label: "→ Claude Code · 标记边界注入")
-    ".github/copilot-instructions.md" (label: "→ GitHub Copilot")
-
-Channel Mirror (gray accent, dashed border): "⑦ Mirror"
-  Detail: "alembic mirror · 手动触发"
-  Small text: "复制 .cursor/rules/ + skills/ 中 alembic-* 前缀文件"
-  Dashed arrow to: ".trae/ · .qoder/"
-
-ZONE 3 — "IDE 接入" (right, pale purple background):
-Four IDE icons stacked vertically, each with connection lines showing which paths they use:
-
-"Cursor" — solid lines from:
-  · MCP (stdio, .cursor/mcp.json)
-  · Channel A/B/B+/C/D (直接读取 .cursor/ 文件)
-
-"VS Code Copilot" — solid lines from:
-  · MCP (stdio + Extension, .vscode/mcp.json)
-  · Channel F (.github/copilot-instructions.md)
-
-"Claude Code" — solid lines from:
-  · MCP (stdio, .claude/mcp.json)
-  · Channel F (CLAUDE.md, 标记边界注入 alembic:begin/end)
-
-"Trae / Qoder" — dashed lines from:
-  · Channel Mirror (复制 .cursor/ 文件)
-  · Channel F (AGENTS.md)
-
-Bottom annotation bar: "FileProtection · 签名检测 · 标记边界注入 (<!-- alembic:begin/end -->) · 全量覆盖写入 · 幂等性"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

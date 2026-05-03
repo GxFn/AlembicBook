@@ -19,7 +19,7 @@ CLI 是 Alembic 的主要安装和管理入口——用户通过 `alembic` 命�
 | 命令 | 职责 | 关键参数 |
 |:---|:---|:---|
 | `alembic setup` | 初始化项目工作空间 | `--force` · `--seed` · `--repo <url>` |
-| `alembic coldstart` | 9 维度冷启动分析 | `--dims` · `--skip-guard` · `--wait` · `--json` |
+| `alembic coldstart` | ProjectIntelligence + 25 维冷启动 | `--dims` · `--skip-guard` · `--wait` · `--json` |
 | `alembic rescan` | 增量重扫（保留 Recipe） | `--dims` · `--skip-guard` · `--wait` |
 | `alembic ais [target]` | AI 扫描目标代码 → 自动发布 | `-m` · `--max-files` · `--dry-run` |
 | `alembic search <query>` | 知识检索 | `-t type` · `-m mode` · `-l limit` · `-o format` |
@@ -369,7 +369,7 @@ VSCode Extension（每 3 秒轮询）
    → 提示"运行 alembic ui 启动 Dashboard"
 
 ② 终端：alembic coldstart --wait
-   → 9 维度分析 → AI 填充 → 三轮审核
+   → ProjectIntelligence 结构分析 → 25 维执行 → 候选知识审核
    → 生成 50-100 条候选知识
    → 输出扫描报告（维度 · 文件数 · 候选数）
 

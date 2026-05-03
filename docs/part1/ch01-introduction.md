@@ -68,7 +68,7 @@ alembic ui        # 启动后台服务，IDE 和 MCP 工具依赖此服务运行
 
 Agent 扫描整个项目，提取出团队的编码模式、架构约定、调用习惯，同时生成项目 Wiki。冷启动只做一次，之后就进入日常使用。
 
-冷启动背后是一条完整的管线：文件收集 → 10 语言 AST 解析（Tree-sitter）→ 25 维度框架分析 → Tool System V2（6 个语义工具、19 个 action）编排的 Agent 推理循环 → 人工审核。Agent 不是简单的"让 LLM 读代码然后总结"，而是在结构化分析的基础上做确定性标记，只把真正不确定的部分交给 LLM 消解。
+冷启动背后是一条完整的管线：文件收集 → Tree-sitter WASM 解析（11 个语法包，覆盖 10 个主要语言族）→ 25 维度框架激活 → Tool System V2（6 个语义工具、19 个 action）编排的 Agent 推理循环 → 人工审核。Agent 不是简单的"让 LLM 读代码然后总结"，而是在结构化分析的基础上做确定性标记，只把真正不确定的部分交给 LLM 消解。
 
 ### 日常：说一句话就行
 
@@ -172,7 +172,7 @@ alembic guard:ci --min-score 90   # CI 质量门禁
 
 ### 多语言 AST
 
-11 种语言 tree-sitter：Go · Python · Java · Kotlin · Swift · JS · TS · Rust · ObjC · Dart · C#。5 阶段 CallGraph，增量分析，8 种项目类型自动检测。
+11 个 Tree-sitter WASM 语法包：Go · Python · Java · Kotlin · Swift · JavaScript · TypeScript · TSX · Rust · Objective-C · Dart。5 阶段 CallGraph，增量分析，8 种项目类型自动检测。
 
 ### 6 通道 IDE 交付
 
@@ -190,7 +190,7 @@ alembic guard:ci --min-score 90   # CI 质量门禁
 
 ### 更多
 
-- **Bootstrap 冷启动** — 6 阶段 · 10 维分析，一次性建立知识库 *→ [Ch09 Bootstrap](../part4/ch09-bootstrap)*
+- **Cold Start / Knowledge Rescan** — ProjectIntelligence 全量结构分析 + 25 维执行，冷启动干净建库，重扫保留 Recipe 并治理缺口 *→ [Ch09 Bootstrap](../part4/ch09-bootstrap)*
 - **知识图谱** — 14 种关联关系，查询影响路径和依赖深度
 - **语义搜索** — HNSW 向量索引 + 加权字段匹配混合检索，RRF 融合 + 7 路信号排序 *→ [Ch11 混合检索](../part4/ch11-search)*
 - **sourceRefs** — Recipe 携带源码证据，Agent 无需自行验证
@@ -205,7 +205,7 @@ alembic guard:ci --min-score 90   # CI 质量门禁
 
 | 维度 | 数据 |
 |------|------|
-| AST 支持语言 | 10 种（Go · Python · Java · Kotlin · Swift · TS · JS · Rust · ObjC · Dart） |
+| AST 支持语言 | 11 个 WASM 语法包（Go · Python · Java · Kotlin · Swift · JS · TS · TSX · Rust · ObjC · Dart） |
 | Agent 工具 | Tool System V2：6 个语义工具 / 19 个 action；MCP：19 个 `alembic_*` 工具 |
 | 知识维度框架 | 25 维（13 通用 + 7 语言特定 + 5 框架特定） |
 | 搜索信号 | 6 维加权 |
@@ -248,7 +248,7 @@ Alembic 自身就是一个架构频繁调整的项目，知识库需要设计更
 - **Part 1（起点与哲学）**：本章介绍 → 本地记忆主权 → SOUL 设计原则
 - **Part 2（工程基石）**：架构全景 → 安全管线 → 代码理解
 - **Part 3（知识领域）**：KnowledgeEntry 实体 → 六态生命周期 → 质量评分
-- **Part 4（核心服务）**：Bootstrap 冷启动 → Guard 合规 → Search 检索 → 信号代谢
+- **Part 4（核心服务）**：Cold Start / Rescan → Guard 合规 → Search 检索 → 信号代谢
 - **Part 5（Agent 智能层）**：Agent Runtime → 正交组合 → 工具与记忆
 - **Part 6（平台与交付）**：数据基础设施 → MCP 六通道交付 → 界面层
 

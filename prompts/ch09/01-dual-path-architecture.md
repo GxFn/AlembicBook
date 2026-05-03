@@ -1,115 +1,44 @@
-Title at top center in bold Chinese: "Bootstrap 双路径架构"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A top-to-bottom flow diagram with three major sections: a shared pipeline at top, a diamond fork in the middle splitting into two parallel paths, and a convergence zone at the bottom. The overall layout is symmetrical with the fork point on the center axis.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-════════════════════════════════════════
-TOP SECTION — Phase 0–4 共享管线
-════════════════════════════════════════
+Visible title at top: "Cold Start / Rescan 双路径架构"
 
-A wide rounded rectangle spanning nearly the full width of the image. Pale blue (#A8D4F0) fill with a hand-drawn border.
+Purpose:
+Show the latest workflow split: Cold Start builds a clean baseline, Knowledge Rescan preserves and governs existing Recipes.
 
-Header text inside at top: "Phase 0–4 共享管线（~2s · 纯工程 · 零 AI）"
+Main layout:
+- Top shared lane: ProjectIntelligenceCapability produces ProjectSnapshot through file collection, AST, entity graph, call graph, dependency graph, Panorama, Guard, dimension resolve.
+- Left fork: Cold Start path: full reset → cache session → internal dimension execution or external mission briefing → Candidates / Recipes / Wiki.
+- Right fork: Knowledge Rescan path: rescan clean or snapshot-only → sync knowledge store → SourceRef reconcile → impact planning → audit → prescreen → gap/evolution execution.
+- Bottom convergence: same knowledge base, same 25 dimensions, same completion finalizer.
+- Use dashed amber arrows for async internal dimension execution and fire-and-forget evolution audit.
 
-Below the header, a horizontal chain of 7 small rounded boxes connected by thin solid arrows (→), evenly spaced left to right. Each box has a tiny phase number label directly above it in lighter gray:
+Must include these implementation facts:
+- Internal rescan runs SourceRefReconciler.reconcile(force), repairRenames, and applyRepairs.
+- Internal rescan can pass incremental diff to RecipeImpactPlanner and buildKnowledgeRescanPlan.
+- bootstrap-session coordination is handled by AgentRunCoordinator, not an old FanOutStrategy.
 
-- "P1" above box → "文件收集" (white fill)
-- "P1.5" above box → "AST 解析" (white fill)
-- "P1.6" above box → "Entity Graph" (white fill)
-- "P1.7" above box → "Call Graph" (white fill)
-- "P2–2.2" above box → "依赖图 + Panorama" (white fill)
-- "P3" above box → "Guard 审计" (white fill)
-- "P4" above box → "维度解析" (white fill)
+Important visible labels:
+- Cold Start
+- Knowledge Rescan
+- ProjectIntelligence
+- ProjectSnapshot
+- SourceRef 修复
+- Impact Plan
+- Prescreen
+- Gap Fill
 
-Below the chain of boxes, centered in italic smaller text: "ProjectSnapshot"
+Legend / footer:
+- 冷启动干净建库; 重扫保留知识并治理缺口
 
-════════════════════════════════════════
-FORK POINT
-════════════════════════════════════════
-
-A thick downward arrow from the bottom edge of the shared pipeline rectangle leads to a hand-drawn diamond/rhombus shape centered on the page. Inside the diamond: "AI Provider?"
-
-From the diamond, two diverging arrows:
-- LEFT arrow going down-left, labeled "有 API Key" in bold
-- RIGHT arrow going down-right, labeled "无 · IDE Agent" in bold
-
-════════════════════════════════════════
-LEFT PATH — 内部 Agent 路径
-════════════════════════════════════════
-
-A tall rounded rectangle on the left side of the image. Pale yellow (#F9E79F) fill.
-
-Bold header at top: "内部 Agent 路径"
-
-Inside, 4 stacked boxes in a vertical flow connected by downward arrows:
-
-Box 1 (white fill, rounded):
-- Bold: "FanOut 策略"
-- Sub-text: "Tier 1 (×3) → Tier 2 (×2) → Tier 3 (×1)"
-
-↓ arrow
-
-Box 2 (white fill, rounded):
-- Bold: "PipelineStrategy"
-- Sub-text: "Analyze → Gate → Produce"
-
-↓ arrow
-
-Box 3 (white fill, rounded):
-- Bold: "Phase 5:"
-- Sub-text: "微观维度 → Candidate"
-
-↓ arrow
-
-Box 4 (white fill, rounded):
-- Bold: "Phase 5.5:"
-- Sub-text: "宏观维度 → Project Skill"
-
-To the right of the left path rectangle, a small annotation cluster:
-- A tiny progress bar icon (5 small segments, 3 filled blue, 2 empty)
-- Text: "Socket.io 进度推送"
-- A tiny dashed arrow → "Dashboard"
-
-════════════════════════════════════════
-RIGHT PATH — 外部 Agent 路径
-════════════════════════════════════════
-
-A tall rounded rectangle on the right side of the image, same height as the left path. Pale pink (#FADBD8) fill.
-
-Bold header at top: "外部 Agent 路径"
-
-Inside, 2 stacked elements in a vertical flow:
-
-Box 1 (white fill, rounded):
-- Bold: "Mission Briefing 构建"
-- Sub-text line 1: "执行计划 + 文件摘要 +"
-- Sub-text line 2: "维度清单"
-
-↓ arrow labeled "返回 MCP"
-
-Box 2 (white fill, rounded, slightly larger, with a tiny IDE-style icon in the upper-left corner):
-- Bold: "IDE Agent"
-- Sub-text in parentheses: "(Cursor/Copilot)"
-- Below, smaller monospace-style text:
-  "读代码 → 分析维度"
-  "alembic_submit_knowledge"
-  "dimension_complete"
-
-════════════════════════════════════════
-BOTTOM — 知识库汇聚
-════════════════════════════════════════
-
-Both the left path and right path have thick downward arrows converging into a single wide rounded rectangle at the bottom center. Pale blue (#A8D4F0) fill with a slightly thicker border.
-
-Bold text centered inside: "知识库"
-
-Below the bold text, 4 small icons in a horizontal row with labels underneath each:
-- A flask/beaker icon → "Candidates"
-- A book icon → "Recipes"
-- A star/wand icon → "Skills"
-- A graph/network icon → "知识图谱"
-
-════════════════════════════════════════
-BOTTOM ANNOTATION
-════════════════════════════════════════
-
-Centered below everything in lighter gray text: "两条路径 · 同一基座 · 同一知识库"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

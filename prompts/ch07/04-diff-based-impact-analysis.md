@@ -1,67 +1,37 @@
-Title at top in bold Chinese: "v3 Diff-Based 文件变更影响分析"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A vertical pipeline diagram showing how a file modification event flows through the diff-based impact analysis system, ending with three output branches. Clean layout with generous spacing between stages.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-Style: Same hand-drawn illustration style as other ch07 diagrams. Warm white background, rounded rectangles with soft pastel fills, hand-drawn arrows, small icons for visual cues. Minimal text per box — use short labels, not full sentences.
+Visible title at top: "Diff-Based 文件影响分析"
 
-TOP — Input trigger:
+Purpose:
+Show how changed lines can become recipe impact signals without replacing the full rescan logic.
 
-A rounded rectangle, pale gray (#E5E7EB) fill, with a small file-edit icon:
-Bold text: "文件保存事件"
-Below in smaller text: "modified event → FileChangeHandler"
+Main layout:
+- Left: git diff -U0 produces changed hunks and tokens.
+- Center: ContentImpactAnalyzer compares changed tokens with Recipe coreCode and markdown code blocks.
+- Right: three impact levels: direct, pattern, reference.
+- Bottom: quality signal feeds ProposalExecutor, Rescan planning, and IDE notification.
 
-Arrow pointing down ↓
+Important visible labels:
+- git diff
+- tokens
+- ContentImpactAnalyzer
+- direct 0.8
+- pattern 0.6
+- reference 0.3
+- quality signal
 
-STAGE 1 — Source Reference Lookup:
+Legend / footer:
+- 文件变化是强信号, 不是唯一决策源
 
-Rounded rectangle, pale blue (#DBEAFE) fill, with a small magnifying glass icon:
-Bold text: "SourceRefRepository"
-Below: "findBySourcePath(path)"
-
-Arrow pointing down ↓
-
-STAGE 2 — two boxes side by side connected by a "+" symbol, both feeding into Stage 3:
-
-Left box — Rounded rectangle, pale yellow (#FEF3C7) fill, with a small git-branch icon:
-Bold text: "Diff Tokens T_Δ"
-Below line 1: "getFileDiff() → git diff"
-Below line 2: "parseDiffHunks()"
-Below line 3: "tokenizeDiffLines()"
-
-Right box — Rounded rectangle, pale green (#D1FAE5) fill, with a small book icon:
-Bold text: "Recipe Tokens T_R"
-Below line 1: "extractRecipeTokens()"
-Below line 2: "coreCode + markdown"
-Below line 3: "pattern + steps"
-
-Both boxes have arrows pointing down into Stage 3 ↓
-
-STAGE 3 — Impact Scoring (center, slightly larger box):
-
-Rounded rectangle, pale purple (#EDE9FE) fill, with a small calculator icon:
-Bold text: "assessDiffImpact()"
-Below: formula "score = |T_R ∩ T_Δ| / |T_R|"
-
-THREE output arrows fanning down from this box, each with a threshold label on the arrow:
-
-OUTPUT 1 (left arrow, label on arrow "score ≥ 0.3"):
-Rounded rectangle, soft orange (#FED7AA) fill:
-Bold text: "pattern"
-Below: "weight 0.6"
-Below: small additional box with arrow: "→ Gateway.submit(update)"
-
-OUTPUT 2 (center arrow, label on arrow "0 < score < 0.3"):
-Rounded rectangle, pale blue (#BFDBFE) fill:
-Bold text: "reference"
-Below: "weight 0.3"
-
-OUTPUT 3 (right arrow, label on arrow "score = 0"):
-Rounded rectangle, pale gray (#F3F4F6) fill:
-Bold text: "跳过"
-
-BOTTOM — All three output paths converge with dashed arrows into a shared result box:
-
-Rounded rectangle, pale green (#D1FAE5) fill, with a small broadcast/signal icon:
-Bold text: "SignalBus.send('quality')"
-Below line 1: "→ ProposalExecutor (§9.1 保护)"
-Below line 2: "→ VSCode 弹窗 (direct / pattern)"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

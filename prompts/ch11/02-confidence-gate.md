@@ -1,52 +1,39 @@
-Title at top in bold Chinese: "查询路由：Confidence Gate + 自适应 Alpha"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A top-to-bottom decision flow diagram with warm, clean colors.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-TOP — Input:
-A rounded box labeled "用户查询" with a magnifying glass icon, connected by arrow to:
+Visible title at top: "检索可信度门控"
 
-STAGE 1 — "FieldWeighted 快速评估":
-A pale blue box showing "~40ms" badge in top-right corner.
-Inside: "字段加权搜索 → Top-K 候选"
+Purpose:
+Show how search results are filtered before they become Agent context.
 
-Arrow down to:
+Main layout:
+- Left: ranked Recipe candidates from SearchEngine.
+- Center: gate checks lifecycle state, confidence, sourceRef health, dimension fit, and usage signals.
+- Right: three output buckets: inject now, show as optional, hide or warn.
+- Bottom: context budget compression keeps only the most useful evidence.
 
-STAGE 2 — "Confidence 计算":
-A wider box with a gauge/meter visualization (0 to 100 scale).
-Left side (red zone, 0-30): "低置信 → 语义主导"
-Middle (yellow zone, 30-55): "中等 → 均衡融合"
-Right side (green zone, 55-100): "高置信 → 纯关键词"
+Important visible labels:
+- Search Results
+- lifecycle
+- confidence
+- sourceRef
+- dimension fit
+- 注入
+- 可选
+- 隐藏
+- 上下文预算
 
-Inside the box, a compact table of signals:
-  Positive signals (green arrows up):
-    "Title/Trigger 匹配 +95"
-    "CamelCase 识别 +75"
-    "分数断崖 +60"
-    "代码术语 +50"
-  Negative signals (red arrows down):
-    "疑问句 → 归零"
-    "多词短语 → 归零"
+Legend / footer:
+- 少而准的上下文比大而杂更可靠
 
-Arrow splits into TWO branches at a diamond decision node labeled "conf ≥ 60?":
-
-LEFT BRANCH (YES — green path):
-Box labeled "跳过 Semantic"
-Badge: "40ms 返回"
-Sub-note: "纯 FieldWeighted 结果"
-Example queries in small font: "WBISigner · BaseViewController · @video-player-reuse"
-
-RIGHT BRANCH (NO — orange path):
-Box labeled "调用 Semantic + RRF 融合"
-Inside: formula "α = 0.4 + 0.35 × (1 − conf/60)"
-Three example rows:
-  "conf=0 → α=0.75 (语义主导)"
-  "conf=35 → α=0.55 (均衡)"
-  "conf=55 → α=0.42 (关键词偏重)"
-Badge: "230–450ms (本地 Ollama)"
-Example queries: "Cookie持久化 · 数据竞争怎么避免 · how to make API calls"
-
-Both branches converge at bottom into:
-A rounded result box: "Top-K 结果返回"
-
-BOTTOM annotation bar:
-"本地 Embedding (Ollama) 使语义分支延迟从秒级降至毫秒级"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

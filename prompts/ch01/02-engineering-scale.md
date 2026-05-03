@@ -1,27 +1,49 @@
-Title at top in bold Chinese: "Alembic 工程规模"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A data dashboard card layout with metric cards arranged around a central badge. Clean, minimal, knowledge-card style.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-CENTER BADGE:
-A hexagon or shield shape with "Alembic" text and a small sparkle icon. Below: "本地知识引擎 · 12 万行 TypeScript"
+Visible title at top: "Alembic 工程规模数据卡"
 
-METRIC CARDS arranged in a grid (4-4-3 layout), each card is a small rounded rectangle with a bold number, a label, and a brief subtitle:
+Purpose:
+Create a clean data-card whiteboard that summarizes the real implementation scale without looking like a dashboard.
 
-Row 1 (pale blue fill — "理解层"):
-- Card 1: Large bold "10" · label "AST 支持语言" · tiny text: "Go · Python · Java · Kotlin · Swift · TS · JS · Rust · ObjC · Dart"
-- Card 2: Large bold "59" · label "内部工具" · tiny gear icon
-- Card 3: Large bold "25 维" · label "知识维度框架" · subtitle "13 通用 + 7 语言 + 5 框架"
-- Card 4: Large bold "6 态" · label "生命周期" · subtitle "pending → staging → active → evolving → decaying → deprecated"
+Main layout:
+- Arrange 12 compact cards in a 4 by 3 grid.
+- Each card has one large number, one short Chinese label, and one tiny implementation note.
+- Group cards with subtle colored outlines: 代码理解, Agent 工具, 知识治理, 平台交付.
 
-Row 2 (pale yellow fill — "服务层"):
-- Card 5: Large bold "7 信号" · label "搜索排序" · subtitle "relevance · authority · recency · popularity · difficulty · contextMatch · vector"
-- Card 6: Large bold "4 层" · label "Guard 检测" · subtitle "正则 → 代码级 → AST → 跨文件"
-- Card 7: Large bold "6" · label "交付通道" · subtitle "A · B · B+ · C · D · F + Mirror"
-- Card 8: Large bold "12" · label "信号类型" · tiny signal wave icon
+Must include these implementation facts:
+- 12 万行 TypeScript.
+- 11 个 Tree-sitter WASM 语法包.
+- 25 个知识维度: 13 通用 + 7 语言 + 5 框架.
+- 6 个 V2 语义工具 and 19 个 action.
+- 19 个 MCP 工具: 17 Agent + 2 Admin.
+- 6 态生命周期, 6 个交付通道, 12 种信号, 9 个 DI 模块.
 
-Row 3 (pale pink fill — "安全与基础"):
-- Card 9: Large bold "6 层" · label "安全防御" · subtitle "Constitution → Gateway → Permission → SafetyPolicy → PathGuard → ConfidenceRouter"
-- Card 10: Large bold "9" · label "DI 模块" · subtitle "Signal · Infra · App · Knowledge · Vector · Guard · Agent · AI · Panorama"
-- Card 11: Large bold "19" · label "MCP 工具" · subtitle "Agent(16) + Admin(2)"
+Important visible labels:
+- 12万
+- 11
+- 25
+- 6
+- 19
+- 19
+- 6态
+- 6通道
+- 12信号
+- 9模块
+- 4层 Guard
+- 6层安全
 
-Bottom annotation bar: "Cursor · VS Code · Claude Code · Trae · Qoder · Xcode"
+Legend / footer:
+- 数据来自当前 Alembic 代码实现
+
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

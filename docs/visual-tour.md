@@ -16,7 +16,7 @@ Alembic 本质上做两件事：**一次构建有限答案，持续回答无限�
 
 ### 工程规模
 
-从工程规模看，Alembic 是一个 12 万行 TypeScript 的完整系统，支持 10 种编程语言、Tool System V2（6 个语义工具 / 19 个 action）、19 个 MCP 工具和 9 维度知识覆盖。
+从工程规模看，Alembic 是一个 12 万行 TypeScript 的完整系统，支持 11 个 Tree-sitter WASM 语法包、Tool System V2（6 个语义工具 / 19 个 action）、19 个 MCP 工具和 25 维度知识覆盖。
 
 ![工程规模](/images/ch01/02-engineering-scale.png)
 
@@ -48,7 +48,7 @@ Alembic 的所有知识、记忆、行为信号都存储在项目本地——四
 
 ### 结构分析链
 
-代码理解是五阶段管线：单文件 AST 解析（Tree-sitter WASM, 10 语言）→ 继承图构建 → 调用图推断（5 步增量管线）→ 设计模式检测（Singleton/Delegate/Factory/Observer）→ Tarjan SCC + Kahn 拓扑分层。最终输出 ProjectGraph 供 Panorama 消费。
+代码理解是五阶段管线：单文件 AST 解析（Tree-sitter WASM，11 个语法包）→ 继承图构建 → 调用图推断（5 步增量管线）→ 设计模式检测（Singleton/Delegate/Factory/Observer）→ Tarjan SCC + Kahn 拓扑分层。最终输出 ProjectGraph 供 Panorama 消费。
 
 ![结构分析链](/images/ch05/01-structural-analysis-chain.png)
 

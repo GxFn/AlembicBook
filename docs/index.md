@@ -21,7 +21,7 @@ features:
     details: 问题定义、本地记忆主权与隐私设计、SOUL 原则、5 项设计哲学如何化为 12 万行代码中的工程决策
   - icon: 🏗️
     title: Part II · 工程基石
-    details: 7 层 DDD 架构、六层纵深防御安全管线、10 语言 Tree-sitter AST 分析
+    details: 7 层 DDD 架构、六层纵深防御安全管线、11 个 Tree-sitter WASM 语法包
   - icon: 📦
     title: Part III · 知识领域
     details: 统一实体建模、六态生命周期状态机、25 维质量评分框架

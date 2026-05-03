@@ -1,72 +1,37 @@
-Title at top in bold Chinese: "场景 5：文件修改的实时进化审视"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A wide flow diagram showing the complete journey from a developer saving a file in VSCode to knowledge evolution. Split into three clearly labeled horizontal swim lanes. Time flows left to right. IMPORTANT: Each swim lane has exactly ONE label on the left side — do NOT duplicate or stack labels.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-Style: Same hand-drawn illustration style as other ch07 diagrams. Warm white background, rounded rectangles with soft pastel fills, hand-drawn arrows, small icons.
+Visible title at top: "场景：实时知识进化"
 
-SWIM LANE 1 (top) — Single label on left: "IDE 层" with a code editor icon
+Purpose:
+Show a live evolution path from project activity to Dashboard and delivery update.
 
-Box 1 — Rounded rectangle, pale blue (#DBEAFE) fill:
-Bold text: "开发者保存文件"
-Below: "PaginationController.swift"
-Small icon: floppy disk
+Main layout:
+- Left: file event, guard result, search hit, manual review arrive as live signals.
+- Center: SignalBus writes trace and notifies services.
+- Right top: Dashboard timeline updates.
+- Right middle: ProposalExecutor changes lifecycle state.
+- Right bottom: Delivery channels refresh IDE context.
 
-Arrow right with label "2s 缓冲"
+Important visible labels:
+- 实时信号
+- SignalBus
+- Trace
+- Dashboard
+- ProposalExecutor
+- Delivery Refresh
 
-Box 2 — Rounded rectangle, pale blue (#DBEAFE) fill:
-Bold text: "POST /api/v1/file-changes"
-Below: "eventSource: ide-edit"
+Legend / footer:
+- 系统不是定时扫描, 是信号驱动
 
-SWIM LANE 2 (middle) — Single label on left: "服务层" with a server icon
-
-Box 3 — Rounded rectangle, pale yellow (#FEF3C7) fill:
-Bold text: "FileChangeHandler"
-Below: "SourceRef 查找 → 2 条 Recipe"
-
-Arrow right, splits into two parallel paths:
-
-Upper path — Small rounded box, pale green (#D1FAE5):
-Text: "Recipe A: score 0.45"
-Below: "impactLevel = pattern"
-Badge: "signal weight 0.6"
-
-Lower path — Small rounded box, pale gray (#E5E7EB):
-Text: "Recipe B: score 0.08"
-Below: "impactLevel = reference"
-Badge: "signal weight 0.3"
-
-Both paths merge into arrow pointing right
-
-Box 4 — Rounded rectangle, pale pink (#FADBD8) fill, with a bell icon:
-Bold text: "VSCode 弹窗"
-Below: "⚡ 检测到影响，建议进化评估"
-Three small buttons below: "Review | Auto Check | 忽略"
-
-SWIM LANE 3 (bottom) — Single label on left: "进化层" with a cycle/evolution icon. Do NOT repeat this label.
-
-Box 5 — Rounded rectangle, pale yellow (#FEF3C7) fill:
-Bold text: "Gateway.submit(update)"
-Below: "source: file-change"
-Below: "持久化为 update 提案"
-
-Arrow right with label "下次 rescan"
-
-Box 6 — Rounded rectangle, pale blue (#DBEAFE) fill:
-Bold text: "Phase A 进化前置"
-Below: "source_modified signal"
-Below: "Agent 验证队列"
-
-Arrow right
-
-Box 7 — Rounded rectangle, pale green (#D1FAE5) fill:
-Bold text: "Evidence 升级"
-Below: "Gateway 去重 → 追加 suggestedChanges"
-
-BOTTOM — Summary annotation in gray box:
-Text: "signal 既是弹窗触发器，也是增量扫描的进化前置输入"
-Box 7 — Rounded rectangle, pale green (#D1FAE5) fill:
-Bold text: "Evidence 升级"
-Below: "Gateway 去重 → 追加 suggestedChanges"
-
-BOTTOM annotation:
-Text: "signal 既是弹窗触发器，也是增量扫描的进化前置输入"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

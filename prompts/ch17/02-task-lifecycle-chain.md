@@ -1,66 +1,40 @@
-Title at top in bold Chinese: "Task 意图生命周期链"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A vertical flow diagram showing the complete task lifecycle: Prime → Create → (behavior tracking) → Close → Guard. Five major stages connected by arrows flowing top-to-bottom, with side annotations.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-STAGE 1 — "① Prime — 意图识别" (top, pale blue background rounded rectangle):
-Left side: A stick-figure user icon with speech bubble "帮我实现缓存中间件"
-Arrow labeled "userQuery + activeFile" pointing into a box containing two sub-components stacked vertically:
+Visible title at top: "Task 意图生命周期"
 
-Sub-component A: "IntentExtractor" box with subtitle "纯函数 · 零副作用"
-  Inside, 4 small output arrows pointing right, each labeled:
-    "Q1: 原始查询 + 跨语言同义词"
-    "Q2: 技术术语提取"
-    "Q3: 文件上下文推断"
-    "Q4: 同义词焦点（长查询）"
-  Below: small labels "scenario: generate | lint | search | learning"
+Purpose:
+Show how an IDE task gets primed, tracked, guarded, and closed with knowledge context.
 
-Arrow down labeled "queries[] + language + module + scenario" to:
+Main layout:
+- Main chain: Prime → Create → Track → Guard → Close.
+- Under Prime: search project knowledge and assemble context.
+- Under Create: task intent and constraints are stored.
+- Under Track: file changes and Agent actions emit signals.
+- Under Guard: check diff and attach relevant Recipes.
+- Under Close: completion signal updates usage and lifecycle.
 
-Sub-component B: "PrimeSearchPipeline" box with subtitle "多查询并行搜索"
-  Inside, 3 parallel horizontal arrows labeled "auto 模式", "semantic 模式", "keyword 模式"
-  Converging into: "Weighted RRF 融合" small box
-  Then: "三层质量过滤" small box with annotations: "绝对阈值 0.3 → 相对比值 15% → 间隙截断 25%"
+Important visible labels:
+- Prime
+- Create
+- Track
+- Guard
+- Close
+- 任务上下文
+- 相关 Recipe
+- 完成信号
 
-Output arrow down labeled "relatedKnowledge (≤5) + guardRules (≤3) + _taskRules"
+Legend / footer:
+- 任务不是一次提示词, 是可追踪的意图生命周期
 
-STAGE 2 — "② Create — 任务锚点" (small pale yellow rounded rectangle):
-Simple box: "生成 taskId: alembic-{timestamp}-{counter}"
-Below: "绑定到 IntentState · 纯内存 · Zero DB"
-Short arrow down.
-
-STAGE 3 — "③ 行为自动采集" (middle zone, pale pink background, wider than other stages):
-Title: "_trackSession() 透明采集"
-A horizontal timeline bar with 4 small icons evenly spaced along it:
-  Icon 1: magnifying glass labeled "搜索查询 → searchQueries[]"
-  Icon 2: wrench labeled "工具调用 → toolCalls[]"
-  Icon 3: document labeled "文件引用 → mentionedFiles[]"
-  Icon 4: compass with exclamation mark labeled "漂移检测 → driftEvents[]"
-Below the timeline: small text "Agent 编码过程中自动采集，无需额外上报"
-Arrow down.
-
-STAGE 4 — "④ Close — 意图链持久化" (pale blue rounded rectangle):
-A box containing:
-  Left side: "IntentChainRecord" document icon with small labels stacked:
-    "primeQuery · primeRecipeIds"
-    "toolCalls · searchQueries"
-    "decisions · driftScore"
-    "duration · outcome"
-  Arrow right labeled "SignalBus.send('intent')" to:
-  Right side: A file icon labeled ".asd/signals/intent.jsonl"
-
-Below the box, a prominent arrow down with bold label "nextAction: { tool: alembic_guard, required: true }"
-
-STAGE 5 — "⑤ Guard Review — 质量门禁" (bottom, pale yellow background rounded rectangle):
-Left side: "git diff" small icon with arrow labeled "staged + unstaged + untracked" pointing to:
-Center: "GuardCheckEngine 逐文件审计" box
-Right side: Arrow to a results box containing:
-  "violations[] + inline Recipe 修复指南"
-  Small text: "doClause + coreCode → Agent 直接修复"
-
-Below: A circular arrow (loop) labeled "fix → review → fix (最多 5 轮)" with endpoint labeled "✅ passed"
-
-Right margin annotations (outside main flow, connected by dashed lines):
-
-Annotation at Stage 1: "反向驱动: _taskRules 注入行为指令"
-Annotation at Stage 3: "漂移信号 → Rescan/Evolution → 知识有效性评估"
-Annotation at Stage 4-5: "协议强制: close 返回值驱动 Agent 调用 guard"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

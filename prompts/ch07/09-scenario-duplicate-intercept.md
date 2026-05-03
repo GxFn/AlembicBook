@@ -1,54 +1,41 @@
-Title at top in bold Chinese: "场景 4：提交时的三层重复拦截"
+Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
-A funnel-shaped diagram showing three progressive layers of duplicate detection, from fast structural checks to deep semantic analysis. Each layer filters candidates, with the rejected ones shown branching to the side.
+This prompt is optimized for ChatGPT image generation:
+- Draw one coherent technical whiteboard page, not a poster and not a UI mockup.
+- Use large, readable handwritten Chinese labels. Keep each visible label short.
+- Use technical identifiers only where they are real implementation names.
+- Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
+- Avoid dense paragraphs inside the image; summarize with short labels.
+- Follow the repository style anchor and the global style suffix.
 
-Style: Same hand-drawn illustration style as other ch07 diagrams. Warm white background, rounded rectangles with soft pastel fills, hand-drawn arrows, small icons.
+Visible title at top: "场景：重复知识拦截"
 
-TOP — Input:
+Purpose:
+Show duplicate prevention when a new candidate is too similar to an existing recipe.
 
-A rounded rectangle, pale yellow (#FEF3C7) fill, with a document icon:
-Bold text: "新候选 Recipe 提交"
-Below: "RecipeProductionGateway"
+Main layout:
+- Left: new candidate card.
+- Center: similarity check compares against active and staging recipes.
+- If similarity >= 0.7, a red branch goes to duplicate intercept.
+- Right: possible outcomes: reject, merge evidence, supersede proposal.
+- Green branch for truly new knowledge continues to ConfidenceRouter.
 
-Arrow pointing down into a funnel shape ↓
+Must include these implementation facts:
+- Duplicate threshold is similarity >= 0.7 for knowledge.submit.
 
-LAYER 1 — Wide rounded rectangle, pale blue (#DBEAFE) fill:
-Bold label on left: "Layer 1"
-Bold text: "结构化快速过滤"
-Below line 1: "Fingerprint 精确去重"
-Below line 2: "RecipeSimilarity.compute() → 0.52"
-Below line 3: "灰色地带 (< 0.65)"
-Right side branch arrow → small gray box: "≥ 0.65 直接拒绝"
-Result label: "→ 通过"
+Important visible labels:
+- 新候选
+- 相似度检查
+- >= 0.7
+- 重复拦截
+- 合并证据
+- supersede
+- ConfidenceRouter
 
-Arrow down ↓
+Legend / footer:
+- 防止知识库膨胀和冲突
 
-LAYER 1.5 — Medium rounded rectangle, pale pink (#FADBD8) fill:
-Bold label on left: "Layer 1.5"
-Bold text: "字段级分析"
-Below as checklist:
-"✓ doClauseSubset = true"
-"✓ categoryMatch = true"
-"✗ triggerConflict = false"
-Right side annotation: "不借助 Agent 的深度判断"
-Result label: "→ pendingSemanticReview"
-
-Arrow down ↓
-
-LAYER 2 — Narrow rounded rectangle, pale yellow (#FEF3C7) fill, with a robot icon:
-Bold label on left: "Layer 2"
-Bold text: "语义融合分析"
-Below: "外部 Agent 读取代码上下文"
-Below: "alembic_consolidate → 判定为子集"
-
-Arrow down ↓
-
-BOTTOM — Result:
-
-A rounded rectangle, pale red (#FEE2E2) fill, with an X icon:
-Bold text: "候选被拒绝"
-Below: "已有 Recipe 完全覆盖"
-
-SIDE ANNOTATION — A small box with pale gray background:
-Text: "三层过滤：代码逻辑 → 字段分析 → Agent 语义"
-Below: "80%+ 在 Layer 1 解决，极少数到 Layer 2"
+Composition notes:
+- Keep the title at the top, the main system flow in the middle, and a small legend or principle strip at the bottom.
+- Use black arrows for normal flow, colored arrows for important routes, and dashed arrows for optional, async, or feedback paths.
+- The final image should look like a polished page from the same hand-drawn systems notebook series.

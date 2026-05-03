@@ -15,6 +15,7 @@ Style constraints (MUST follow strictly):
 - Use black arrows for default flow, colored arrows for layer-specific flows, dashed arrows for optional / async / on-demand paths.
 - Prefer clear system-design composition over decorative illustration. Each diagram should feel like a polished whiteboard explanation, not a poster.
 - Keep dense information organized: align boxes to invisible rows/columns, avoid crossing arrows where possible, leave breathing room between sections.
+- For ChatGPT image generation, keep visible text concise and avoid tiny tables. If a concept is long, split it into two or three short labels.
 - No 3D rendering, no gradients, no shadows, no glossy UI cards, no stock illustration, no photorealism, no decorative borders, no emoji.
 - Do not imitate the exact reference image content. Use it only as a style direction: hand-drawn whiteboard architecture with colored memory / routing layers.
 - Final image must look like one coherent page from the same technical notebook series.

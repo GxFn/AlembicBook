@@ -365,7 +365,9 @@ export interface ServiceMap {
   searchEngine: SearchEngine;
   vectorStore: VectorStore;
   guardCheckEngine: GuardCheckEngine;
-  agentFactory: AgentService / AgentRuntimeBuilder;
+  agentService: AgentService;
+  agentRuntimeBuilder: AgentRuntimeBuilder;
+  agentRunCoordinator: AgentRunCoordinator;
   capabilityCatalog: V2CapabilityCatalog;
   toolRouter: V2ToolRouterAdapter;
   toolRegistry: UnifiedToolCatalog;

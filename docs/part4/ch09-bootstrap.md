@@ -50,7 +50,7 @@ ProjectIntelligenceCapability.run()
 | Phase | 当前函数 | 产物 |
 |:---|:---|:---|
 | 1 | `runPhase1_FileCollection` | allFiles、allTargets、discoverer、langStats、truncated |
-| incremental eval | `evaluateProjectAnalysisIncrementalPlan` | 可选 FileDiffPlan；当前冷启动/重扫计划均未开启 |
+| incremental eval | `evaluateProjectAnalysisIncrementalPlan` | 可选 FileDiffPlan；冷启动默认关闭，重扫在存在增量计划时把 diff 传给 impact / gap planning |
 | 1.5 | `runPhase1_5_AstAnalysis` | astProjectSummary、astContext、warnings |
 | 1.6 | `runPhase1_6_EntityGraph` | code_entities、knowledge_edges |
 | 1.7 | `runPhase1_7_CallGraph` | call graph、data flow、method entities |
@@ -199,14 +199,14 @@ runExternalDimensionCompletionWorkflow()
 
 ## Knowledge Rescan 计划
 
-`buildKnowledgeRescanWorkflowPlan()` 是重扫入口。它和冷启动最大的不同是 cleanup policy：
+`buildKnowledgeRescanWorkflowPlan()` 是重扫入口。它和冷启动最大的不同是 cleanup policy。当前 intent 可以在三种策略间切换：
 
 ```typescript
-cleanup: { policy: 'rescan-clean', projectRoot: dataRoot }
+cleanup: { policy: 'force-rescan' | 'rescan-clean' | 'snapshot-only' }
 projectAnalysis.scan.incremental = false
 ```
 
-`rescan-clean` 不清空 Recipe，而是：
+默认的 `rescan-clean` 不清空 Recipe，而是：
 
 - `snapshotRecipes()` 先快照 consumable Recipe。
 - `rescanClean()` 清理衍生缓存、snapshot、source refs、code entities、guard violations、semantic memories、sessions、audit logs 等。
@@ -250,11 +250,15 @@ Mission Briefing 会包含：
 `runInternalKnowledgeRescanWorkflow()` 在服务端自动执行：
 
 ```text
-runRescanCleanPolicy()
+runRescanCleanPolicy() / runForceRescanCleanPolicy() / snapshotRecipes()
   → syncKnowledgeStoreForRescan()
+  → SourceRefReconciler.reconcile(force)
+  → repairRenames() + applyRepairs()
   → ProjectIntelligenceCapability.run()
+  → RecipeImpactPlanner.plan(incrementalDiff?)
+  → runEvolutionAudit() fire-and-forget
   → auditRecipesForRescan()
-  → buildKnowledgeRescanPlan()
+  → buildKnowledgeRescanPlan(fileDiff?)
   → buildRescanPrescreen()
   → projectInternalRescanGapPlan()
   → cacheProjectAnalysisSession()
@@ -263,7 +267,7 @@ runRescanCleanPolicy()
   → presentInternalKnowledgeRescanResponse()
 ```
 
-它先返回骨架和 gap plan，再后台填充需要执行的维度。
+它先返回骨架和 gap plan，再后台填充需要执行的维度。SourceRef 修复和 impact planning 都在同步响应前完成；Evolution Agent 审计是 fire-and-forget，不阻塞本次 rescan 响应。
 
 ## Recipe 审计与 Gap Plan
 
@@ -273,8 +277,8 @@ runRescanCleanPolicy()
 
 - 旧 Recipe 快照。
 - 当前文件列表。
-- 从 AST 提取的 code entities。
-- 从依赖图提取的 dependency edges。
+- SourceRef / Recipe 文件一致性同步后的知识记录。
+- 内部路径还会结合 `RecipeImpactPlanner` 对增量 diff、source refs 和 lifecycle 状态做覆盖分类。
 
 输出 audit verdict：`healthy`、`watch`、`decay`、`severe`、`dead` 等。
 
@@ -298,9 +302,9 @@ shouldExecute = 有非 manual-request / fully-covered 的原因
 
 1. **coverage-gap**：该维度有效 Recipe 少于目标数量。
 2. **recipe-decay**：该维度有衰退或严重衰退 Recipe。
-3. **file-change**：规划器支持 file diff 输入；当前外部/内部 rescan 主流程尚未把 fileDiff 接入。
+3. **file-change**：内部 rescan 如果拿到 `_incrementalPlan.diff`，会把 `affectedDimensions` 和 changed files 传入 gap plan。
 
-这比旧的“所有维度重新跑”更精细，也比旧的“文件 diff 决定一切”更适合知识库治理。
+这比旧的“所有维度重新跑”更精细，也比旧的“文件 diff 决定一切”更适合知识库治理：文件变化是一个强信号，但最终是否执行仍由 Recipe 健康、覆盖缺口和用户指定维度共同决定。
 
 ## FileDiffPlanner 的位置
 
@@ -310,12 +314,12 @@ shouldExecute = 有非 manual-request / fully-covered 的原因
 - `FileDiffPlanner`：计算 added / modified / deleted / unchanged，推断 affectedDimensions，恢复 SessionStore。
 - `ProjectIntelligenceIncrementalPlanner`：在 `runAllPhases()` Phase 1 后可选评估 incremental plan。
 
-但要注意当前两个生产计划都写了 `incremental: false`：
+但要注意当前两个生产计划默认都写了 `incremental: false`：
 
 - `ColdStartPlan`：冷启动强制 full-reset。
-- `KnowledgeRescanWorkflowPlan`：重扫会保留知识，但项目分析阶段仍全量重建结构化上下文。
+- `KnowledgeRescanWorkflowPlan`：重扫会保留知识，默认仍全量重建结构化上下文；如果底层 ProjectIntelligence 产出了 `_incrementalPlan`，内部 rescan 会继续把 diff 用到 `RecipeImpactPlanner` 和 `buildKnowledgeRescanPlan()`。
 
-因此书里不应再把“增量 Bootstrap”描述为当前默认路径。更准确的说法是：**文件 diff 是可复用能力；当前重扫的增量性主要发生在 Recipe 审计、维度 gap 和执行计划层。**
+因此书里不应再把“增量 Bootstrap”描述为当前默认路径。更准确的说法是：**文件 diff 是可复用能力；当前重扫的增量性主要发生在 Recipe 审计、SourceRef 修复、impact planning、维度 gap 和执行计划层。**
 
 ## 事件与完成
 
@@ -341,16 +345,16 @@ skeleton → filling → completed
 当前拆分的核心取舍是：
 
 1. **冷启动必须干净**：full reset 建立可信基线，避免旧候选、旧图谱、旧向量污染首轮知识库。
-2. **重扫必须保留知识**：Recipe 是人工审核资产，不能因重扫被清空，只能通过 audit、prescreen、evolution 和 gap-fill 治理。
+2. **重扫必须保留知识**：Recipe 是人工审核资产，默认不能因重扫被清空，只能通过 sync、SourceRef reconcile、audit、prescreen、evolution 和 gap-fill 治理；显式 `force-rescan` 才走更强清理。
 3. **项目分析统一**：冷启动和重扫都复用 ProjectIntelligenceCapability，避免两套 AST/图谱/Panorama/Guard 管线漂移。
 4. **AI 执行分流**：内部路径自动跑 AgentService；外部路径返回 Mission Briefing，让 IDE Agent 使用自己的代码阅读能力。
-5. **增量层级明确**：当前默认不是 file-diff incremental scan，而是 knowledge-level rescan。
+5. **增量层级明确**：当前默认不是局部 AST incremental scan，而是 knowledge-level rescan；有 diff 时用于影响评估和执行计划，不直接替代项目结构分析。
 
 ## 小结
 
 当前实现应这样理解：
 
-> **Cold Start = full reset + full project intelligence + dimension execution。Knowledge Rescan = preserve recipes + rescan clean + full project intelligence + relevance audit + gap/evolution execution。**
+> **Cold Start = full reset + full project intelligence + dimension execution。Knowledge Rescan = preserve recipes + rescan clean / snapshot-only + source-ref reconcile + project intelligence + impact / relevance audit + gap/evolution execution。**
 
 冷启动和重扫不再是一个 handler 里的两个分支，而是 `lib/workflows/` 下两套显式工作流，共用 capability、planning、execution、persistence 和 completion 能力。
 
