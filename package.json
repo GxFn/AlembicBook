@@ -6,10 +6,6 @@
   "scripts": {
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
-    "sync:facts": "node scripts/sync-alembic-facts.mjs",
-    "sync:rewrite": "node scripts/rewrite-book-from-facts.mjs",
-    "sync:check": "node scripts/sync-check.mjs",
-    "sync:book": "npm run sync:facts && npm run sync:rewrite && npm run sync:check",
     "illustrations": "node scripts/illustrations-openai.mjs",
     "illustrations:anchor": "node scripts/illustrations-openai.mjs --anchor",
     "illustrations:prompts": "node scripts/illustrations-openai.mjs --export-prompts",
