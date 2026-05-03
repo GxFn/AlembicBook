@@ -513,9 +513,9 @@ Socket.IO 在原生 WebSocket 之上提供三个关键能力：**自动重连**�
 
 ### Dashboard 构建——Vite Dev Server vs 预构建
 
-`alembic ui` 在开发模式下启动 Vite Dev Server（支持 HMR 热更新），生产模式下直接用 Express 托管预构建的 `dist/` 目录。
+`alembic ui` 在开发模式下启动 Vite Dev Server（支持 HMR 热更新），生产模式下直接用 Express 托管预构建产物。这个分支在 `bin/cli.ts` 中检测 Dashboard 源码和构建产物，静态托管逻辑由 `lib/http/HttpServer.ts` 的 `mountDashboard()` 承接。
 
-为什么不总是用预构建？因为 Alembic 的 Dashboard 代码随 npm 包一起分发——`npm install -g alembic` 时已经包含了构建好的 `dashboard/dist/`。但开发者修改 Dashboard 源码时（贡献代码），需要 HMR 的即时反馈。`alembic ui` 自动检测：如果 `dashboard/src/` 存在，启动 Vite Dev Server；否则使用静态文件服务。
+为什么不总是用预构建？因为 Alembic 的 Dashboard 构建产物随 npm 包一起分发，安装后可以直接静态托管；但开发者修改 Dashboard 源码时（贡献代码），需要 HMR 的即时反馈。`alembic ui` 自动检测：如果 `dashboard/src/` 存在，启动 Vite Dev Server；否则使用静态文件服务。
 
 ### 飞书集成的边界
 

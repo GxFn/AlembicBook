@@ -89,23 +89,23 @@ npm run preview
 
 ## 插图生成
 
-每章配有手绘风格架构插图，通过 prompt 文件驱动生成：
+每章配有手绘风格架构插图，通过章节 prompt 和全局 `prompts/style-prompt-suffix.md` 驱动生成。当前不使用 API key，不使用 `style-anchor.png` 作为参考图，而是用当前 Codex / ChatGPT Plus 账号能力执行“两轮生图”：先生成 v1，再由 Codex 根据 v1 调整生成 v2，最后挑选最佳版本替换书内 PNG。`docs/public/images/ch01/01-core-workflow.png` 是期望成图系列示例：
 
 ```bash
 # 查看所有插图状态
 bash scripts/illustrations.sh --list
 
-# 生成缺失的插图
+# 为缺失插图准备 Codex prompt 包
 bash scripts/illustrations.sh
 
-# 重新生成指定章节
+# 为指定章节准备替换重生成 prompt 包
 bash scripts/illustrations.sh --force ch06
 
-# 预览模式
-bash scripts/illustrations.sh --dry-run
+# 预览两轮生图计划
+bash scripts/illustrations.sh --dry-run --force ch06
 ```
 
-Prompt 文件存放在 `prompts/chXX/` 目录，生成的图片输出到 `docs/public/images/chXX/`。
+Prompt 文件存放在 `prompts/chXX/` 目录，脚本导出的完整 prompt 包位于 `tmp/illustration-prompts/`，v1/v2 候选图建议放在 `tmp/illustration-candidates/`，最终图片输出到 `docs/public/images/chXX/`。
 
 ## 目录结构
 
@@ -127,13 +127,14 @@ prompts/
 ├── style-prompt-suffix.md  # 统一风格约束
 └── chXX/                   # 各章插图 prompt
 scripts/
-└── illustrations.sh        # 插图生成工具
+├── illustrations.sh        # 插图工作流入口
+└── illustrations-codex.mjs # Codex 两轮 prompt 工作流
 ```
 
 ## 技术栈
 
 - 静态生成: [VitePress](https://vitepress.dev/)
-- 插图生成: [baoyu-imagine](https://github.com/nicepkg/baoyu-skills) (Gemini)
+- 插图生成: Codex / ChatGPT Plus 两轮生图工作流
 - 托管平台: GitHub Pages
 - 自定义域名: `docs.gaoxuefeng.com`
 - CI/CD: GitHub Actions（push 自动构建部署）

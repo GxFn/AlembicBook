@@ -7,9 +7,8 @@
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
     "verify:alembic": "node scripts/verify-alembic-docs.mjs",
-    "illustrations": "node scripts/illustrations-openai.mjs",
-    "illustrations:anchor": "node scripts/illustrations-openai.mjs --anchor",
-    "illustrations:prompts": "node scripts/illustrations-openai.mjs --export-prompts",
+    "illustrations": "node scripts/illustrations-codex.mjs",
+    "illustrations:prompts": "node scripts/illustrations-codex.mjs --export-prompts",
     "preview": "vitepress preview docs"
   },
   "repository": {

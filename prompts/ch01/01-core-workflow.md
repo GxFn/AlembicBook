@@ -6,7 +6,7 @@ This prompt is optimized for ChatGPT image generation:
 - Use technical identifiers only where they are real implementation names.
 - Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
 - Avoid dense paragraphs inside the image; summarize with short labels.
-- Follow the repository style anchor and the global style suffix.
+- Follow prompts/style-prompt-suffix.md as the canonical style; use docs/public/images/ch01/01-core-workflow.png as the target notebook-family example.
 
 Visible title at top: "Alembic 核心工作流"
 

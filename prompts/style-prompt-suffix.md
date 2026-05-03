@@ -17,5 +17,5 @@ Style constraints (MUST follow strictly):
 - Keep dense information organized: align boxes to invisible rows/columns, avoid crossing arrows where possible, leave breathing room between sections.
 - For ChatGPT image generation, keep visible text concise and avoid tiny tables. If a concept is long, split it into two or three short labels.
 - No 3D rendering, no gradients, no shadows, no glossy UI cards, no stock illustration, no photorealism, no decorative borders, no emoji.
-- Do not imitate the exact reference image content. Use it only as a style direction: hand-drawn whiteboard architecture with colored memory / routing layers.
+- Do not depend on any external reference image or style-anchor.png. This suffix is the canonical style definition; existing images such as docs/public/images/ch01/01-core-workflow.png are examples of the target notebook family.
 - Final image must look like one coherent page from the same technical notebook series.

@@ -1,3 +1,7 @@
+Deprecated: retained only as a historical prompt from the old style-anchor workflow.
+Current generation does not use this prompt or docs/public/images/style-anchor.png.
+Use prompts/style-prompt-suffix.md as the canonical style, and compare outputs with docs/public/images/ch01/01-core-workflow.png.
+
 Create one 1536x1024 landscape whiteboard architecture diagram for AlembicBook.
 
 This prompt is optimized for ChatGPT image generation:
@@ -6,7 +10,7 @@ This prompt is optimized for ChatGPT image generation:
 - Use technical identifiers only where they are real implementation names.
 - Prefer boxes, arrows, numbered dots, database cylinders, document cards, dashed async flows, and a compact legend.
 - Avoid dense paragraphs inside the image; summarize with short labels.
-- Follow the repository style anchor and the global style suffix.
+- Follow prompts/style-prompt-suffix.md as the canonical style.
 
 Visible title at top: "Alembic 风格锚点 — 系统设计白板图"
 

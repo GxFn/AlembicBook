@@ -2,4 +2,4 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-exec node scripts/illustrations-openai.mjs "$@"
+exec node scripts/illustrations-codex.mjs "$@"
