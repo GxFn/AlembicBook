@@ -1,0 +1,1409 @@
+{
+  "version": 1,
+  "alembicRoot": "../Alembic",
+  "chapters": [
+    {
+      "path": "docs/index.md",
+      "type": "index",
+      "title": "Alembic 技术解构",
+      "thesis": "全书以 Alembic 真实代码为事实源，按架构、知识、工作流、Agent、工具和交付界面重新组织。",
+      "anchors": [
+        "README_CN.md",
+        "README.md",
+        "lib/bootstrap.ts",
+        "bin/cli.ts"
+      ],
+      "checkpoints": [
+        "首页不再承担营销叙述，而是说明这本书如何随 Alembic 代码同步。",
+        "所有正文页面都由代码锚点清单和抽取事实重新生成。",
+        "章节路径保持不变，避免 VitePress 侧边栏和外部链接失效。"
+      ],
+      "implementation": [
+        "同步入口是 `npm run sync:book`，依次抽取代码事实、重写 Markdown、校验锚点哈希。",
+        "生成事实落在 `docs/_generated/alembic-facts.json`，方便审阅和后续插图提示词生产。",
+        "每章保留图片引用，但文字由 Alembic 真实源码决定。"
+      ],
+      "gates": [
+        "如果锚点文件缺失，`sync:check` 会失败。",
+        "如果 Alembic HEAD 或锚点哈希变化，book 必须重新生成。"
+      ],
+      "drift": [
+        "README 的能力描述可能比源码更抽象，正文以源码锚点为准。",
+        "新增章节时必须先补 `docs/sync/alembic-code-map.json`。"
+      ]
+    },
+    {
+      "path": "docs/visual-tour.md",
+      "type": "visual-tour",
+      "title": "图解速览",
+      "thesis": "图解页只作为当前插图资产的导航，不重新生成图片，也不替换风格锚点。",
+      "anchors": [
+        "README_CN.md",
+        "lib/bootstrap.ts",
+        "lib/external/mcp/tools.ts"
+      ],
+      "checkpoints": [
+        "所有插图引用从章节配置汇总，避免正文引用过图解页遗漏。",
+        "图片说明文字绑定对应章节的实现主题。",
+        "后续如要批量重绘插图，可从同一份章节配置生成提示词。"
+      ],
+      "implementation": [
+        "脚本扫描每章 `images` 字段生成图解速览。",
+        "图解页不声明额外架构事实，只提供视觉索引。",
+        "不存在的图片不会被自动补写。"
+      ],
+      "gates": [
+        "插图路径必须指向 `docs/public/images` 已存在资产。",
+        "本轮重写不触碰任何图片文件。"
+      ],
+      "drift": [
+        "如果章节新增图片，图解页需要通过 `sync:rewrite` 自动刷新。",
+        "图文逻辑关系的调整应落在章节事实和提示词，而不是只改图解页。"
+      ]
+    },
+    {
+      "path": "docs/part1/ch01-introduction.md",
+      "type": "chapter",
+      "title": "Ch01 Alembic 是什么",
+      "thesis": "Alembic 的核心不是一个搜索工具，而是一套把项目代码、规则、Agent 任务和 IDE 事件持续炼成可消费知识的本地知识引擎。",
+      "images": [
+        {
+          "alt": "Alembic 核心工作流",
+          "src": "/images/ch01/01-core-workflow.png",
+          "caption": "从项目代码到 Recipe、Search、Guard、Agent 与交付界面的主链路。"
+        },
+        {
+          "alt": "Alembic 工程规模数据卡",
+          "src": "/images/ch01/02-engineering-scale.png",
+          "caption": "工程规模只是背景，真正需要追踪的是能力如何分层落到代码。"
+        }
+      ],
+      "anchors": [
+        "README_CN.md",
+        "README.md",
+        "bin/cli.ts",
+        "lib/bootstrap.ts",
+        "lib/cli/SetupService.ts",
+        "lib/cli/KnowledgeSyncService.ts",
+        "lib/service/knowledge/KnowledgeService.ts",
+        "lib/service/search/SearchEngine.ts",
+        "lib/service/guard/GuardService.ts",
+        "lib/agent/service/AgentService.ts"
+      ],
+      "checkpoints": [
+        "CLI 暴露 `setup`、`coldstart`、`rescan`、`evolve-check`、`search`、`guard`、`server`、`ui` 等入口，说明 Alembic 已经是端到端产品形态。",
+        "知识不是单次生成物：Cold Start 生成骨架，Rescan 和文件监听继续驱动增量更新，Evolution 决定 Recipe 是否更新、验证或废弃。",
+        "Search、Guard、Delivery、Agent Runtime 共用同一批 KnowledgeEntry，而不是各自维护孤岛数据。",
+        "Book 的阅读方式应从入口命令追到服务和领域模型，而不是从概念图直接下结论。"
+      ],
+      "implementation": [
+        "`bin/cli.ts` 是用户可见入口，命令动作最终导入服务、MCP handler 或容器初始化逻辑。",
+        "`lib/bootstrap.ts` 组装 ServiceContainer，把 Repository、Service、Agent、MCP、HTTP 等模块接起来。",
+        "`SetupService` 负责创建项目工作区、配置、IDE 集成和本地目录结构，是本地记忆主权的第一落点。",
+        "`KnowledgeService`、`SearchEngine`、`GuardService`、`AgentService` 分别代表知识、检索、合规、Agent 消费面。"
+      ],
+      "gates": [
+        "没有 AI Provider 时不能假装具备 AI 能力，SOUL 与配置层共同约束这种边界。",
+        "写入知识和任务必须经过 Gateway、权限、状态机或 MCP 工具门控。",
+        "冷启动和重扫要区分内部 Agent 执行和外部 IDE Agent 执行，不能混成一个流程。"
+      ],
+      "drift": [
+        "README 里的工具数量、能力名和 CLI 文案会随版本变化，必须以 `tools.ts` 与 `cli.ts` 抽取结果校准。",
+        "V2 Tool System 和 MCP 工具的重命名会影响全书术语。",
+        "Dashboard 展示常比核心服务更晚更新，不应反向推断领域模型。"
+      ]
+    },
+    {
+      "path": "docs/part1/ch02b-privacy-memory.md",
+      "type": "chapter",
+      "title": "Ch02b 本地记忆主权",
+      "thesis": "Alembic 的本地记忆主权不是口号，而是 Setup、PathGuard、CapabilityProbe、Constitution 和 WriteZone 共同构成的写入边界。",
+      "anchors": [
+        "lib/cli/SetupService.ts",
+        "lib/shared/ProjectMarkers.ts",
+        "lib/shared/PathGuard.ts",
+        "lib/core/permission/PermissionManager.ts",
+        "lib/core/capability/CapabilityProbe.ts",
+        "lib/infrastructure/io/WriteZone.ts",
+        "lib/infrastructure/config/Paths.ts",
+        "templates/constitution.yaml"
+      ],
+      "checkpoints": [
+        "项目知识默认落在本地 `.asd` 工作区或 Ghost 外置工作区，先解决数据归属，再开放 Agent 能力。",
+        "`CapabilityProbe` 把物理能力探测和角色授权拆开，避免把能写磁盘误当成被允许写。",
+        "`PathGuard` 与 `WriteZone` 把写入限制落到路径级别，减少外部 Agent 误写项目文件的风险。",
+        "Constitution YAML 让角色、能力和策略可审计，而不是散落在业务判断里。"
+      ],
+      "implementation": [
+        "`SetupService` 创建目录、配置、IDE 集成和 recipes 子仓库入口。",
+        "`ProjectMarkers` 解析项目根、子仓库和 Alembic 工作区位置。",
+        "`PermissionManager` 解释角色和 action/resource 的授权。",
+        "`WriteZone` 为文件写入提供集中边界，配合 `PathGuard` 做路径规范化。"
+      ],
+      "gates": [
+        "子仓库 Git 权限只是 capability，最终裁决权仍在 Constitution 和 PermissionManager。",
+        "外部 Agent 写入必须经过明确工具和资源授权，不能直接绕过本地路径规则。",
+        "Ghost 模式降低项目侵入，但也要求所有相对路径解析都走工作区解析器。"
+      ],
+      "drift": [
+        "目录名、Ghost 模式路径和 recipes 子仓库策略容易在 SetupService 中演进。",
+        "新写入工具如果绕开 `WriteZone`，本章需要立即标红。",
+        "Constitution 模板字段变化会影响权限章节和配置附录。"
+      ]
+    },
+    {
+      "path": "docs/part1/ch02-soul.md",
+      "type": "chapter",
+      "title": "Ch02 SOUL 原则",
+      "thesis": "SOUL 是 Alembic 的工程宪章：诚实表达能力边界、保持本地优先、把不确定性显式上交给用户或 Agent 审核。",
+      "images": [
+        {
+          "alt": "SOUL 身份宪章结构图",
+          "src": "/images/ch02/01-soul-charter.png",
+          "caption": "原则、角色、能力探测和执行门控之间的关系。"
+        }
+      ],
+      "anchors": [
+        "SOUL.md",
+        "lib/core/constitution/Constitution.ts",
+        "lib/core/constitution/ConstitutionValidator.ts",
+        "templates/constitution.yaml",
+        "lib/core/permission/PermissionManager.ts",
+        "lib/http/middleware/roleResolver.ts",
+        "lib/external/ai/guard/ParameterGuard.ts"
+      ],
+      "checkpoints": [
+        "SOUL 要求 Alembic 不伪装能力：没有 Provider、权限、上下文或证据时，系统必须承认边界。",
+        "Constitution 把角色、资源、动作和 capability 写成可验证规则。",
+        "HTTP roleResolver、MCP Gateway 和 CLI 设置共同把原则落实到运行时。",
+        "不确定性不是失败，而是进入审核、观察窗口或内部 Agent 的触发条件。"
+      ],
+      "implementation": [
+        "`Constitution.ts` 与 `ConstitutionValidator.ts` 负责加载和验证宪章结构。",
+        "`PermissionManager` 将 action/resource 和角色能力映射到允许或拒绝。",
+        "`ParameterGuard` 约束 AI Provider 参数，防止超出模型能力或配置边界。",
+        "`roleResolver` 把请求侧身份变成权限决策输入。"
+      ],
+      "gates": [
+        "权限拒绝应早于业务执行。",
+        "AI 参数、Provider 可用性和模型能力要在调用前校验。",
+        "外部请求不能靠前端角色声明直接获得写权限。"
+      ],
+      "drift": [
+        "SOUL 文档可能更新原则措辞，代码侧 Constitution 字段也可能扩展。",
+        "新增 Provider 或 Agent profile 时，需要检查是否仍遵守不伪装能力的约束。",
+        "权限 action 命名变化会影响 MCP 附录和安全章节。"
+      ]
+    },
+    {
+      "path": "docs/part2/ch03-architecture.md",
+      "type": "chapter",
+      "title": "Ch03 架构全景",
+      "thesis": "Alembic 的架构主干是容器化装配：领域模型保持相对纯净，服务层承接业务编排，外部接口通过 CLI、HTTP、MCP、Dashboard 和 VSCode 进入同一组服务。",
+      "images": [
+        {
+          "alt": "Alembic 七层分层架构图",
+          "src": "/images/ch03/01-seven-layer-architecture.png",
+          "caption": "从 CLI/IDE/MCP 到 Agent、Service、Domain、Repository、Infrastructure 的装配关系。"
+        }
+      ],
+      "anchors": [
+        "lib/bootstrap.ts",
+        "lib/injection/ServiceContainer.ts",
+        "lib/injection/ServiceMap.ts",
+        "lib/injection/modules/AppModule.ts",
+        "lib/injection/modules/InfraModule.ts",
+        "lib/injection/modules/KnowledgeModule.ts",
+        "lib/injection/modules/AgentModule.ts",
+        "lib/injection/modules/GuardModule.ts",
+        "lib/injection/modules/SignalModule.ts",
+        "lib/injection/modules/VectorModule.ts"
+      ],
+      "checkpoints": [
+        "ServiceContainer 是全局装配事实源，章节中的分层必须从模块注册关系反推。",
+        "Agent、Tool V2、MCP capability、workflow 不是旁路能力，而是在 AgentModule 和外部接口中统一接入。",
+        "Repository 与 Infrastructure 被容器注入，业务服务不应手动 new 数据库连接。",
+        "HTTP、MCP、CLI 可以有不同 presentation，但不应复制核心业务逻辑。"
+      ],
+      "implementation": [
+        "`bootstrap.ts` 负责初始化容器、加载配置、注册模块和订阅关键服务。",
+        "`ServiceMap.ts` 给容器 key 提供类型映射。",
+        "各个 `modules/*.ts` 文件按领域注册 singleton/factory，决定实际依赖图。",
+        "AgentModule 同时接入 V2CapabilityCatalog、MCP tool capability projection 和 runtime builder。"
+      ],
+      "gates": [
+        "新增跨层依赖应先进入容器模块，而不是在 handler 内部偷偷构造。",
+        "外部接口只能依赖容器公开服务，避免绕过权限和审计。",
+        "可选能力必须有清晰 fallback 或显式失败。"
+      ],
+      "drift": [
+        "模块拆分和服务 key 变化会影响整本书的架构图。",
+        "旧兼容目录被测试防回归，书中不能继续引用已退休路径。",
+        "MCP tool 和 V2 internal tool 的边界仍在演进，需要经常核对 AgentModule。"
+      ]
+    },
+    {
+      "path": "docs/part2/ch04-security.md",
+      "type": "chapter",
+      "title": "Ch04 安全管线",
+      "thesis": "Alembic 的安全不是单点权限检查，而是角色解析、Constitution、Gateway、PathGuard、WriteZone、Sandbox 和审计共同组成的多级管线。",
+      "images": [
+        {
+          "alt": "Guard 六层安全链路",
+          "src": "/images/ch04/01-six-layer-security.png",
+          "caption": "从身份、资源、路径、沙箱、审计到不确定性上报的防线。"
+        }
+      ],
+      "anchors": [
+        "lib/core/constitution/Constitution.ts",
+        "lib/core/permission/PermissionManager.ts",
+        "lib/core/gateway/Gateway.ts",
+        "lib/core/gateway/GatewayActionRegistry.ts",
+        "lib/shared/PathGuard.ts",
+        "lib/infrastructure/io/WriteZone.ts",
+        "lib/sandbox/SandboxPolicy.ts",
+        "lib/sandbox/SandboxExecutor.ts",
+        "lib/external/mcp/autoApproveInjector.ts",
+        "lib/http/middleware/roleResolver.ts",
+        "lib/infrastructure/audit/AuditLogger.ts"
+      ],
+      "checkpoints": [
+        "安全管线先判断身份与 action/resource，再判断路径、写区、沙箱和审计。",
+        "MCP write tools 使用 Gateway 映射，读工具或 resolver 分支可以绕开写权限但仍应保留输入校验。",
+        "Tool forging 和终端执行必须走 sandbox/policy，不属于普通业务服务可直接调用的自由能力。",
+        "审计日志是事后追责和异常告警的基础，不等同于前置授权。"
+      ],
+      "implementation": [
+        "`Gateway.ts` 和 `GatewayActionRegistry.ts` 为 action/resource 提供统一检查入口。",
+        "`autoApproveInjector.ts` 根据 MCP 工具声明和权限策略注入自动批准信息。",
+        "`SandboxPolicy`、`SandboxExecutor` 和 Seatbelt profile 把动态工具与终端能力限定在可控环境。",
+        "`AuditLogger` 记录关键写操作，支撑 Dashboard 和运维排查。"
+      ],
+      "gates": [
+        "权限通过不代表路径可写，路径可写也不代表 sandbox 允许执行。",
+        "外部 Agent 的自动批准只适用于声明清晰、风险可控的工具。",
+        "安全失败应返回明确错误，而不是静默降级成成功。"
+      ],
+      "drift": [
+        "Gateway action/resource 命名变化会影响 MCP 工具清单。",
+        "终端工具 V2 policy 和 SandboxPolicy 可能继续细分，需要同步附录。",
+        "新增 Dashboard 操作如果直接写数据，必须补齐审计和权限链。"
+      ]
+    },
+    {
+      "path": "docs/part2/ch05-ast.md",
+      "type": "chapter",
+      "title": "Ch05 代码理解与 Project Intelligence",
+      "thesis": "Alembic 的代码理解从 tree-sitter AST 出发，继续汇合调用图、导入解析、文件 diff 和项目智能快照，为 Recipe、Rescan、Guard 和 Evolution 提供结构事实。",
+      "images": [
+        {
+          "alt": "Alembic 结构分析链",
+          "src": "/images/ch05/01-structural-analysis-chain.png",
+          "caption": "语言语法包、AST、调用图、ProjectSnapshot 和增量 planner 的数据链。"
+        }
+      ],
+      "anchors": [
+        "lib/core/AstAnalyzer.ts",
+        "lib/core/ast/ProjectGraph.ts",
+        "lib/core/ast/parser-init.ts",
+        "lib/core/ast/lang-typescript.ts",
+        "lib/core/ast/lang-python.ts",
+        "lib/core/analysis/CallGraphAnalyzer.ts",
+        "lib/core/analysis/ImportPathResolver.ts",
+        "lib/core/analysis/SymbolTableBuilder.ts",
+        "lib/workflows/capabilities/project-intelligence/ProjectIntelligenceCapability.ts",
+        "lib/workflows/capabilities/project-intelligence/ProjectIntelligenceIncrementalPlanner.ts",
+        "lib/workflows/capabilities/project-intelligence/FileDiffPlanner.ts",
+        "lib/types/project-snapshot.ts"
+      ],
+      "checkpoints": [
+        "AST 层负责结构事实，不直接决定 Recipe 是否入库。",
+        "ProjectIntelligence 将 AST、语言、文件和 diff 结果投影成工作流可消费的快照。",
+        "增量扫描不是重新跑全量冷启动，而是基于文件 diff 和 snapshot 判断需要重算的维度。",
+        "语言包数量、ProjectSnapshot 字段和 ProjectIntelligence 输出是本章最重要的同步点。"
+      ],
+      "implementation": [
+        "`AstAnalyzer` 初始化 parser 并分发到语言适配器。",
+        "`CallGraphAnalyzer`、`ImportPathResolver`、`SymbolTableBuilder` 补足跨文件关系。",
+        "`ProjectIntelligenceCapability` 和 `ProjectIntelligenceRunner` 封装工作流侧可复用能力。",
+        "`ProjectIntelligenceIncrementalPlanner` 根据文件变化决定增量范围。"
+      ],
+      "gates": [
+        "缺失语法包或解析失败时，应把能力边界上交，而不是制造伪结构。",
+        "ProjectSnapshot 的字段必须能回溯到文件和符号来源。",
+        "增量 planner 不能因为局部 diff 就删除全局知识。"
+      ],
+      "drift": [
+        "新增语言适配器会改变本章的语法包列表。",
+        "ProjectSnapshot 类型变化会影响 Cold Start、Rescan 和 Book 图解。",
+        "文件 diff planner 的策略直接影响 VSCode 监听章节。"
+      ]
+    },
+    {
+      "path": "docs/part3/ch06-knowledge-entry.md",
+      "type": "chapter",
+      "title": "Ch06 KnowledgeEntry 与入库链路",
+      "thesis": "KnowledgeEntry V3 把规则、模式、事实统一进一个实体，入库链路由字段规范、统一校验、质量准备度、相似度和置信度路由共同控制。",
+      "images": [
+        {
+          "alt": "继承体系 vs 统一实体",
+          "src": "/images/ch06/02-inheritance-vs-unified.png",
+          "caption": "从多继承类型到统一 KnowledgeEntry 的领域建模取舍。"
+        },
+        {
+          "alt": "KnowledgeEntry V3 字段全景",
+          "src": "/images/ch06/01-v3-field-overview.png",
+          "caption": "字段、内容、质量、关系、约束、统计和 sourceRefs 的结构。"
+        },
+        {
+          "alt": "Candidate 到 Recipe 审核流程",
+          "src": "/images/ch06/03-candidate-to-recipe.png",
+          "caption": "候选、V3 校验、相似度去重、ConfidenceRouter 与入库状态的主流程。"
+        }
+      ],
+      "anchors": [
+        "lib/domain/knowledge/KnowledgeEntry.ts",
+        "lib/domain/knowledge/FieldSpec.ts",
+        "lib/domain/knowledge/UnifiedValidator.ts",
+        "lib/domain/knowledge/StyleGuide.ts",
+        "lib/domain/knowledge/RecipeReadinessChecker.ts",
+        "lib/domain/knowledge/values/Content.ts",
+        "lib/domain/knowledge/values/Quality.ts",
+        "lib/domain/knowledge/values/Relations.ts",
+        "lib/service/knowledge/RecipeProductionGateway.ts",
+        "lib/service/knowledge/ConfidenceRouter.ts",
+        "lib/service/knowledge/SourceRefReconciler.ts",
+        "lib/repository/knowledge/KnowledgeRepository.impl.ts",
+        "lib/repository/sourceref/RecipeSourceRefRepository.ts",
+        "lib/external/mcp/handlers/knowledge.ts",
+        "lib/external/mcp/handlers/candidate.ts"
+      ],
+      "checkpoints": [
+        "入库链路的中心不是 `knowledge.submit` 文案，而是 `RecipeProductionGateway` 到 `ConfidenceRouter` 的真实分支。",
+        "V3 字段校验和 StyleGuide 控制 Recipe 的结构质量，ReadinessChecker 判断是否足够发布。",
+        "SourceRefReconciler 与 RecipeSourceRefRepository 让 Recipe 可以回到代码证据。",
+        "相似度和置信度决定 pending、staging、active 或转交 consolidate。"
+      ],
+      "implementation": [
+        "`KnowledgeEntry.ts` 定义统一实体，values 目录拆分内容、质量、关系、约束、统计。",
+        "`UnifiedValidator` 和 `FieldSpec` 负责结构合法性。",
+        "`RecipeProductionGateway` 汇合候选、去重、相似度和路由结果。",
+        "`ConfidenceRouter` 把质量、相似度和证据转为入库状态和下一步动作。"
+      ],
+      "gates": [
+        "结构校验失败不能进入 Recipe 仓库。",
+        "相似度过高或关联 Recipe 过多时，工程逻辑不应硬合并，而应转交 consolidation。",
+        "sourceRefs 缺失会降低可追溯性，应进入质量或审核问题。"
+      ],
+      "drift": [
+        "KnowledgeEntry 字段新增或重命名会影响插图、入库章节和 MCP schema。",
+        "ConfidenceRouter 阈值变化会改变候选晋升路径。",
+        "consolidate 工具和内部 Agent 流程的职责边界仍在演进。"
+      ]
+    },
+    {
+      "path": "docs/part3/ch07-lifecycle.md",
+      "type": "chapter",
+      "title": "Ch07 生命周期与进化提案",
+      "thesis": "Alembic 的进化链路已经从定时衰退转为信号驱动：文件变化、重扫、外部 Agent、内部 Agent 和 MCP 写入工具都进入统一的 EvolutionGateway 与 ProposalExecutor。",
+      "images": [
+        {
+          "alt": "六态生命周期状态机",
+          "src": "/images/ch07/01-six-state-lifecycle.png",
+          "caption": "pending、staging、active、evolving、decaying、deprecated 的合法转移。"
+        },
+        {
+          "alt": "进化提案机制",
+          "src": "/images/ch07/02-evolution-proposal-flow.png",
+          "caption": "valid、update、deprecate 决策进入 Gateway、Proposal 和执行器的分叉。"
+        },
+        {
+          "alt": "DecayDetector 四维衰退评分",
+          "src": "/images/ch07/03-decay-scoring-model.png",
+          "caption": "衰退证据、恢复证据和观察窗口的评分模型。"
+        },
+        {
+          "alt": "Diff-Based 文件变更影响分析",
+          "src": "/images/ch07/04-diff-based-impact-analysis.png",
+          "caption": "VSCode 文件监听、diff planner、sourceRefs 和 impact level 的关系。"
+        },
+        {
+          "alt": "知识进化全链路数据流",
+          "src": "/images/ch07/05-full-dataflow-pipeline.png",
+          "caption": "从文件变化到增量扫描、Agent 提交、提案执行和生命周期事件的闭环。"
+        },
+        {
+          "alt": "新建候选的晋升之路",
+          "src": "/images/ch07/06-scenario-promotion-path.png",
+          "caption": "候选从 pending/staging 进入可消费状态的场景。"
+        },
+        {
+          "alt": "重构导致的自然衰退",
+          "src": "/images/ch07/07-scenario-natural-decay.png",
+          "caption": "源代码变更如何让已有 Recipe 进入衰退观察。"
+        },
+        {
+          "alt": "Agent 驱动的知识更新",
+          "src": "/images/ch07/08-scenario-agent-update.png",
+          "caption": "Agent evidence 与 suggestedChanges 如何升级已有提案。"
+        },
+        {
+          "alt": "提交时的重复拦截",
+          "src": "/images/ch07/09-scenario-duplicate-intercept.png",
+          "caption": "相似 Recipe、重复候选和 consolidate 的判断边界。"
+        },
+        {
+          "alt": "文件修改触发的实时进化审视",
+          "src": "/images/ch07/10-scenario-realtime-evolution.png",
+          "caption": "IDE 保存、Git diff、工作区扫描和 popup 的实时路径。"
+        }
+      ],
+      "anchors": [
+        "lib/domain/knowledge/Lifecycle.ts",
+        "lib/domain/evolution/EvolutionPolicy.ts",
+        "lib/domain/evolution/RecipeSimilarity.ts",
+        "lib/repository/evolution/ProposalRepository.ts",
+        "lib/repository/evolution/LifecycleEventRepository.ts",
+        "lib/repository/evolution/WarningRepository.ts",
+        "lib/service/evolution/EvolutionGateway.ts",
+        "lib/service/evolution/ProposalExecutor.ts",
+        "lib/service/evolution/ContentPatcher.ts",
+        "lib/service/evolution/LifecycleStateMachine.ts",
+        "lib/service/evolution/FileChangeHandler.ts",
+        "lib/service/evolution/ContentImpactAnalyzer.ts",
+        "lib/service/evolution/RecipeImpactPlanner.ts",
+        "lib/service/evolution/ConsolidationAdvisor.ts",
+        "lib/service/evolution/DecayDetector.ts",
+        "lib/service/evolution/RedundancyAnalyzer.ts",
+        "lib/service/evolution/EnhancementSuggester.ts",
+        "lib/service/evolution/StagingManager.ts",
+        "lib/workflows/capabilities/planning/knowledge/EvolutionPrescreen.ts",
+        "lib/workflows/capabilities/planning/knowledge/KnowledgeRescanPlanner.ts",
+        "lib/workflows/knowledge-rescan/internal/InternalKnowledgeRescanWorkflow.ts",
+        "lib/workflows/knowledge-rescan/external/ExternalKnowledgeRescanWorkflow.ts",
+        "lib/external/mcp/handlers/evolve-external.ts",
+        "lib/external/mcp/handlers/consolidate.ts",
+        "lib/external/mcp/handlers/consolidated.ts",
+        "lib/http/routes/file-changes.ts",
+        "lib/http/routes/evolution.ts",
+        "resources/vscode-ext/src/FileChangeCollector.ts",
+        "resources/vscode-ext/src/extension.ts"
+      ],
+      "checkpoints": [
+        "`Lifecycle.ts` 定义六态和合法转移，StateMachine 是状态变化唯一权威。",
+        "`EvolutionGateway.submit()` 的动作只有 `valid`、`update`、`deprecate`：valid 更新 `lastVerifiedAt`，update 创建提案，deprecate 根据 policy 立即执行或创建提案。",
+        "deprecate 立即执行条件是高置信且非 metabolism 来源；Guard 拒绝立即执行时会降级为 Proposal。",
+        "`ProposalExecutor` 订阅 guard、search、decay、quality、usage、lifecycle 信号，只自动评估 observing proposal。",
+        "VSCode extension 只采集文件变化和弹窗，不直接理解 Recipe；未处理变化交给服务端增量扫描和 evolution 统一处理。",
+        "Agent 提交带 suggestedChanges 的 evidence 可以升级已有无变更内容的提案。"
+      ],
+      "implementation": [
+        "`FileChangeCollector` 合并 IDE rename/save/delete/create、Git HEAD Diff 和 Working Tree Diff，3 秒 flush 到 `/api/v1/file-changes`。",
+        "`file-changes` route 进入 `FileChangeHandler`，由 ContentImpactAnalyzer 和 RecipeImpactPlanner 判断 direct、pattern、related 等影响。",
+        "`KnowledgeRescanPlanner` 和 `EvolutionPrescreen` 在增量扫描阶段筛出需要验证、更新、废弃或交给 Agent 的目标。",
+        "`evolve-external.ts` 把外部 IDE Agent 的 `alembic_evolve` 决策提交到 EvolutionGateway。",
+        "`consolidated.ts` 和 `consolidate.ts` 覆盖提交知识、演化和语义合并的 MCP 尾追溯写入协议。",
+        "`ContentPatcher` 只应用白名单字段和可解析 suggestedChanges，避免 Agent 文本随意覆盖 Recipe。"
+      ],
+      "gates": [
+        "ProposalRepository 会去重同一 target 和 type 的活跃提案。",
+        "update 提案初始是否 observing 由置信度阈值决定；pending 需要人工、Dashboard 或手动执行推动。",
+        "source_modified 且 direct/pattern 的信号会让 deprecate 提案被视为恢复证据并拒绝。",
+        "ContentPatcher 只能改 coreCode、doClause、dontClause、whenClause、content、sourceRefs、headers 等白名单字段。",
+        "碎片化或关联 Recipe 过多时，工程逻辑不硬判，应通过 consolidate 或内部 Agent 处理。"
+      ],
+      "drift": [
+        "内外部 Agent 的进化入口命名、schema 字段和 handler 参数容易漂移。",
+        "Proposal 状态、观察窗口、阈值和 `expiresAt` 语义已经变化过，必须以代码为准。",
+        "VSCode 文件监听新增信号源时，图解和信号附录都要同步。",
+        "内部 V2 `knowledge.manage` 和外部 MCP `alembic_evolve` 的字段边界需要持续核查。"
+      ]
+    },
+    {
+      "path": "docs/part3/ch08-quality.md",
+      "type": "chapter",
+      "title": "Ch08 质量评分与维度框架",
+      "thesis": "质量不是单独的分数，而是 V3 字段、25 维知识框架、Readiness、ConfidenceRouter 和反馈信号共同给出的入库与进化依据。",
+      "images": [
+        {
+          "alt": "25 维分类框架层级结构",
+          "src": "/images/ch08/01-dimension-framework-layers.png",
+          "caption": "统一维度、SOP、文案和实际打标逻辑之间的关系。"
+        },
+        {
+          "alt": "ConfidenceRouter 六阶段管线",
+          "src": "/images/ch08/02-confidence-router-pipeline.png",
+          "caption": "候选质量、相似度、证据、路由和生命周期初始状态的判断。"
+        }
+      ],
+      "anchors": [
+        "lib/domain/dimension/DimensionRegistry.ts",
+        "lib/domain/dimension/UnifiedDimension.ts",
+        "lib/domain/dimension/DimensionSop.ts",
+        "lib/domain/dimension/DimensionCopy.ts",
+        "lib/domain/knowledge/values/Quality.ts",
+        "lib/domain/knowledge/RecipeReadinessChecker.ts",
+        "lib/service/quality/QualityScorer.ts",
+        "lib/service/quality/FeedbackCollector.ts",
+        "lib/service/knowledge/ConfidenceRouter.ts",
+        "lib/service/knowledge/RecipeProductionGateway.ts",
+        "lib/workflows/capabilities/planning/dimensions/BaseDimensions.ts",
+        "lib/workflows/capabilities/planning/dimensions/bootstrapDimensionConfigs.ts",
+        "dashboard/src/constants/index.ts"
+      ],
+      "checkpoints": [
+        "维度框架既服务 Cold Start，也服务 UI 展示、候选打标和质量分析。",
+        "ConfidenceRouter 是入库状态分叉的核心，不能只在知识章节轻描淡写。",
+        "QualityScorer 和 FeedbackCollector 让运行后反馈回到质量判断。",
+        "DimensionSop 定义跨维度边界，避免同一 Recipe 被错误归类。"
+      ],
+      "implementation": [
+        "`DimensionRegistry`、`UnifiedDimension` 和 `DimensionSop` 定义维度集合、层级和边界。",
+        "`bootstrapDimensionConfigs` 把维度用于工作流计划和 Agent 任务拆分。",
+        "`QualityScorer` 计算知识质量，`FeedbackCollector` 汇总使用反馈。",
+        "`ConfidenceRouter` 将质量结果和相似度、证据一起转成 lifecycle。"
+      ],
+      "gates": [
+        "低质量候选不能直接 active。",
+        "跨维度边界不清时，应进入审核或补全，而不是强行打一个主维度。",
+        "反馈信号只能作为证据之一，不能绕过结构校验。"
+      ],
+      "drift": [
+        "维度数量从 11 到 25 的演进会影响旧章节和插图。",
+        "Dashboard i18n 和后端维度注册可能不同步。",
+        "ConfidenceRouter 阈值变化会影响 ch06 和 ch07 的入库/进化描述。"
+      ]
+    },
+    {
+      "path": "docs/part4/ch09-bootstrap.md",
+      "type": "chapter",
+      "title": "Ch09 Bootstrap 与 Rescan 工作流",
+      "thesis": "Bootstrap 负责建立第一版知识骨架，Rescan 负责在项目变化后保留 Recipe 并增量验证、补全和进化；两者共享工作流能力，但内外部 Agent 执行路径不同。",
+      "images": [
+        {
+          "alt": "Cold Start 与 Rescan 工作流关系",
+          "src": "/images/ch09/01-dual-path-architecture.png",
+          "caption": "内部 Agent、外部 Agent、维度计划、Project Intelligence 和候选持久化的双路径。"
+        },
+        {
+          "alt": "Rescan 内部治理链路",
+          "src": "/images/ch09/02-rescan-internal-governance.png",
+          "caption": "增量扫描如何进入 evidence、prescreen、evolution 和报告。"
+        }
+      ],
+      "anchors": [
+        "lib/workflows/cold-start/ColdStartPlan.ts",
+        "lib/workflows/cold-start/ColdStartPresenters.ts",
+        "lib/workflows/cold-start/internal/InternalColdStartWorkflow.ts",
+        "lib/workflows/cold-start/external/ExternalColdStartWorkflow.ts",
+        "lib/workflows/knowledge-rescan/KnowledgeRescanWorkflowPlan.ts",
+        "lib/workflows/knowledge-rescan/internal/InternalKnowledgeRescanWorkflow.ts",
+        "lib/workflows/knowledge-rescan/external/ExternalKnowledgeRescanWorkflow.ts",
+        "lib/workflows/capabilities/planning/dimensions/TierScheduler.ts",
+        "lib/workflows/capabilities/planning/dimensions/bootstrapDimensionConfigs.ts",
+        "lib/workflows/capabilities/planning/knowledge/KnowledgeRescanPlanner.ts",
+        "lib/workflows/capabilities/planning/knowledge/EvolutionPrescreen.ts",
+        "lib/workflows/capabilities/execution/internal-agent/InternalDimensionExecutionPipeline.ts",
+        "lib/workflows/capabilities/execution/external/ExternalMissionWorkflow.ts",
+        "lib/external/mcp/handlers/bootstrap-internal.ts",
+        "lib/external/mcp/handlers/bootstrap-external.ts",
+        "lib/external/mcp/handlers/rescan-internal.ts",
+        "lib/external/mcp/handlers/rescan-external.ts",
+        "lib/repository/bootstrap/BootstrapRepository.ts",
+        "lib/service/bootstrap/BootstrapTaskManager.ts"
+      ],
+      "checkpoints": [
+        "Cold Start 不是一次性 AI 文本生成，而是文件收集、AST、SPM/项目识别、Guard、维度计划和 Agent 填充的工作流。",
+        "Rescan 的关键是保留 Recipe，同时对代码变化、缺口、重复和衰退做增量治理。",
+        "内部 Agent 可以由 runtime 直接执行维度任务；外部 IDE Agent 通过 MCP briefing、任务和提交工具协作。",
+        "Workflow 报告、checkpoint 和 Dashboard 进度是可恢复性的基础。"
+      ],
+      "implementation": [
+        "`ColdStartPlan` 和 Presenters 定义用户可见阶段。",
+        "`InternalColdStartWorkflow` 调用内部 Agent 维度执行管线。",
+        "`ExternalColdStartWorkflow` 生成外部 Agent 任务说明和提交入口。",
+        "`KnowledgeRescanPlanner` 汇合 Project Intelligence、现有 Recipe、evidence 和 EvolutionPrescreen。",
+        "`BootstrapTaskManager` 与 repository 持久化任务状态和进度。"
+      ],
+      "gates": [
+        "外部 workflow 不应直接写入最终知识，必须通过 MCP submit/dimension_complete/evolve 等工具回传。",
+        "Rescan 不能清空用户知识，只能清理派生数据并提出更新或废弃建议。",
+        "checkpoint 恢复必须保证维度状态和候选提交幂等。"
+      ],
+      "drift": [
+        "内部/外部 workflow 文件拆分频繁，旧章节里的 common-capabilities 路径已不可靠。",
+        "维度层级和调度策略会随 BaseDimensions 变化。",
+        "Rescan 与 Evolution 的边界需要持续对齐 ch07。"
+      ]
+    },
+    {
+      "path": "docs/part4/ch10-guard.md",
+      "type": "chapter",
+      "title": "Ch10 Guard 合规引擎",
+      "thesis": "Guard 是 Alembic 的正向免疫系统：它把 Recipe 规则应用到代码，结合行级、代码级、AST、跨文件和反向验证，输出 pass、violation 或 uncertain。",
+      "images": [
+        {
+          "alt": "Guard 四层检测架构图",
+          "src": "/images/ch10/01-four-layer-detection.png",
+          "caption": "从规则召回到多层检查、ReverseGuard、覆盖率和不确定性收集。"
+        }
+      ],
+      "anchors": [
+        "lib/service/guard/GuardService.ts",
+        "lib/service/guard/GuardCheckEngine.ts",
+        "lib/service/guard/GuardCodeChecks.ts",
+        "lib/service/guard/GuardCrossFileChecks.ts",
+        "lib/service/guard/ReverseGuard.ts",
+        "lib/service/guard/UncertaintyCollector.ts",
+        "lib/service/guard/CoverageAnalyzer.ts",
+        "lib/service/guard/ComplianceReporter.ts",
+        "lib/service/guard/ViolationsStore.ts",
+        "lib/service/guard/RuleLearner.ts",
+        "lib/repository/guard/GuardViolationRepository.ts",
+        "lib/http/routes/guard.ts",
+        "lib/http/routes/guardRules.ts",
+        "lib/external/mcp/handlers/guard.ts"
+      ],
+      "checkpoints": [
+        "Guard 不只是 regex 检查，核心是多层检查和不确定性上报。",
+        "ReverseGuard 反向验证 Recipe 引用的 API/符号是否仍存在，是 evolution 的重要证据来源。",
+        "CoverageAnalyzer 和 ComplianceReporter 把单次检查提升为项目级质量报告。",
+        "RuleLearner 用 TP/FP/FN 反馈规则质量，可能触发衰退审查。"
+      ],
+      "implementation": [
+        "`GuardService` 编排规则召回、文件收集、检查引擎和报告。",
+        "`GuardCheckEngine` 分派 line/code/ast/cross-file 检查。",
+        "`ReverseGuard` 处理 Recipe 到代码符号的反向健康检查。",
+        "`UncertaintyCollector` 记录无法确定的判断，避免误报成确定违规。",
+        "HTTP route 与 MCP handler 只是入口，核心逻辑在 service 层。"
+      ],
+      "gates": [
+        "代码模式无法稳定解析时应返回 uncertain。",
+        "Guard 写操作和文件模式检查要经过 Gateway 权限。",
+        "修复反馈不能直接删除 Recipe，只能成为质量和进化证据。"
+      ],
+      "drift": [
+        "检查层数量和名称可能变化，插图需要随 GuardCheckEngine 更新。",
+        "ReverseGuard 与 FileChangeHandler 的证据语义要和 ch07 保持一致。",
+        "Dashboard GuardView 展示字段可能滞后于报告结构。"
+      ]
+    },
+    {
+      "path": "docs/part4/ch11-search.md",
+      "type": "chapter",
+      "title": "Ch11 Search 混合检索",
+      "thesis": "Search 是 Alembic 的知识召回层：关键词、BM25、语义、上下文增强、多信号排序和 rerank 被组合成不同查询模式。",
+      "images": [
+        {
+          "alt": "搜索系统全景图",
+          "src": "/images/ch11/01-search-pipeline.png",
+          "caption": "query、BM25、semantic、hybrid、ranker、reranker 和结果分组的管线。"
+        },
+        {
+          "alt": "查询路由与自适应 Alpha",
+          "src": "/images/ch11/02-confidence-gate.png",
+          "caption": "根据 query 类型和上下文信号调整检索策略与融合权重。"
+        }
+      ],
+      "anchors": [
+        "lib/service/search/SearchEngine.ts",
+        "lib/service/search/SearchTypes.ts",
+        "lib/service/search/BM25Scorer.ts",
+        "lib/service/search/FieldWeightedScorer.ts",
+        "lib/service/search/MultiSignalRanker.ts",
+        "lib/service/search/HybridRetriever.ts",
+        "lib/service/search/CrossEncoderReranker.ts",
+        "lib/service/search/contextBoost.ts",
+        "lib/service/search/tokenizer.ts",
+        "lib/repository/search/SearchRepoAdapter.ts",
+        "lib/service/vector/VectorService.ts",
+        "lib/external/mcp/handlers/search.ts",
+        "lib/http/routes/search.ts"
+      ],
+      "checkpoints": [
+        "Search 暴露 auto、keyword、bm25、semantic、context 等模式，工具描述必须与 SearchEngine 实现同步。",
+        "BM25 和字段权重解决文本匹配，VectorService 解决语义召回，MultiSignalRanker 负责融合。",
+        "上下文增强会把当前文件、目标、命中记录和生命周期状态纳入排序。",
+        "Search 结果是 Guard、Agent 和用户问答共同消费的入口。"
+      ],
+      "implementation": [
+        "`SearchEngine` 解析请求并选择检索路径。",
+        "`BM25Scorer`、`FieldWeightedScorer` 和 tokenizer 负责文本分数。",
+        "`HybridRetriever` 调用向量服务并融合候选。",
+        "`CrossEncoderReranker` 在可用时提供更重的语义排序。",
+        "`SearchRepoAdapter` 屏蔽底层仓库查询细节。"
+      ],
+      "gates": [
+        "semantic 模式依赖向量索引和 embedding 配置，不可用时必须降级或明示。",
+        "deprecated 状态不应以正常权重进入消费结果。",
+        "上下文 boost 不能压过硬过滤条件。"
+      ],
+      "drift": [
+        "MCP tool description 中的搜索模式数量必须和 schema/SearchEngine 对齐。",
+        "向量引擎实现变化会影响 hybrid 的语义部分。",
+        "生命周期可消费状态变化会影响 search 过滤。"
+      ]
+    },
+    {
+      "path": "docs/part4/ch11b-vector.md",
+      "type": "chapter",
+      "title": "Ch11b 向量引擎深度解析",
+      "thesis": "VectorService 把 Recipe、代码片段和上下文切块转换成可持久化、可迁移、可量化的向量索引，为 Search 和 Agent recall 提供语义底座。",
+      "anchors": [
+        "lib/service/vector/VectorService.ts",
+        "lib/service/vector/ContextualEnricher.ts",
+        "lib/service/vector/SyncCoordinator.ts",
+        "lib/infrastructure/vector/ASTChunker.ts",
+        "lib/infrastructure/vector/Chunker.ts",
+        "lib/infrastructure/vector/BatchEmbedder.ts",
+        "lib/infrastructure/vector/HnswIndex.ts",
+        "lib/infrastructure/vector/HnswVectorAdapter.ts",
+        "lib/infrastructure/vector/JsonVectorAdapter.ts",
+        "lib/infrastructure/vector/BinaryPersistence.ts",
+        "lib/infrastructure/vector/AsyncPersistence.ts",
+        "lib/infrastructure/vector/ScalarQuantizer.ts",
+        "lib/infrastructure/vector/VectorMigration.ts",
+        "lib/infrastructure/vector/VectorStore.ts",
+        "lib/injection/modules/VectorModule.ts"
+      ],
+      "checkpoints": [
+        "向量层不是 Search 的内部小工具，而是独立基础设施模块。",
+        "ASTChunker 和 Chunker 决定向量语义粒度，直接影响召回质量。",
+        "HNSW、JSON、Binary persistence 和 migration 说明索引形态可替换。",
+        "ContextualEnricher 让向量召回带上代码上下文，不只是纯文本 embedding。"
+      ],
+      "implementation": [
+        "`VectorService` 对外提供 indexing/search/sync 级能力。",
+        "`BatchEmbedder` 批处理 embedding 请求，降低 provider 开销。",
+        "`HnswVectorAdapter` 和 `JsonVectorAdapter` 是不同索引/存储实现。",
+        "`ScalarQuantizer` 和 `BinaryPersistence` 面向性能和空间优化。",
+        "`VectorModule` 将具体实现注入系统。"
+      ],
+      "gates": [
+        "embedding provider 不可用时，semantic search 要降级。",
+        "索引迁移必须保留版本信息，避免旧向量和新 chunk 策略混用。",
+        "上下文增强不能泄露不在项目范围内的路径。"
+      ],
+      "drift": [
+        "向量适配器和持久化策略变化会影响本章读代码顺序。",
+        "Chunker 规则变更会改变搜索质量和 Agent memory 命中。",
+        "Provider 模型变更应同步配置附录。"
+      ]
+    },
+    {
+      "path": "docs/part4/ch12-metabolism.md",
+      "type": "chapter",
+      "title": "Ch12 Panorama、Signal 与代谢系统",
+      "thesis": "Alembic 的代谢系统由 Panorama 的项目级扫描、SignalBus 的运行信号和 Evolution/Quality 的反馈回路组成，用来持续发现知识缺口、衰退和恢复证据。",
+      "images": [
+        {
+          "alt": "三系统数据链路图",
+          "src": "/images/ch12/01-three-system-dataflow.png",
+          "caption": "Panorama、Signal、Metabolism 如何把项目事实转成进化证据。"
+        }
+      ],
+      "anchors": [
+        "lib/service/panorama/PanoramaService.ts",
+        "lib/service/panorama/PanoramaScanner.ts",
+        "lib/service/panorama/PanoramaAggregator.ts",
+        "lib/service/panorama/ModuleDiscoverer.ts",
+        "lib/service/panorama/DimensionAnalyzer.ts",
+        "lib/service/panorama/CouplingAnalyzer.ts",
+        "lib/service/panorama/LayerInferrer.ts",
+        "lib/service/panorama/TechStackProfiler.ts",
+        "lib/infrastructure/signal/SignalBus.ts",
+        "lib/infrastructure/signal/SignalAggregator.ts",
+        "lib/infrastructure/signal/SignalBridge.ts",
+        "lib/infrastructure/signal/SignalTraceWriter.ts",
+        "lib/service/signal/HitRecorder.ts",
+        "lib/service/skills/SignalCollector.ts",
+        "lib/service/evolution/DecayDetector.ts",
+        "lib/service/evolution/ProposalExecutor.ts",
+        "lib/external/mcp/handlers/panorama.ts"
+      ],
+      "checkpoints": [
+        "Panorama 生成项目结构和知识健康视角，是冷启动、搜索和缺口分析的上游。",
+        "SignalBus 是进化执行器的触发线，guard/search/decay/quality/usage/lifecycle 都可能推动 proposal。",
+        "HitRecorder 和 SignalCollector 把运行时使用情况转成可追踪信号。",
+        "DecayDetector 不是直接废弃 Recipe，而是形成衰退证据并进入提案链。"
+      ],
+      "implementation": [
+        "`PanoramaScanner` 扫描模块、技术栈、层级和耦合。",
+        "`PanoramaAggregator` 汇总成 Dashboard 和 MCP 可消费摘要。",
+        "`SignalBus` 提供订阅/发布，`SignalTraceWriter` 记录追踪。",
+        "`ProposalExecutor.subscribeToSignals` 把信号接入 EvolutionPolicy。"
+      ],
+      "gates": [
+        "信号只能触发评估，不能绕过 EvolutionPolicy 和 StateMachine。",
+        "Panorama 的推断结果应保留置信度和来源。",
+        "代谢来源的 deprecate 不能直接立即执行。"
+      ],
+      "drift": [
+        "Signal 类型新增会影响 ch07 和信号附录。",
+        "Panorama 角色推断权重变化会影响旧图和 Dashboard 文案。",
+        "代谢与 Rescan 的边界需要持续对齐。"
+      ]
+    },
+    {
+      "path": "docs/part5/ch13-agent-runtime.md",
+      "type": "chapter",
+      "title": "Ch13 AgentRuntime 推理循环",
+      "thesis": "AgentRuntime 是 Alembic 内部 Agent 的统一执行器：它把消息、上下文、工具调用、预算、退出条件、诊断和策略组合成可审计的循环。",
+      "images": [
+        {
+          "alt": "Agent Runtime 推理循环",
+          "src": "/images/ch13/01-react-loop-architecture.png",
+          "caption": "上下文构建、LLM 调用、工具执行、诊断、退出和最终答案的循环。"
+        }
+      ],
+      "anchors": [
+        "lib/agent/runtime/AgentRuntime.ts",
+        "lib/agent/runtime/AgentRuntimeTypes.ts",
+        "lib/agent/runtime/ToolExecutionPipeline.ts",
+        "lib/agent/context/ContextWindow.ts",
+        "lib/agent/runtime/BudgetController.ts",
+        "lib/agent/runtime/ExitController.ts",
+        "lib/agent/runtime/DiagnosticsCollector.ts",
+        "lib/agent/runtime/SystemPromptBuilder.ts",
+        "lib/agent/runtime/AgentEventBus.ts",
+        "lib/agent/service/AgentRuntimeBuilder.ts",
+        "lib/agent/service/AgentService.ts",
+        "lib/agent/service/SystemRunContextFactory.ts",
+        "lib/agent/profiles/presets.ts",
+        "lib/agent/strategies/AdaptiveStrategy.ts",
+        "lib/agent/strategies/PipelineStrategy.ts"
+      ],
+      "checkpoints": [
+        "Runtime 本身不等于某个业务 Agent；Profile 和 Strategy 决定它执行何种任务。",
+        "ToolExecutionPipeline 是 Agent 调用工具的关键安全和观测点。",
+        "ContextWindow、BudgetController、ExitController 让长任务有上下文、成本和终止边界。",
+        "DiagnosticsCollector 与 EventBus 让内部 Agent 行为可追踪。"
+      ],
+      "implementation": [
+        "`AgentRuntimeBuilder` 根据 profile、capability、policy 和工具上下文创建 runtime。",
+        "`SystemPromptBuilder` 汇合系统提示、profile 和任务输入。",
+        "`ToolExecutionPipeline` 调用 Tool V2 router，并处理结果 envelope。",
+        "`AgentService` 为外部接口提供统一运行入口。"
+      ],
+      "gates": [
+        "预算耗尽、退出条件满足或策略要求停止时，Runtime 必须终止。",
+        "工具调用必须经过 pipeline 和 capability，而不能从 LLM 输出直接执行。",
+        "诊断和错误应被记录，不能吞掉造成假成功。"
+      ],
+      "drift": [
+        "Runtime loop 事件名和 final answer 结构变化会影响 Dashboard 和 workflow。",
+        "策略新增会影响 ch14 的正交组合。",
+        "Tool V2 router 接口变化会影响本章工具调用描述。"
+      ]
+    },
+    {
+      "path": "docs/part5/ch14-orthogonal.md",
+      "type": "chapter",
+      "title": "Ch14 Profile、Capability、Strategy、Policy 正交组合",
+      "thesis": "Alembic 不用大量特化 Agent 子类表达智能行为，而是用 Profile、Capability、Strategy、Policy 的正交组合生成运行时。",
+      "images": [
+        {
+          "alt": "Profile Capability Strategy Policy 正交组合",
+          "src": "/images/ch14/01-orthogonal-cube.png",
+          "caption": "同一 Runtime 通过正交配置服务不同任务类型。"
+        }
+      ],
+      "anchors": [
+        "lib/agent/profiles/AgentProfileCompiler.ts",
+        "lib/agent/profiles/AgentProfileRegistry.ts",
+        "lib/agent/profiles/AgentStageFactoryRegistry.ts",
+        "lib/agent/profiles/definitions/bootstrap.profile.ts",
+        "lib/agent/profiles/definitions/scan.profile.ts",
+        "lib/agent/profiles/definitions/evolution.profile.ts",
+        "lib/agent/profiles/definitions/chat.profile.ts",
+        "lib/agent/capabilities/CapabilityRegistry.ts",
+        "lib/agent/capabilities/KnowledgeProduction.ts",
+        "lib/agent/capabilities/EvolutionAnalysis.ts",
+        "lib/agent/strategies/StrategyRegistry.ts",
+        "lib/agent/strategies/SingleStrategy.ts",
+        "lib/agent/strategies/FanOutStrategy.ts",
+        "lib/agent/policies/PolicyEngine.ts",
+        "lib/agent/policies/BudgetPolicy.ts",
+        "lib/agent/policies/SafetyPolicy.ts",
+        "lib/tools/v2/adapter/V2CapabilityCatalog.ts"
+      ],
+      "checkpoints": [
+        "Profile 描述角色和提示词结构，Capability 描述可用能力，Strategy 描述执行拓扑，Policy 描述约束。",
+        "AgentProfileCompiler 把分散定义编译成 Runtime 可用配置。",
+        "CapabilityRegistry 和 V2CapabilityCatalog 共同影响工具可见性。",
+        "StrategyRegistry 让同一任务可以单路、并行、pipeline 或自适应执行。"
+      ],
+      "implementation": [
+        "profile definitions 目录是各类 Agent 的事实源。",
+        "`AgentStageFactoryRegistry` 管理阶段构造。",
+        "`CapabilityRegistry` 聚合代码分析、知识生产、扫描、进化、对话等能力。",
+        "`PolicyEngine` 依次应用预算、安全、质量等策略。"
+      ],
+      "gates": [
+        "Capability 没有授权的工具不应出现在 schema 中。",
+        "Policy 应在运行前和运行中都能介入。",
+        "Profile 不能绕过 Runtime 直接操作 Repository。"
+      ],
+      "drift": [
+        "新增 profile 或 capability 时，本章图示需要更新。",
+        "旧 Agent 子类被移除后，book 不能继续按继承体系讲 Agent。",
+        "V2CapabilityCatalog 与 MCP capability projection 的关系需要核对 AgentModule。"
+      ]
+    },
+    {
+      "path": "docs/part5/ch15-tools-memory.md",
+      "type": "chapter",
+      "title": "Ch15 Tool System V2 与 Agent Memory",
+      "thesis": "Tool System V2 把工具注册、schema、capability、routing、context 和结果 envelope 统一起来；Memory 层则为 Agent 提供会话、长期和检索上下文。",
+      "images": [
+        {
+          "alt": "Tool System V2 调用路径",
+          "src": "/images/ch15/01-tools-memory-overview.png",
+          "caption": "AgentRuntime 到 ToolRouterV2、Capability、Handler、Memory 和结果压缩的路径。"
+        }
+      ],
+      "anchors": [
+        "lib/tools/v2/registry.ts",
+        "lib/tools/v2/router.ts",
+        "lib/tools/v2/types.ts",
+        "lib/tools/v2/adapter/V2ToolRouterAdapter.ts",
+        "lib/tools/v2/adapter/ToolContextFactory.ts",
+        "lib/tools/v2/adapter/V2CapabilityCatalog.ts",
+        "lib/tools/v2/handlers/knowledge.ts",
+        "lib/tools/v2/handlers/code.ts",
+        "lib/tools/v2/handlers/terminal.ts",
+        "lib/tools/v2/capabilities/Evolution.ts",
+        "lib/tools/v2/capabilities/ScanAnalyze.ts",
+        "lib/tools/v2/compressor/OutputCompressor.ts",
+        "lib/agent/memory/MemoryCoordinator.ts",
+        "lib/agent/memory/MemoryStore.ts",
+        "lib/agent/memory/MemoryRetriever.ts",
+        "lib/agent/memory/PersistentMemory.ts",
+        "lib/agent/domain/EpisodicConsolidator.ts",
+        "lib/agent/context/ContextWindow.ts",
+        "lib/agent/forge/ToolForge.ts",
+        "lib/agent/forge/DynamicComposer.ts",
+        "lib/agent/forge/SandboxRunner.ts",
+        "lib/agent/forge/TemporaryToolRegistry.ts"
+      ],
+      "checkpoints": [
+        "Tool V2 的核心是 registry/router/context/envelope，不是旧版零散工具函数。",
+        "Capability 决定工具是否可见和可执行，router 负责分发到 handler。",
+        "OutputCompressor 让终端和搜索输出可进入上下文窗口。",
+        "ToolForge 在能力边界上生成临时工具，但必须经过 sandbox 和 TTL 回收。",
+        "Memory 分为会话、长期、检索和上下文注入，支撑 Agent 连续任务。"
+      ],
+      "implementation": [
+        "`registry.ts` 声明工具，`router.ts` 进行权限、schema 和 handler 调度。",
+        "`ToolContextFactory` 从系统运行上下文生成工具调用上下文。",
+        "`V2ToolRouterAdapter` 把 Runtime pipeline 接到 Tool V2。",
+        "`MemoryCoordinator` 聚合 MemoryStore、Retriever、PersistentMemory。",
+        "`ToolForge`、`DynamicComposer` 和 `TemporaryToolRegistry` 处理动态工具生命周期。"
+      ],
+      "gates": [
+        "工具 schema 校验失败不能进入 handler。",
+        "Capability 不允许的工具或 action 必须拒绝。",
+        "动态工具必须沙箱验证，过期后自动回收。",
+        "Memory 注入要受上下文窗口和隐私边界约束。"
+      ],
+      "drift": [
+        "V2 tool 名称和 handler 拆分会频繁变化。",
+        "Memory schema 和 consolidation contract 会影响 Agent 章节。",
+        "ToolForge 安全规则变化需要同步安全章节。"
+      ]
+    },
+    {
+      "path": "docs/part6/ch16-infrastructure.md",
+      "type": "chapter",
+      "title": "Ch16 数据基础设施",
+      "thesis": "Alembic 的基础设施层承载数据库、迁移、缓存、审计、配置、向量持久化、信号追踪和沙箱边界，是上层服务可恢复、可审计和可迁移的底座。",
+      "images": [
+        {
+          "alt": "数据基础设施四层架构图",
+          "src": "/images/ch16/01-infrastructure-four-layers.png",
+          "caption": "数据库、Repository、缓存/审计/配置和运行时基础设施之间的关系。"
+        }
+      ],
+      "anchors": [
+        "lib/infrastructure/database/DatabaseConnection.ts",
+        "lib/infrastructure/database/drizzle/schema.ts",
+        "lib/infrastructure/database/migrations/001_initial_schema.ts",
+        "lib/infrastructure/database/migrations/004_evolution_proposals.ts",
+        "lib/infrastructure/database/migrations/005_recipe_source_refs.ts",
+        "lib/infrastructure/database/migrations/006_lifecycle_transition_events.ts",
+        "lib/infrastructure/database/migrations/008_recipe_warnings.ts",
+        "lib/repository/base/RepositoryBase.ts",
+        "lib/infrastructure/cache/CacheCoordinator.ts",
+        "lib/infrastructure/cache/CacheService.ts",
+        "lib/infrastructure/audit/AuditLogger.ts",
+        "lib/infrastructure/audit/AuditStore.ts",
+        "lib/infrastructure/config/ConfigLoader.ts",
+        "lib/infrastructure/config/Defaults.ts",
+        "lib/infrastructure/config/Paths.ts",
+        "lib/infrastructure/monitoring/ErrorTracker.ts",
+        "lib/infrastructure/monitoring/PerformanceMonitor.ts",
+        "lib/shared/PathGuard.ts",
+        "lib/infrastructure/io/WriteZone.ts"
+      ],
+      "checkpoints": [
+        "数据库 schema 和 migrations 是 Repository 行为的底层事实源。",
+        "evolution proposals、source refs、lifecycle events、warnings 都有独立迁移，说明进化系统已是持久化能力。",
+        "缓存、审计、监控、配置和路径守卫不是可选装饰，而是跨服务基础设施。",
+        "RepositoryBase 应提供一致的数据访问模式，避免服务层散写 SQL。"
+      ],
+      "implementation": [
+        "`DatabaseConnection` 管理 SQLite/Drizzle 连接。",
+        "`schema.ts` 和 migrations 定义表结构演化。",
+        "`CacheCoordinator` 统一缓存失效和协调。",
+        "`AuditLogger`、`ErrorTracker`、`PerformanceMonitor` 提供运维观测。",
+        "`ConfigLoader`、`Defaults`、`Paths` 管理项目配置和路径。"
+      ],
+      "gates": [
+        "迁移必须幂等并按版本顺序执行。",
+        "缓存命中不能绕过权限和生命周期过滤。",
+        "路径解析必须通过 Paths/PathGuard，避免不同入口解释不一致。"
+      ],
+      "drift": [
+        "迁移号新增会直接影响本章表结构描述。",
+        "Repository 拆分变化会影响数据流图。",
+        "配置默认值会影响 setup、server 和 Provider 行为。"
+      ]
+    },
+    {
+      "path": "docs/part6/ch17-mcp-delivery.md",
+      "type": "chapter",
+      "title": "Ch17 MCP 与六通道交付",
+      "thesis": "MCP 是外部 Agent 进入 Alembic 的主要协议面，Delivery 管线则把知识压缩成 Cursor、rules、skills、instructions 等多端可消费资产。",
+      "images": [
+        {
+          "alt": "MCP 协议与六通道交付全景图",
+          "src": "/images/ch17/01-mcp-delivery-overview.png",
+          "caption": "MCP tools、Gateway、handler、Delivery services 和 IDE 资产的关系。"
+        },
+        {
+          "alt": "Task 意图生命周期链",
+          "src": "/images/ch17/02-task-lifecycle-chain.png",
+          "caption": "task prime/create/close/fail/record_decision 如何把外部意图落成可追踪任务。"
+        }
+      ],
+      "anchors": [
+        "lib/external/mcp/tools.ts",
+        "lib/external/mcp/McpServer.ts",
+        "lib/external/mcp/McpCapabilityProjection.ts",
+        "lib/external/mcp/McpToolAdapter.ts",
+        "lib/external/mcp/handlers/consolidated.ts",
+        "lib/external/mcp/handlers/evolve-external.ts",
+        "lib/external/mcp/handlers/consolidate.ts",
+        "lib/external/mcp/handlers/task.ts",
+        "lib/external/mcp/handlers/wiki-external.ts",
+        "lib/external/mcp/handlers/bootstrap-external.ts",
+        "lib/external/mcp/handlers/rescan-external.ts",
+        "lib/shared/schemas/mcp-tools.ts",
+        "lib/service/delivery/AgentInstructionsGenerator.ts",
+        "lib/service/delivery/CursorDeliveryPipeline.ts",
+        "lib/service/delivery/FileProtection.ts",
+        "lib/service/delivery/KnowledgeCompressor.ts",
+        "lib/service/delivery/RulesGenerator.ts",
+        "lib/service/delivery/SkillsSyncer.ts",
+        "lib/service/delivery/TokenBudget.ts",
+        "lib/service/delivery/TopicClassifier.ts",
+        "lib/service/task/IntentExtractor.ts",
+        "lib/service/task/PrimeSearchPipeline.ts"
+      ],
+      "checkpoints": [
+        "`tools.ts` 是 MCP 工具事实源，声明工具、tier、description、schema 和 Gateway 映射。",
+        "写工具包括 submit_knowledge、evolve、consolidate、rescan、dimension_complete、wiki finalize、task 写操作等，必须经过 action/resource 门控。",
+        "`consolidated.ts` 覆盖 `alembic_submit_knowledge`、`alembic_evolve`、`alembic_consolidate` 的尾追溯处理链。",
+        "Delivery 管线负责把知识变成外部 IDE 可消费规则、instructions、skills 和压缩上下文。",
+        "Task 工具把外部 Agent 的意图、决策和完成状态写进可追踪生命周期。"
+      ],
+      "implementation": [
+        "`McpServer` 注册工具并分发 handler。",
+        "`McpCapabilityProjection` 把 MCP declarations 投影给 Agent capability catalog。",
+        "`mcp-tools.ts` schema 让工具输入在 handler 前被校验。",
+        "`AgentInstructionsGenerator`、`RulesGenerator`、`SkillsSyncer` 和 `CursorDeliveryPipeline` 负责多通道交付。",
+        "`TokenBudget` 和 `KnowledgeCompressor` 控制交付内容大小。"
+      ],
+      "gates": [
+        "MCP write tool 必须经过 Gateway，resolver 分支要明确哪些 operation 是读。",
+        "Delivery 写文件必须经过 FileProtection 和路径边界。",
+        "Task close/fail/record_decision 不能绕过任务状态校验。",
+        "外部 Agent submit/evolve/consolidate 产生的 evidence 必须可追溯。"
+      ],
+      "drift": [
+        "tools.ts 顶部注释的工具数量可能和实际声明不一致，附录应以抽取结果为准。",
+        "MCP handler 拆分会影响工具注册状态。",
+        "Delivery 目标通道新增时，六通道图需要更新。"
+      ]
+    },
+    {
+      "path": "docs/part6/ch18-interface.md",
+      "type": "chapter",
+      "title": "Ch18 界面层：HTTP、Dashboard、VSCode、Lark",
+      "thesis": "Alembic 的界面层由 HTTP API、Dashboard、VSCode extension 和 Lark/remote command 组成；它们只应呈现和触发核心服务，而不是复制业务判断。",
+      "images": [
+        {
+          "alt": "四端接入统一架构图",
+          "src": "/images/ch18/01-four-interface-architecture.png",
+          "caption": "HTTP routes、Dashboard views、VSCode extension 和 Lark transport 的接入关系。"
+        }
+      ],
+      "anchors": [
+        "lib/http/HttpServer.ts",
+        "lib/http/api-spec.ts",
+        "lib/http/middleware/roleResolver.ts",
+        "lib/http/routes/knowledge.ts",
+        "lib/http/routes/recipes.ts",
+        "lib/http/routes/evolution.ts",
+        "lib/http/routes/file-changes.ts",
+        "lib/http/routes/task.ts",
+        "lib/http/routes/remote.ts",
+        "dashboard/src/App.tsx",
+        "dashboard/src/api.ts",
+        "dashboard/src/components/Views/EvolutionPanel.tsx",
+        "dashboard/src/components/Views/GuardView.tsx",
+        "dashboard/src/components/Views/KnowledgeView.tsx",
+        "dashboard/src/components/Views/SignalReportView.tsx",
+        "resources/vscode-ext/src/extension.ts",
+        "resources/vscode-ext/src/FileChangeCollector.ts",
+        "resources/vscode-ext/src/apiClient.ts",
+        "resources/vscode-ext/src/remoteCommandPoller.ts",
+        "resources/vscode-ext/src/codeInserter.ts",
+        "resources/vscode-ext/src/guardDiagnostics.ts",
+        "lib/external/lark/LarkTransport.ts",
+        "lib/external/lark/IntentClassifier.ts"
+      ],
+      "checkpoints": [
+        "HTTP routes 是 Dashboard、VSCode 和外部工具的公共入口。",
+        "Dashboard EvolutionPanel、GuardView、KnowledgeView、SignalReportView 对应核心服务的可视化面。",
+        "VSCode extension 负责文件监听、弹窗、远程命令、代码插入和 Guard diagnostics。",
+        "Lark transport 把聊天/远程意图转成系统任务或 Agent 运行请求。"
+      ],
+      "implementation": [
+        "`HttpServer` 注册 route 和 middleware。",
+        "`api.ts` 是 Dashboard 调用后端的类型化入口。",
+        "`FileChangeCollector` 到 `apiClient.reportFileChanges` 是 IDE 文件变化进入服务端的链路。",
+        "`remoteCommandPoller` 和 remote routes 支撑远程命令。",
+        "`LarkTransport` 和 `IntentClassifier` 处理飞书侧消息和意图分类。"
+      ],
+      "gates": [
+        "界面层请求必须经过 roleResolver、validate 和 route helper。",
+        "VSCode popup 只能处理服务端返回的可操作报告，不能本地自行改知识库。",
+        "Dashboard 手动执行 proposal 仍需走 ProposalExecutor 或 StateMachine。"
+      ],
+      "drift": [
+        "前端视图字段和后端 route response 很容易漂移。",
+        "VSCode extension 的 out 编译产物不应作为文档锚点，正文锚定 src。",
+        "Lark/remote command 的任务模型要和 ch17 task 链路保持一致。"
+      ]
+    },
+    {
+      "path": "docs/part7/ch19-bilidili-coldstart.md",
+      "type": "chapter",
+      "title": "Ch19 BiliDili 冷启动全记录",
+      "thesis": "BiliDili 章节应作为真实项目冷启动案例的阅读模板：用 README 中的公开指标和测试中的跨层配置案例锚定叙述，不伪造未在仓库中保存的运行日志。",
+      "anchors": [
+        "README_CN.md",
+        "README.md",
+        "test/unit/TestMode.test.ts",
+        "lib/workflows/cold-start/internal/InternalColdStartWorkflow.ts",
+        "lib/workflows/cold-start/external/ExternalColdStartWorkflow.ts",
+        "lib/workflows/capabilities/planning/dimensions/bootstrapDimensionConfigs.ts",
+        "lib/workflows/capabilities/execution/internal-agent/InternalDimensionExecutionPipeline.ts",
+        "lib/workflows/capabilities/persistence/WorkflowReportWriter.ts",
+        "lib/workflows/capabilities/persistence/WorkflowResultPersistence.ts",
+        "skills/alembic-devdocs/SKILL.md"
+      ],
+      "checkpoints": [
+        "README_CN 记录 BiliDili 冷启动指标，但仓库中没有完整原始运行日志；本章不能把推断写成事实。",
+        "案例重点是展示如何阅读 Cold Start 报告、候选数量、维度覆盖、token 成本和后续治理。",
+        "TestMode 中的 BiliDili 场景提供跨层配置测试证据。",
+        "真实项目案例应能回连到 WorkflowReportWriter 和 ResultPersistence 的输出结构。"
+      ],
+      "implementation": [
+        "`InternalColdStartWorkflow` 和 `ExternalColdStartWorkflow` 说明同一项目可由内部或外部 Agent 执行。",
+        "`bootstrapDimensionConfigs` 决定案例中维度任务如何拆分。",
+        "`WorkflowReportWriter` 和 `WorkflowResultPersistence` 定义报告落盘和结果持久化方式。",
+        "`skills/alembic-devdocs` 说明如何引用 Recipe trigger 作为文档证据。"
+      ],
+      "gates": [
+        "没有源日志时，只引用 README 中出现的指标，不扩展编造。",
+        "案例分析必须区分采集事实、Agent 产出、人工解释和后续推断。",
+        "成本、候选数量、维度结果应可由报告或仓库记录复核。"
+      ],
+      "drift": [
+        "README 指标更新后，本章需要重新生成。",
+        "如果未来仓库纳入 BiliDili 原始报告，应补充为一手锚点。",
+        "冷启动工作流变化会影响案例步骤。"
+      ]
+    },
+    {
+      "path": "docs/appendix/config-reference.md",
+      "type": "appendix-config",
+      "title": "附录 A 配置参考",
+      "thesis": "配置参考从 CLI、SetupService、ConfigLoader、Defaults、Provider registry 和 Constitution 模板抽取，不再手写过时字段。",
+      "anchors": [
+        "bin/cli.ts",
+        "lib/cli/SetupService.ts",
+        "lib/infrastructure/config/ConfigLoader.ts",
+        "lib/infrastructure/config/Defaults.ts",
+        "lib/infrastructure/config/Paths.ts",
+        "lib/shared/schemas/config.ts",
+        "lib/external/ai/registry/ProviderConfig.ts",
+        "lib/external/ai/registry/ModelRegistry.ts",
+        "lib/external/ai/registry/models/openai.ts",
+        "lib/external/ai/registry/models/google.ts",
+        "lib/external/ai/registry/models/claude.ts",
+        "templates/constitution.yaml"
+      ],
+      "checkpoints": [
+        "CLI 命令从 `bin/cli.ts` 自动抽取。",
+        "配置默认值来自 `Defaults.ts`，路径来自 `Paths.ts`。",
+        "模型和 Provider 能力来自 registry，不以旧文档为准。"
+      ],
+      "implementation": [
+        "`SetupService` 写入初始配置和 Constitution。",
+        "`ConfigLoader` 负责读取、合并和校验配置。",
+        "`ProviderConfig`、`ModelRegistry` 和模型定义目录描述 AI Provider 能力。",
+        "`schemas/config.ts` 是配置结构校验入口。"
+      ],
+      "gates": [
+        "配置解析失败应返回明确错误。",
+        "Provider 缺失时不能假装可调用 AI。",
+        "Constitution 中 capability 与角色授权必须能被 PermissionManager 消费。"
+      ],
+      "drift": [
+        "CLI 命令新增后，附录表会变化。",
+        "模型 registry 更新会影响图像和文本能力说明。",
+        "配置字段改名会影响 setup 和 dashboard 配置弹窗。"
+      ]
+    },
+    {
+      "path": "docs/appendix/mcp-tools.md",
+      "type": "appendix-mcp",
+      "title": "附录 B MCP 工具清单",
+      "thesis": "MCP 工具清单由 `tools.ts`、McpServer 注册和 schema 导出抽取，重点追踪工具名、读写属性、Gateway action/resource 与注册状态。",
+      "anchors": [
+        "lib/external/mcp/tools.ts",
+        "lib/external/mcp/McpServer.ts",
+        "lib/external/mcp/McpToolAdapter.ts",
+        "lib/external/mcp/McpToolDiscovery.ts",
+        "lib/external/mcp/McpCapabilityProjection.ts",
+        "lib/external/mcp/autoApproveInjector.ts",
+        "lib/external/mcp/envelope.ts",
+        "lib/shared/schemas/mcp-tools.ts",
+        "lib/external/mcp/handlers/consolidated.ts",
+        "lib/external/mcp/handlers/evolve-external.ts",
+        "lib/external/mcp/handlers/consolidate.ts",
+        "lib/external/mcp/handlers/task.ts",
+        "lib/external/mcp/handlers/search.ts",
+        "lib/external/mcp/handlers/guard.ts",
+        "lib/external/mcp/handlers/knowledge.ts"
+      ],
+      "checkpoints": [
+        "附录以抽取到的工具数组为准，不信任注释里的数量。",
+        "Gateway map 决定写工具权限，不在 map 中的工具需要根据 resolver 或读操作判断。",
+        "schema 导出变化会影响外部 Agent 可用参数。"
+      ],
+      "implementation": [
+        "`McpServer` 注册声明并分发 handler。",
+        "`McpToolAdapter` 将工具接到内部执行上下文。",
+        "`McpCapabilityProjection` 把 MCP 工具投影给 Agent capability。",
+        "`envelope.ts` 统一返回格式。"
+      ],
+      "gates": [
+        "写工具 action/resource 必须显式。",
+        "handler 输入必须通过 schema 校验。",
+        "auto approve 只能用于低风险、声明清楚的路径。"
+      ],
+      "drift": [
+        "工具数量、tier、description、schema 和 Gateway map 最容易漂移。",
+        "consolidated handler 的多工具处理需要持续核对。",
+        "外部 Agent 文档应从本附录生成。"
+      ]
+    },
+    {
+      "path": "docs/appendix/guard-rules.md",
+      "type": "appendix-guard",
+      "title": "附录 C Guard 规则清单",
+      "thesis": "Guard 规则附录不再维护静态规则全集，而是解释 Guard 如何召回 Recipe、执行多层检查、记录违规和收集不确定性。",
+      "anchors": [
+        "lib/service/guard/GuardService.ts",
+        "lib/service/guard/GuardCheckEngine.ts",
+        "lib/service/guard/GuardCodeChecks.ts",
+        "lib/service/guard/GuardCrossFileChecks.ts",
+        "lib/service/guard/GuardPatternUtils.ts",
+        "lib/service/guard/ReverseGuard.ts",
+        "lib/service/guard/UncertaintyCollector.ts",
+        "lib/service/guard/ExclusionManager.ts",
+        "lib/service/guard/GuardFeedbackLoop.ts",
+        "lib/service/guard/RuleLearner.ts",
+        "lib/service/guard/ViolationsStore.ts",
+        "lib/repository/guard/GuardViolationRepository.ts"
+      ],
+      "checkpoints": [
+        "规则来自 KnowledgeEntry，而不是附录里的硬编码表。",
+        "附录重点说明检查层、排除机制、反馈学习和违规持久化。",
+        "ReverseGuard 负责从 Recipe 反查代码健康度。"
+      ],
+      "implementation": [
+        "`GuardService` 负责召回规则和编排检查。",
+        "`ExclusionManager` 管理路径、规则+文件和全局禁用。",
+        "`GuardFeedbackLoop` 处理修复后的使用确认。",
+        "`ViolationsStore` 和 GuardViolationRepository 持久化违规。"
+      ],
+      "gates": [
+        "排除规则不能让全局安全静默失效。",
+        "RuleLearner 的反馈只调整质量和审查，不直接删除知识。",
+        "uncertain 必须保留为单独状态。"
+      ],
+      "drift": [
+        "Guard 检查层和报告字段变化会影响本附录。",
+        "Recipe schema 变化会改变可执行规则字段。",
+        "ExclusionManager 语义变化会影响安全边界。"
+      ]
+    },
+    {
+      "path": "docs/appendix/signal-types.md",
+      "type": "appendix-signals",
+      "title": "附录 D 信号类型清单",
+      "thesis": "信号附录跟踪 Lifecycle 常量、SignalBus、文件监听、HitRecorder、SignalCollector 与 ProposalExecutor 的订阅关系。",
+      "anchors": [
+        "lib/domain/knowledge/Lifecycle.ts",
+        "lib/infrastructure/signal/SignalBus.ts",
+        "lib/infrastructure/signal/SignalAggregator.ts",
+        "lib/infrastructure/signal/SignalBridge.ts",
+        "lib/infrastructure/signal/SignalTraceWriter.ts",
+        "lib/service/signal/HitRecorder.ts",
+        "lib/service/skills/SignalCollector.ts",
+        "lib/service/evolution/ProposalExecutor.ts",
+        "lib/service/evolution/FileChangeHandler.ts",
+        "lib/service/FileChangeDispatcher.ts",
+        "resources/vscode-ext/src/FileChangeCollector.ts"
+      ],
+      "checkpoints": [
+        "生命周期状态和合法转移从 `Lifecycle.ts` 抽取。",
+        "ProposalExecutor 当前订阅 guard、search、decay、quality、usage、lifecycle。",
+        "VSCode 文件变化信号源包括 IDE 操作、Git HEAD Diff 和 Working Tree Diff。",
+        "信号是证据入口，不是直接写知识的入口。"
+      ],
+      "implementation": [
+        "`SignalBus` 提供发布订阅。",
+        "`SignalTraceWriter` 记录信号轨迹。",
+        "`HitRecorder` 记录知识命中。",
+        "`FileChangeCollector` 把 IDE/Git 变化转换为服务端报告。",
+        "`ProposalExecutor` 在 observing proposal 上消费信号。"
+      ],
+      "gates": [
+        "没有 target 的信号不会触发 proposal 评估。",
+        "非订阅类型的信号不会进入 ProposalExecutor。",
+        "文件变化需先经过忽略规则、节流和合并。"
+      ],
+      "drift": [
+        "SignalBus pattern 语法变化会影响订阅表。",
+        "新增文件监听来源需要同步 ch07、ch18 和本附录。",
+        "生命周期状态新增会影响 Search、Guard、Delivery 的可消费状态。"
+      ]
+    }
+  ]
+}
