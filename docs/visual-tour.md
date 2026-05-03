@@ -4,6 +4,19 @@
 
 Alembic 是一个 **AI 驱动的项目知识引擎**——它从代码中提取知识、持续进化知识、在开发时交付知识。本文用图解方式，沿着系统的六大部分快速走一遍。
 
+## 源码证据索引
+
+图解页是压缩版导览，具体章节会展开代码细节；这里先列出每个部分最核心的实现入口，方便把图中的叙述落回源码：
+
+| 部分 | 主要源码证据 |
+|------|-------------|
+| 起点与哲学 | `SOUL.md`、`lib/shared/PathGuard.ts`、`lib/shared/isOwnDevRepo.ts` |
+| 工程基石 | `lib/bootstrap.ts`、`lib/core/ast/index.ts`、`lib/core/AstAnalyzer.ts`、`lib/core/gateway/Gateway.ts` |
+| 知识领域 | `lib/domain/knowledge/KnowledgeEntry.ts`、`lib/domain/knowledge/FieldSpec.ts`、`lib/service/evolution/LifecycleStateMachine.ts`、`lib/domain/dimension/DimensionRegistry.ts` |
+| 核心服务 | `lib/workflows/capabilities/project-intelligence/ProjectIntelligenceRunner.ts`、`lib/service/guard/GuardCheckEngine.ts`、`lib/service/search/SearchEngine.ts`、`lib/infrastructure/signal/SignalBus.ts` |
+| Agent 智能层 | `lib/agent/runtime/AgentRuntime.ts`、`lib/agent/profiles/AgentProfileCompiler.ts`、`lib/agent/context/ExplorationTracker.ts`、`lib/tools/v2/registry.ts` |
+| 平台与交付 | `lib/injection/ServiceMap.ts`、`lib/external/mcp/tools.ts`、`lib/service/delivery/CursorDeliveryPipeline.ts`、`lib/service/wiki/WikiGenerator.ts`、`dashboard/src/api.ts` |
+
 ## Part I · 起点与哲学
 
 ### 核心工作流

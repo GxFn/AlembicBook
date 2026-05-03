@@ -129,6 +129,8 @@ lib/tools/
 
 当前实现里 `knowledge.submit` 的 schema 和 handler 都要求 `reasoning.sources` 是非空数组。内部 V2 提交路径会调用 `RecipeProductionGateway.create({ source: 'agent-tool', items, options: { skipSimilarityCheck: true, skipConsolidation: true } })`，因此它主要依赖 Producer prompt、会话去重、rejection gate 和后续治理来避免重复；外部 MCP 的 `alembic_submit_knowledge` 才是带 consolidation 尾追溯协议的完整提交入口。
 
+这条边界由 `lib/tools/v2/registry.ts`、`lib/tools/v2/handlers/knowledge.ts`、`lib/agent/runtime/ToolExecutionPipeline.ts`、`lib/service/knowledge/RecipeProductionGateway.ts` 和 `lib/external/mcp/handlers/knowledge.ts` 共同支撑：registry 暴露 schema，handler 做 V2 提交校验和 gateway 调用，Runtime 管会话级去重，RecipeProductionGateway 仍保留完整 similarity/consolidation 能力，MCP handler 则承担外部提交入口。
+
 ## Capability V2
 
 Capability 仍然回答“当前场景能用什么工具”，但 V2 把白名单从 `string[]` 升级为 `tool → action[]`：

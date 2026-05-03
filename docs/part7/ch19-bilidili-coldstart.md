@@ -3,6 +3,19 @@
 > 本章记录的是两次**真实测试数据**，两轮执行之间对调度和容错做了微调，所有数值均为原始日志直出，未做任何修正。
 > Alembic 的核心能力在于知识管理与 Guard 引擎，AgentRuntime 只是其中的自动化采集层。本章的目的不是宣传 Agent 有多强，而是**如实展示当前冷启动的工程现状**——哪些环节已经可用，哪些还有明显短板——为后续章节的 Recipe 审核和 Guard 规则生成提供数据基础。
 
+## 19.0 证据边界
+
+本章的表格数值来自 BiliDili 两次真实冷启动日志与运行产物；这些运行产物不在 AlembicBook 仓库内，因此本章不会把它们伪装成可复现源码事实。可由当前 Alembic 代码直接佐证的是“为什么日志会出现这些阶段、预算、门控、记忆和交付行为”。对应的实现锚点如下：
+
+- 冷启动与重扫入口：`lib/workflows/cold-start/internal/InternalColdStartWorkflow.ts`、`lib/workflows/knowledge-rescan/internal/InternalKnowledgeRescanWorkflow.ts`
+- 项目结构分析 Phase 1-4：`lib/workflows/capabilities/project-intelligence/ProjectIntelligenceRunner.ts`
+- 维度分层调度与动态 tier：`lib/domain/dimension/DimensionRegistry.ts`、`lib/workflows/capabilities/planning/dimensions/TierScheduler.ts`
+- 单维度 Agent 管线：`lib/workflows/capabilities/execution/internal-agent/BootstrapDimensionRuntimeBuilder.ts`、`lib/agent/profiles/AgentStageFactoryRegistry.ts`、`lib/agent/strategies/PipelineStrategy.ts`
+- Analyze 预算与阶段转换：`lib/agent/prompts/insight-analyst.ts`、`lib/agent/context/exploration/ExplorationStrategies.ts`、`lib/agent/context/ExplorationTracker.ts`、`lib/agent/runtime/AgentRuntime.ts`
+- QualityGate 与结构化证据：`lib/agent/prompts/insight-gate.ts`、`lib/tools/v2/handlers/memory.ts`、`lib/agent/memory/ActiveContext.ts`
+- 语义记忆固化与检索：`lib/workflows/capabilities/completion/CompletionSteps.ts`、`lib/agent/domain/EpisodicConsolidator.ts`、`lib/agent/memory/MemoryConsolidator.ts`、`lib/agent/memory/MemoryStore.ts`、`lib/agent/memory/MemoryRetriever.ts`
+- Cursor/Wiki/Skill 交付：`lib/workflows/capabilities/completion/WorkflowCompletionFinalizer.ts`、`lib/service/delivery/CursorDeliveryPipeline.ts`、`lib/service/delivery/RulesGenerator.ts`、`lib/service/delivery/KnowledgeCompressor.ts`、`lib/service/delivery/AgentInstructionsGenerator.ts`、`lib/service/delivery/SkillsSyncer.ts`、`lib/service/wiki/WikiGenerator.ts`
+
 ## 19.1 项目画像
 
 | 指标 | 值 |
@@ -116,6 +129,8 @@ BiliDili/
 | 反射频率 | 3 Tiers → 3 reflections | 5 Tiers → **5 reflections** |
 | 记忆蒸馏日志 | 基础统计 | **按维度 / 重要性分布 / 实体数 / 直方图** |
 
+这些差异在当前实现里的对应关系是：`computeAnalystBudget()` 位于 `lib/agent/prompts/insight-analyst.ts`，阶段阈值位于 `lib/agent/context/exploration/ExplorationStrategies.ts`，fast-retry 和 `retryBudget` 位于 `lib/agent/strategies/PipelineStrategy.ts`，`abortSignal` 贯穿 `lib/agent/runtime/AgentRuntime.ts` 与 `lib/agent/runtime/ExitController.ts`。
+
 ## 19.2 管线执行总览
 
 ### 第二轮时间线
@@ -172,6 +187,8 @@ BiliDili/
 
 > **关键差异**：第一轮的 Tier 3 把 10 个维度堆在一起，并发 3 意味着需要 4 波串行执行；第二轮将其拆为 3+3+3，每 Tier 只需 1 波即可完成。Tier 间隔更短，反射（Reflection）也从 3 次增加到 5 次，跨维度知识传递更密集。
 
+当前代码已经不再硬编码三层调度：`lib/domain/dimension/DimensionRegistry.ts` 的 `tierHint` 和 `buildTierPlan()` 动态生成 N 层，`lib/workflows/capabilities/planning/dimensions/TierScheduler.ts` 再按 `activeDimIds`、`tierHints` 和 `concurrency` 执行。
+
 ### 最终产出
 
 | 类别 | 第一轮 | 第二轮 | 变化 |
@@ -192,7 +209,7 @@ BiliDili/
 
 ### 维度级指标（第二轮）
 
-每个维度都经历 **Analyze → QualityGate → Produce** 的 PipelineStrategy 管线。这里的表格是 BiliDili 第二轮实测数据；按当前代码，Analyze 阶段内部已经增加 `RECORD` 结构化记录窗口，即 `SCAN → EXPLORE → VERIFY → RECORD → SUMMARIZE`，至少 3 条 `note_finding` 后才进入总结：
+每个维度都经历 **Analyze → QualityGate → Produce** 的 PipelineStrategy 管线，当前完整生产路径还会接上 `rejection_gate`。这里的表格是 BiliDili 第二轮实测数据；按当前代码，Analyze 阶段内部已经增加 `RECORD` 结构化记录窗口，即 `SCAN → EXPLORE → VERIFY → RECORD → SUMMARIZE`，至少 3 条 `note_finding` 后才进入总结：
 
 | 维度 | Input Token | Tool Calls | 候选 | QG 分 | 耗时 | 备注 |
 |------|------------|------------|------|-------|------|------|
@@ -265,7 +282,7 @@ SCAN → EXPLORE (iter=2, dwellMs=33921, files=11, patterns=8)   data-event-flow
 
 ### Analyze 阶段的标准相位序列（第二轮）
 
-以 `error-resilience` 为例（完整 SCAN → EXPLORE → VERIFY → SUMMARIZE）：
+以 `error-resilience` 为例（这是当时日志里的 SCAN → EXPLORE → VERIFY → SUMMARIZE；当前实现已在 VERIFY 和 SUMMARIZE 之间增加 RECORD）：
 
 ```
 SCAN ─ 20s ─→ EXPLORE ─ 183s ─→ VERIFY ─ 13s ─→ SUMMARIZE
@@ -411,7 +428,7 @@ Bootstrap 管线的最终阶段将短期分析结果（Tier 2 SessionStore）**�
 
 ### 蒸馏管线：EpisodicConsolidator
 
-管线启动时机：所有 Tier 完成后，`orchestrator.ts` Step 5 触发。
+管线启动时机：所有 Tier 完成后由 completion finalizer 触发；当前代码中，`lib/workflows/capabilities/completion/WorkflowCompletionFinalizer.ts` 决定是否立即或延迟执行语义记忆，`lib/workflows/capabilities/completion/CompletionSteps.ts` 创建 `PersistentMemory` 与 `EpisodicConsolidator`。
 
 ```
 Pipeline 完成

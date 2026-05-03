@@ -91,7 +91,7 @@ try {
     console.log(`\nJSON report written: ${args.json}`);
   }
 
-  if (summary.missing > 0 || summary.outOfRange > 0) {
+  if (summary.missing > 0 || summary.outOfRange > 0 || summary.bodyChaptersWithoutAnchors > 0) {
     process.exitCode = 1;
   }
 } catch (error) {
@@ -453,10 +453,12 @@ async function verifyChapter(chapterAbs, chapterRel, sourceRoot) {
   return {
     chapter: chapterRel,
     title: headings[0]?.title ?? chapterRel,
+    bodyChapter: isBodyChapter(chapterRel),
     anchorCount: checks.length,
     ok: checks.filter((item) => item.status.startsWith('ok')).length,
     missing: checks.filter((item) => item.status === 'missing' || item.status === 'line-target-not-file').length,
     outOfRange: checks.filter((item) => item.status === 'line-out-of-range').length,
+    sectionCoverage: summarizeSectionCoverage(headings, checks),
     checks,
   };
 }
@@ -638,6 +640,19 @@ function nearestHeading(headings, line) {
   return current;
 }
 
+function summarizeSectionCoverage(headings, checks) {
+  const h2s = headings.filter((heading) => heading.level === 2);
+  return h2s.map((heading, index) => {
+    const nextLine = h2s[index + 1]?.line ?? Number.POSITIVE_INFINITY;
+    const anchors = checks.filter((check) => check.docLine >= heading.line && check.docLine < nextLine);
+    return { title: heading.title, line: heading.line, anchors: anchors.length };
+  });
+}
+
+function isBodyChapter(chapterRel) {
+  return /^docs\/part\d+\/ch\d[^/]*\.md$/.test(chapterRel);
+}
+
 function summarize(report) {
   return report.reduce(
     (acc, chapter) => {
@@ -649,9 +664,24 @@ function summarize(report) {
       if (chapter.anchorCount === 0) {
         acc.chaptersWithoutAnchors += 1;
       }
+      if (chapter.bodyChapter) {
+        acc.bodyChapters += 1;
+        if (chapter.anchorCount === 0) {
+          acc.bodyChaptersWithoutAnchors += 1;
+        }
+      }
       return acc;
     },
-    { chapters: 0, anchors: 0, ok: 0, missing: 0, outOfRange: 0, chaptersWithoutAnchors: 0 }
+    {
+      chapters: 0,
+      anchors: 0,
+      ok: 0,
+      missing: 0,
+      outOfRange: 0,
+      chaptersWithoutAnchors: 0,
+      bodyChapters: 0,
+      bodyChaptersWithoutAnchors: 0,
+    }
   );
 }
 
@@ -682,11 +712,22 @@ function printReport(payload) {
   console.log(
     `Docs checked: ${summary.chapters} chapters, ${summary.anchors} anchors, ${summary.ok} ok, ${summary.missing} missing, ${summary.outOfRange} line out of range`
   );
+  if (summary.bodyChaptersWithoutAnchors > 0) {
+    console.log(
+      `Evidence check: ${summary.bodyChaptersWithoutAnchors}/${summary.bodyChapters} body chapters have zero Alembic source anchors`
+    );
+  } else {
+    console.log(`Evidence check: ${summary.bodyChapters}/${summary.bodyChapters} body chapters have Alembic source anchors`);
+  }
 
   for (const chapter of chapters) {
-    const mark = chapter.missing || chapter.outOfRange ? 'FAIL' : 'OK';
+    const evidenceFail = chapter.bodyChapter && chapter.anchorCount === 0;
+    const mark = chapter.missing || chapter.outOfRange || evidenceFail ? 'FAIL' : 'OK';
     console.log(`\n[${mark}] ${chapter.chapter}`);
     console.log(`  anchors: ${chapter.anchorCount}, ok: ${chapter.ok}, missing: ${chapter.missing}, line-out-of-range: ${chapter.outOfRange}`);
+    if (evidenceFail) {
+      console.log('  evidence: body chapter has no Alembic source anchors');
+    }
     for (const check of chapter.checks) {
       const status = check.status.startsWith('ok') ? check.status : `!! ${check.status}`;
       const target = check.targetLine ? `${check.path}:${check.targetLine}` : check.path;

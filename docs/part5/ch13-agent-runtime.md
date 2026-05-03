@@ -250,6 +250,8 @@ SCAN → EXPLORE → VERIFY → RECORD → SUMMARIZE
 
 这个改动修复了过去的一类质量问题：分析正文里已经有发现，但没有写进结构化 scratchpad，QualityGate 和 Producer 无法稳定消费。现在 `note_finding` 是 QualityGate 的硬性证据输入；最终 Markdown 报告不能替代它。
 
+实现证据集中在 `lib/agent/context/exploration/ExplorationStrategies.ts`、`lib/agent/context/ExplorationTracker.ts`、`lib/agent/runtime/AgentRuntime.ts`、`lib/tools/v2/handlers/memory.ts` 和 `lib/agent/prompts/insight-gate.ts`：策略定义 5 阶段，Tracker 统计 `memoryFindingCount`，Runtime 投影 memory-only schema，memory handler 写入 ActiveContext，QualityGate 再消费结构化 findings。
+
 ## 工具执行
 
 Runtime 内的 `ToolExecutionPipeline` 现在只做 Runtime 横切关注点：

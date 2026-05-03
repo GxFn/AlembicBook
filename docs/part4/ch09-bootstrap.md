@@ -178,6 +178,8 @@ evolve → evolution_gate
 
 还有一个最新实现细节：`AgentStageFactoryRegistry` 会读取 `strategyContext.rescanContext.gap`，把 Producer 阶段的 `maxSubmits` 和 `softSubmitLimit` 都压到该维度 gap 数量。也就是说，重扫的 Producer 不是“能提交多少算多少”，而是被 gap plan 直接限流。冷启动和重扫仍共用同一套单维度 Agent pipeline，只是输入上下文、阶段组合和生产预算不同。
 
+这段链路的实现证据分别在 `lib/workflows/knowledge-rescan/internal/InternalKnowledgeRescanWorkflow.ts`、`lib/workflows/capabilities/planning/knowledge/EvolutionPrescreen.ts`、`lib/workflows/capabilities/execution/internal-agent/BootstrapDimensionRuntimeBuilder.ts` 与 `lib/agent/profiles/AgentStageFactoryRegistry.ts`：前两者负责前置治理和 prescreen，后两者把 rescan gap 传入 Runtime 并收敛 Producer 预算。
+
 ## 外部维度完成
 
 外部 Agent 通过 `alembic_dimension_complete` 进入：
