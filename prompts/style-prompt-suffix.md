@@ -1,12 +1,20 @@
 Style constraints (MUST follow strictly):
-- Hand-drawn wobble ink lines, sketch doodle aesthetic, like a designer's notebook sketch
-- Black/dark gray (#1A1A1A) ink on pure white (#FFFFFF) background
-- Only 3 accent colors allowed: pale blue (#A8D4F0), pale yellow (#F9E79F), pale pink (#FADBD8) — use sparingly as light fills, NOT outlines
-- Geometric shapes: rounded rectangles, circles, hexagons, simple arrows with hand-drawn imperfection
-- Stick-figure style icons and simple pictograms, NO realistic illustrations or clip art
-- Large white space margins on all sides, clean and intellectual feel
-- All visible text MUST be in Chinese (bold for titles, regular weight for labels), clearly legible
-- NO photographs, NO 3D rendering, NO gradients, NO drop shadows, NO decorative borders, NO background textures
-- Pure flat hand-drawn illustration, single consistent line weight throughout
-- Aspect ratio: 3:4 portrait orientation
-- Information hierarchy: title at top → main visual in center → annotations at bottom
+- Visual style: clean whiteboard system-design sketch, like a thoughtful engineer's hand-drawn architecture note.
+- Use an off-white / pure white paper background (#FFFFFF or very warm #FAFAF7), with subtle natural paper softness but no texture pattern.
+- Drawing medium: black or very dark gray handwritten ink lines (#111111 / #1A1A1A), slightly imperfect but controlled. Lines should feel hand-drawn, not vector-perfect.
+- Layout: landscape architecture diagram, default 1536x1024. Wide canvas, generous margins, title at top, main system flow in the middle, legend / key principles at bottom.
+- Typography: handwritten marker style. All visible text MUST be Chinese unless a technical identifier is explicitly required. Text must be readable and spelled correctly.
+- Color palette: use only these accent families, sparingly and consistently:
+  - red / coral for hot, critical, prompt, warning, or write paths
+  - blue for cold, storage, database, search, retrieval, or index paths
+  - green for skills, procedures, safe / standard paths
+  - amber / orange for optional, user modeling, async, or deep context paths
+  - purple for summarization, routing, compression, or decision points
+- Accent colors should appear as thin outlines, arrows, underlines, small labels, or very pale box fills. Do not flood the page with saturated color.
+- Shape language: rounded rectangles, document cards, database cylinders, numbered circles, dashed boxes, simple arrows, tiny doodle icons, compact legends.
+- Use black arrows for default flow, colored arrows for layer-specific flows, dashed arrows for optional / async / on-demand paths.
+- Prefer clear system-design composition over decorative illustration. Each diagram should feel like a polished whiteboard explanation, not a poster.
+- Keep dense information organized: align boxes to invisible rows/columns, avoid crossing arrows where possible, leave breathing room between sections.
+- No 3D rendering, no gradients, no shadows, no glossy UI cards, no stock illustration, no photorealism, no decorative borders, no emoji.
+- Do not imitate the exact reference image content. Use it only as a style direction: hand-drawn whiteboard architecture with colored memory / routing layers.
+- Final image must look like one coherent page from the same technical notebook series.

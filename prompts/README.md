@@ -2,178 +2,169 @@
 
 ## 工具链
 
-- **生图引擎**: `baoyu-imagine` → Google Gemini (`gemini-3.1-flash-image-preview`)
-- **Runtime**: `bun`（已安装）
-- **脚本路径**: `/Users/gaoxuefeng/Documents/github/baoyu-skills/skills/baoyu-imagine/scripts/main.ts`
+- 自动生图引擎: OpenAI Images API
+- 无 API 模式: 导出完整 prompt，交给 ChatGPT Plus 生图
+- 默认模型: `gpt-image-1.5`
+- Runtime: Node.js 18+
+- 主脚本: `scripts/illustrations-openai.mjs`
+- 兼容入口: `scripts/illustrations.sh`
+
+ChatGPT Plus 和 OpenAI API 是分开的。只有 Plus 订阅时，脚本不能直接调用 ChatGPT 里的生图能力；此时使用 `--export-prompts` 导出完整 prompt。
+
+API 自动生成前需要设置:
+
+```bash
+export OPENAI_API_KEY="..."
+```
+
+如账号已开通更新模型，可覆盖:
+
+```bash
+export OPENAI_IMAGE_MODEL="gpt-image-2"
+```
 
 ## 目录结构
 
-```
+```text
 alembic-book/
 ├── prompts/
-│   ├── style-prompt-suffix.md      # 全局风格约束（每次 prompt 必须附加）
-│   └── ch06/                        # 各章 prompt 文件（按需创建）
+│   ├── style-anchor.md              # 风格锚点图的内容 prompt
+│   ├── style-prompt-suffix.md       # 全局风格约束（每次生成都会附加）
+│   └── ch06/
 │       ├── 01-v3-field-overview.md
 │       ├── 02-inheritance-vs-unified.md
 │       └── 03-candidate-to-recipe.md
 └── docs/public/images/
-    ├── style-anchor.png             # 全书风格锚点图（必须最先生成）
+    ├── style-anchor.png             # 全书风格锚点图（先生成并确认）
     ├── ch01/
     ├── ch06/
-    │   ├── 01-knowledge-card-v3-field-overview.png
-    │   ├── 02-versus-inheritance-vs-unified.png
-    │   └── 03-flow-candidate-to-recipe.png
     └── ...
 ```
 
+## 新视觉标准
+
+新的全书插图风格是“手写系统设计白板图”:
+
+- 横版白板画布，默认 `1536x1024`
+- 白色或近白纸面背景，黑色手绘线条
+- 红、蓝、绿、橙、紫五组颜色只做路径、层级、标签和浅填充
+- 中文手写标签必须清晰可读
+- 常用元素: 圆角矩形、数据库圆柱、文档卡、编号圆点、虚线框、细箭头、底部 legend
+- 禁止 3D、照片感、渐变、阴影、装饰边框、表情符号
+
+外部标准图只用于提炼视觉语法，不复制标题、内容或具体结构。真正的书内统一锚点是 `docs/public/images/style-anchor.png`。
+
 ## 生成流程
 
-### Step 0: 生成风格锚点图（全书仅一次）
+### Step 0A: ChatGPT Plus 导出 prompt
 
-这张图决定整本书的视觉基调。反复调整直到满意。
+只有 ChatGPT Plus、没有 API key 时，先导出完整 prompt:
 
 ```bash
-bun /Users/gaoxuefeng/Documents/github/baoyu-skills/skills/baoyu-imagine/scripts/main.ts \
-  --prompt "A minimal hand-drawn knowledge card illustration. Clean black ink wobble lines on pure white background. A centered rounded rectangle contains structured information in 3 rows with small geometric icons (circle, hexagon, arrow). Chinese title '知识条目全景' at top in bold. Subtle pale blue (#A8D4F0) fill on one section, pale yellow (#F9E79F) on another. Large white space margins. Sketch doodle aesthetic, intellectual and calm feel. No photographs, no 3D, no gradients. Pure flat hand-drawn style." \
-  --image docs/public/images/style-anchor.png \
-  --provider google --model gemini-3.1-flash-image-preview \
-  --ar 3:4 --quality 2k
+bash scripts/illustrations.sh --export-prompts --anchor
+bash scripts/illustrations.sh --export-prompts ch15
 ```
 
-验证满意后继续。如果不满意，删除重新生成，直到锚点图确定。
+导出目录默认是 `tmp/illustration-prompts/`，其中每个文件都包含目标图片路径、参考图说明和完整生图 prompt。
 
-### Step 1: 为章节编写 prompt 文件
+### Step 0B: API 生成风格锚点图
 
-每张图创建一个 prompt 文件到 `prompts/chXX/` 目录。文件只写**内容描述**，不写风格约束（风格由 `style-prompt-suffix.md` 统一提供）。
+有 API key 时，锚点图由 `prompts/style-anchor.md` 决定内容，由 `prompts/style-prompt-suffix.md` 决定风格。默认会读取标准参考图 URL 作为风格参考。
 
-示例 `prompts/ch06/01-v3-field-overview.md`：
+```bash
+bash scripts/illustrations.sh --anchor --force --dry-run
+bash scripts/illustrations.sh --anchor --force
 ```
+
+如果只想根据文字 prompt 生成锚点，不读取外部参考图:
+
+```bash
+bash scripts/illustrations.sh --anchor --force --no-external-ref
+```
+
+锚点图满意后再生成章节插图。章节图只引用这张锚点图，避免连续引用导致风格漂移。
+
+### Step 1: 编写章节 prompt
+
+每张图创建一个 prompt 文件到 `prompts/chXX/`。章节 prompt 只写内容结构，不写风格约束。
+
+示例:
+
+```text
 Title at top in bold Chinese: "KnowledgeEntry V3 字段全景"
 
 A large rounded rectangle divided into 6 horizontal layers:
-Layer 1 "核心身份": 4 boxes — id, title(≤20字), description(≤80字), trigger(@前缀). Pale blue tint.
+Layer 1 "核心身份": 4 boxes — id, title(≤20字), description(≤80字), trigger(@前缀).
 Layer 2 "内容体": content.markdown(≥200字符) + coreCode(3-8行)
-...（具体内容描述）
+...
 ```
 
 ### Step 2: 生成图片
 
 ```bash
-# 通用命令模板
-bun /Users/gaoxuefeng/Documents/github/baoyu-skills/skills/baoyu-imagine/scripts/main.ts \
-  --promptfiles prompts/chXX/NN-slug.md prompts/style-prompt-suffix.md \
-  --image docs/public/images/chXX/NN-type-slug.png \
-  --ref docs/public/images/style-anchor.png \
-  --provider google --model gemini-3.1-flash-image-preview \
-  --ar 3:4 --quality 2k
+# 生成所有缺失插图
+bash scripts/illustrations.sh
+
+# 只生成某章
+bash scripts/illustrations.sh ch06
+
+# 单图或前缀匹配
+bash scripts/illustrations.sh ch07/06
+
+# 强制重新生成
+bash scripts/illustrations.sh --force ch07/06
+
+# 只预览，不调用 API
+bash scripts/illustrations.sh --dry-run ch07/06
+
+# 查看状态
+bash scripts/illustrations.sh --list
 ```
 
-**三个关键点**：
-1. `--promptfiles` 组合内容 prompt + 风格 suffix，顺序：内容在前，风格在后
-2. `--ref` 始终指向 `style-anchor.png`，**不要链式引用上一张图**
-3. `--ar 3:4 --quality 2k` 固定不变
+也可以使用 npm 脚本:
 
-### Step 3: 质检
-
-每章生成完后检查：
-
-| 检查项 | 合格 | 不合格 → 重新生成 |
-|--------|------|-------------------|
-| 配色 | 仅黑/白/淡蓝/淡黄/淡粉 | 出现其他颜色 |
-| 线条 | 手绘抖动感 | 光滑矢量线条 |
-| 文字 | 中文、清晰可读 | 英文、乱码、模糊 |
-| 背景 | 纯白 | 灰色/纹理/渐变 |
-| 元素 | 简笔几何图形 | 写实/3D/照片质感 |
-| 留白 | 四周充足白边 | 元素贴边 |
-
-### Step 4: 插入文章
-
-在章节 markdown 中替换占位标记：
-
-```markdown
-<!-- illustration: xxx | 描述 -->
+```bash
+npm run illustrations -- --dry-run ch15
+npm run illustrations:anchor -- --force --dry-run
+npm run illustrations:prompts -- ch15
 ```
-
-替换为：
-
-```markdown
-![描述](/images/chXX/NN-type-slug.png)
-```
-
-## 生成顺序
-
-```
-锚点图 → Ch01(2张) → Ch02(3张) → Ch03(3张) → ... → Ch18(2张)
-```
-
-同一章连续生成，不要跨章交叉。
 
 ## 参数速查
 
-| 参数 | 固定值 | 说明 |
-|------|--------|------|
-| `--provider` | `google` | Google Gemini API |
-| `--model` | `gemini-3.1-flash-image-preview` | 支持 ref + 中文 |
-| `--ar` | `3:4` | 竖版，适配 VitePress |
-| `--quality` | `2k` | 高清输出 |
-| `--ref` | `docs/public/images/style-anchor.png` | 始终同一锚点 |
+| 参数 / 环境变量 | 默认值 | 说明 |
+|---|---:|---|
+| `OPENAI_IMAGE_MODEL` / `--model` | `gpt-image-1.5` | OpenAI 图片模型 |
+| `OPENAI_IMAGE_SIZE` / `--size` | `1536x1024` | 横版白板尺寸 |
+| `OPENAI_IMAGE_QUALITY` / `--quality` | `high` | 输出质量 |
+| `OPENAI_IMAGE_FORMAT` / `--format` | `png` | 输出格式；仓库固定使用 PNG |
+| `ILLUSTRATION_RESIZE_WIDTH` / `--resize-width` | `1280` | 生成后压缩宽度 |
+| `ALEMBIC_STYLE_REFERENCE_URL` / `--reference-url` | 标准图 URL | 仅锚点图使用 |
+| `ILLUSTRATION_PROMPT_EXPORT_DIR` / `--export-dir` | `tmp/illustration-prompts` | Plus prompt 导出目录 |
+
+## 质检清单
+
+每张图生成后检查:
+
+| 检查项 | 合格 | 不合格时 |
+|---|---|---|
+| 构图 | 横版系统设计图，标题、主体、legend 清楚 | 调整 prompt 后重生成 |
+| 风格 | 白板手绘，线条轻微不规则 | 加强 suffix 或重生成 |
+| 文字 | 中文清晰、少错字 | 重生成或减少文字量 |
+| 颜色 | 只使用红/蓝/绿/橙/紫点缀 | 重生成 |
+| 信息密度 | 密但有秩序，箭头少交叉 | 调整布局描述 |
+| 统一性 | 和 `style-anchor.png` 像同一本技术笔记 | 重新生成 |
 
 ## 命名规范
 
-- **prompt 文件**: `prompts/chXX/NN-slug.md`
-- **图片文件**: `docs/public/images/chXX/NN-type-slug.png`
-- **type 取值**: `knowledge-card`, `versus`, `flow`, `concept-map`, `checklist`, `swot`, `cover`
+- prompt 文件: `prompts/chXX/NN-slug.md`
+- 图片文件: `docs/public/images/chXX/NN-slug.png`
+- 锚点 prompt: `prompts/style-anchor.md`
+- 锚点图片: `docs/public/images/style-anchor.png`
 
 ## 注意事项
 
-1. **锚点图是一切的基础** — 不满意就反复重做，不要将就
-2. **不要链式 ref** — 所有图都 ref 锚点图，避免风格漂移
-3. **风格 suffix 不要改** — 如需微调，只改内容 prompt
-4. **文件格式验证** — 生成后 `file xxx.png` 确认是真正的 PNG，避免 MIME 不匹配
-5. **每章独立目录** — images/chXX/ 和 prompts/chXX/ 一一对应
-
-## 各章插图计划
-
-### Ch06: KnowledgeEntry — 一个实体表达所有知识
-
-| # | Prompt 文件 | 输出图片 | 类型 | 描述 |
-|---|---|---|---|---|
-| 01 | `ch06/01-v3-field-overview.md` | `ch06/01-knowledge-card-v3-field-overview.png` | knowledge-card | KnowledgeEntry V3 六层字段全景 |
-| 02 | `ch06/02-inheritance-vs-unified.md` | `ch06/02-versus-inheritance-vs-unified.png` | versus | 继承体系 vs 统一实体对比 |
-| 03 | `ch06/03-candidate-to-recipe.md` | `ch06/03-flow-candidate-to-recipe.png` | flow | Candidate → Recipe 审核流程 |
-
-### Ch07: 生命周期与进化 — 知识的生老病死
-
-| # | Prompt 文件 | 输出图片 | 类型 | 描述 |
-|---|---|---|---|---|
-| 01 | `ch07/01-six-state-lifecycle.md` | `ch07/01-state-six-state-lifecycle.png` | state | 六态生命周期状态机（6 节点 + 转换箭头 + 触发条件） |
-| 02 | `ch07/02-evolution-proposal-flow.md` | `ch07/02-flow-evolution-proposal-flow.png` | flow | 进化提案机制（发现 → 创建 → 评估执行三阶段） |
-| 03 | `ch07/03-decay-scoring-model.md` | `ch07/03-data-decay-scoring-model.png` | data | DecayDetector 四维评分模型 + 五级健康等级 |
-
-**生成命令**（在 `alembic-book/` 目录下执行）：
-
-```bash
-# 01 — 六态状态机
-bun /Users/gaoxuefeng/Documents/github/baoyu-skills/skills/baoyu-imagine/scripts/main.ts \
-  --promptfiles prompts/ch07/01-six-state-lifecycle.md prompts/style-prompt-suffix.md \
-  --image docs/public/images/ch07/01-state-six-state-lifecycle.png \
-  --ref docs/public/images/style-anchor.png \
-  --provider google --model gemini-3.1-flash-image-preview \
-  --ar 3:4 --quality 2k
-
-# 02 — 进化提案流程
-bun /Users/gaoxuefeng/Documents/github/baoyu-skills/skills/baoyu-imagine/scripts/main.ts \
-  --promptfiles prompts/ch07/02-evolution-proposal-flow.md prompts/style-prompt-suffix.md \
-  --image docs/public/images/ch07/02-flow-evolution-proposal-flow.png \
-  --ref docs/public/images/style-anchor.png \
-  --provider google --model gemini-3.1-flash-image-preview \
-  --ar 3:4 --quality 2k
-
-# 03 — 衰退评分模型
-bun /Users/gaoxuefeng/Documents/github/baoyu-skills/skills/baoyu-imagine/scripts/main.ts \
-  --promptfiles prompts/ch07/03-decay-scoring-model.md prompts/style-prompt-suffix.md \
-  --image docs/public/images/ch07/03-data-decay-scoring-model.png \
-  --ref docs/public/images/style-anchor.png \
-  --provider google --model gemini-3.1-flash-image-preview \
-  --ar 3:4 --quality 2k
-```
+1. 先确定锚点图，再批量生成章节图。
+2. 所有章节图只引用 `style-anchor.png`，不要链式引用上一张章节图。
+3. 风格调整优先改 `style-prompt-suffix.md`，内容调整才改章节 prompt。
+4. 默认不会覆盖已有图片；需要覆盖时显式加 `--force`。
+5. 本脚本会在强制覆盖前创建临时备份，失败时自动恢复。

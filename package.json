@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
+    "illustrations": "node scripts/illustrations-openai.mjs",
+    "illustrations:anchor": "node scripts/illustrations-openai.mjs --anchor",
+    "illustrations:prompts": "node scripts/illustrations-openai.mjs --export-prompts",
     "preview": "vitepress preview docs"
   },
   "repository": {
