@@ -269,6 +269,8 @@ runRescanCleanPolicy() / runForceRescanCleanPolicy() / snapshotRecipes()
 
 它先返回骨架和 gap plan，再后台填充需要执行的维度。SourceRef 修复和 impact planning 都在同步响应前完成；Evolution Agent 审计是 fire-and-forget，不阻塞本次 rescan 响应。
 
+![Rescan 内部治理链路](/images/ch09/02-rescan-internal-governance.png)
+
 ## Recipe 审计与 Gap Plan
 
 重扫的关键逻辑在 `KnowledgeRescanPlanner` 和 `KnowledgeRescanPlanBuilder`。
