@@ -176,7 +176,7 @@ Tool System V2 把 Agent 可见工具收敛为 `code`、`terminal`、`knowledge`
 
 ### 数据基础设施
 
-四层数据架构：ServiceContainer（DI 容器，9 模块 70+ 服务）→ SQLite 关系存储（better-sqlite3 + WAL）→ Vector 向量存储（HNSW + SQ8 量化）→ Cache 缓存体系（LRU + GraphCache + CacheCoordinator）。底层是审计与监控（AuditLogger + Winston Logger + ConfigLoader）。
+四层数据架构：ServiceContainer（DI 容器，9 模块，`lib/injection/ServiceMap.ts` 中 75 个公开服务键）→ SQLite 关系存储（better-sqlite3 + WAL）→ Vector 向量存储（HNSW + SQ8 量化）→ Cache 缓存体系（LRU + GraphCache + CacheCoordinator）。底层是审计与监控（AuditLogger + Winston Logger + ConfigLoader）。
 
 ![数据基础设施四层](/images/ch16/01-infrastructure-four-layers.png)
 

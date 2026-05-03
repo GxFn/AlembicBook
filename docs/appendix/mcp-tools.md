@@ -1,6 +1,6 @@
 # MCP 工具参考
 
-> 当前 MCP Server 在 `lib/external/mcp/tools.ts` 中声明 19 个工具：17 个 Agent 层工具，2 个 Admin 层工具。工具名统一使用 `alembic_*` 前缀。
+> 当前 MCP Server 在 `lib/external/mcp/tools.ts` 中声明 19 个工具：17 个 Agent 层工具，2 个 Admin 层工具。工具名统一使用 `alembic_*` 前缀；可见性由 `lib/external/mcp/McpServer.ts` 按 `ALEMBIC_MCP_TIER` 过滤。
 
 ## Agent 层工具
 
@@ -66,7 +66,7 @@ Wiki 工作流。plan 为只读规划，finalize 会写入生成结果。
 
 ### `alembic_panorama`
 
-项目全景查询。返回模块、分层、耦合、覆盖率等汇总。
+项目全景查询。返回模块、分层、耦合、覆盖率等汇总。`lib/external/mcp/handlers/panorama.ts` 中的 `overview`、`module`、`gaps`、`health` 是当前主路径；旧的 `governance_cycle` operation 会返回 “KnowledgeMetabolism has been removed. Use rescan for governance.”，不要再把它当作有效治理入口。
 
 ### `alembic_task`
 
@@ -104,4 +104,4 @@ Wiki 工作流。plan 为只读规划，finalize 会写入生成结果。
 | `alembic_enrich_candidates` | `knowledge:update` | `knowledge` |
 | `alembic_knowledge_lifecycle` | `knowledge:update` | `knowledge` |
 
-MCP Server 自身也通过 `LightweightRouter + McpToolAdapter` 执行工具。`buildMcpToolCapabilities()` 会把这些声明投影为 `mcp-tool` manifest，并附加 externalTrust、surface、risk、execution 和 governance profile。
+MCP Server 自身也通过 `lib/tools/core/LightweightRouter.ts` + `lib/external/mcp/McpToolAdapter.ts` 执行工具。`lib/external/mcp/McpCapabilityProjection.ts` 的 `buildMcpToolCapabilities()` 会把这些声明投影为 `mcp-tool` manifest，并附加 externalTrust、surface、risk、execution 和 governance profile。

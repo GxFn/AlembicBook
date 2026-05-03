@@ -4,7 +4,7 @@
 
 ## 问题场景
 
-Alembic 是一个本地化工具，用户 `npm install -g alembic` 后就应该能用。这意味着不能依赖 PostgreSQL、Redis、Elasticsearch 等外部服务。但系统需要：关系型存储（知识条目 · 审计日志 · 14 张表）、向量存储（语义搜索 · HNSW 索引）、缓存（AST 图谱 · 搜索结果 · 跨进程失效）、事件总线（信号分发）、依赖注入（70+ 服务管理）。
+Alembic 是一个本地化工具，用户 `npm install -g alembic` 后就应该能用。这意味着不能依赖 PostgreSQL、Redis、Elasticsearch 等外部服务。但系统需要：关系型存储（知识条目 · 审计日志 · 16 张运行时表 + 1 张内部迁移表）、向量存储（语义搜索 · HNSW 索引）、缓存（AST 图谱 · 搜索结果 · 跨进程失效）、事件总线（信号分发）、依赖注入（ServiceMap 中 75 个公开服务键 + 5 个内部状态键）。
 
 **核心约束**：所有基础设施必须内嵌，`npm install` 即用——不能要求用户启动 Docker、安装 PostgreSQL 或配置 Redis。
 
@@ -36,17 +36,16 @@ const entry = await db.select()
 
 // Raw SQL：复杂动态查询 + 性能关键路径
 const results = db.prepare(`
-  SELECT ke.*, GROUP_CONCAT(edge.toId) as related
-  FROM knowledge_entries ke
-  LEFT JOIN knowledge_edges edge ON ke.id = edge.fromId
-  WHERE ke.lifecycle IN (?, ?)
-  GROUP BY ke.id
-  ORDER BY ke.stats_json->>'$.hitCount' DESC
-  LIMIT ?
-`).all('active', 'evolving', 20);
+  SELECT *
+  FROM knowledge_entries
+  WHERE lifecycle IN (?, ?)
+    AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')
+  ORDER BY updatedAt DESC
+  LIMIT ? OFFSET ?
+`).all('active', 'evolving', '%cache%', '%cache%', 20, 0);
 ```
 
-Drizzle 负责 schema 定义（编译期列名检查）、migration 管理和简单 CRUD。raw SQL 处理动态过滤、多表 JOIN 和 JSON 字段查询——这些场景下 ORM 的抽象反而是障碍。KnowledgeRepository 使用 `_assertSafeColumn()` 列名白名单验证，防止 raw SQL 的注入风险。
+Drizzle 负责 schema 定义（编译期列名检查）、migration 管理和简单 CRUD。raw SQL 处理动态过滤、分页和排序——这些场景下 ORM 的抽象反而是障碍。`lib/repository/knowledge/KnowledgeRepository.impl.ts` 使用 `_assertSafeColumn()` 校验标识符格式，并通过 `PRAGMA table_info(knowledge_entries)` 建立真实列名白名单，防止动态 `ORDER BY` 注入。
 
 ### 向量存储的双引擎策略
 
@@ -67,11 +66,11 @@ async hybridSearch(queryVector, queryText, options)
 
 ### 自建 DI 容器
 
-Alembic 管理 70+ 服务的依赖关系。为什么不用 InversifyJS 或 TSyringe 这些成熟框架？
+Alembic 管理 75 个公开服务键的依赖关系。为什么不用 InversifyJS 或 TSyringe 这些成熟框架？
 
 第一个原因是**装饰器兼容性**。InversifyJS 和 TSyringe 都依赖 TypeScript 装饰器和 `reflect-metadata`——这在 ESM 模块系统中有持续的兼容性问题。Alembic 是纯 ESM 项目（`"type": "module"`），装饰器的转义行为在不同构建工具间不一致。
 
-第二个原因是**体积和控制权**。InversifyJS 大约 10,000 行代码；Alembic 的 ServiceContainer 不到 200 行，却能覆盖实际需要的所有功能——延迟单例、模块化注册、AI Provider 热重载、类型安全的 `get<T>()`。没有装饰器魔法，没有运行时元数据反射，每个服务的注册和解析过程完全透明。
+第二个原因是**体积和控制权**。InversifyJS 大约 10,000 行代码；Alembic 的 `lib/injection/ServiceContainer.ts` 是一个约 500 行的显式容器，覆盖实际需要的功能——延迟单例、模块化注册、AI Provider 热重载、类型安全的 `get<T>()`、跨进程缓存协调。没有装饰器魔法，没有运行时元数据反射，每个服务的注册和解析过程完全透明。
 
 ```typescript
 // 服务注册：工厂函数 + 延迟初始化
@@ -88,9 +87,9 @@ ServiceContainer 唯一的"高级功能"是 **AI Provider 热重载**：用户�
 
 ## 架构与数据流
 
-### 数据库 Schema——14 张表
+### 数据库 Schema——17 张表
 
-Alembic 的 SQLite 数据库包含 14 张表，用 Drizzle ORM 定义 schema，编译期保证列名和类型的正确性。以下是核心表的设计：
+Alembic 的 SQLite schema 单一来源是 `lib/infrastructure/database/drizzle/schema.ts`。当前代码导出 17 个 `sqliteTable()` 定义：16 张运行时业务/支撑表，加上内部 `schema_migrations` 表。以下按职责分组：
 
 **知识存储（3 张表）**：
 
@@ -98,22 +97,21 @@ Alembic 的 SQLite 数据库包含 14 张表，用 Drizzle ORM 定义 schema，�
 |:---|:---|:---|:---|
 | `knowledge_entries` | 知识条目主表 | id · title · lifecycle · kind · knowledgeType · content(JSON) · stats(JSON) · trigger | 10 个索引——按 lifecycle、language、category、kind、createdAt、trigger、title 等 |
 | `knowledge_edges` | 知识关系图谱 | fromId · toId · relation · weight · metadata_json | 唯一索引 `(fromId, toId, relation)` 防重复 |
-| `recipe_source_refs` | 知识源引用 | recipeId · filePath · lineRange | 支持溯源查询 |
+| `recipe_source_refs` | 知识源引用桥接表 | recipeId · sourcePath · status · newPath · verifiedAt | 按 sourcePath 和 status 索引，支撑文件变更与 rescan 审计 |
 
 `knowledge_entries` 是系统中最重要的表。10 个索引看似激进，但每个都对应一个高频查询路径——按生命周期过滤（`lifecycle = 'active'`）、按语言筛选、按触发器精确匹配等。写入集中在 Bootstrap 阶段，查询分散在 MCP 服务的整个生命周期，读优化的索引策略是正确的权衡。
 
 `content` 和 `stats` 使用 JSON 字段存储。为什么不拆成独立列？因为这些字段的结构在知识类型之间差异很大——`code-pattern` 类型有 `coreCode` 和 `headers`，`architecture` 类型有 `components` 和 `layers`。JSON 字段避免了大量可空列，SQLite 的 `json_extract()` 和 `->>` 操作符为 JSON 查询提供了足够的性能。
 
-**分析与审计（4 张表）**：
+**分析与审计（3 张表）**：
 
 | 表 | 职责 | 关键设计 |
 |:---|:---|:---|
 | `code_entities` | AST 代码实体 | 组合唯一索引 `(entityId, entityType, projectRoot)` 支持多项目 |
 | `guard_violations` | Guard 检查记录 | violations 以 JSON 数组存储，按 filePath + triggeredAt 索引 |
 | `audit_logs` | 操作审计 | actor · action · resource · result · duration，独立日志通道 |
-| `evolution_proposals` | 进化提案 | `lib/repository/evolution/ProposalRepository.ts` 默认 update 72h、deprecate 7d；`lib/service/evolution/EvolutionGateway.ts` 主路径写 `expiresAt: 0` 交给 SignalBus 观察 |
 
-**会话与记忆（3 张表）**：
+**会话、记忆与 Bootstrap（4 张表）**：
 
 | 表 | 职责 | 关键设计 |
 |:---|:---|:---|
@@ -121,16 +119,26 @@ Alembic 的 SQLite 数据库包含 14 张表，用 Drizzle ORM 定义 schema，�
 | `semantic_memories` | Agent 语义记忆 | type(fact/insight/preference) · importance 评分 · 30 天归档 · 90 天遗忘 |
 | `bootstrap_snapshots` + `bootstrap_dim_files` | Bootstrap 快照 | 父子关系——快照关联维度-文件映射 |
 
-**运行时支撑（2 张表）**：
+**进化治理（3 张表）**：
+
+| 表 | 职责 | 关键设计 |
+|:---|:---|:---|
+| `evolution_proposals` | update/deprecate 进化提案 | `lib/repository/evolution/ProposalRepository.ts` 默认 update 72h、deprecate 7d；`lib/service/evolution/EvolutionGateway.ts` 主路径写 `expiresAt: 0` 交给 SignalBus 观察 |
+| `lifecycle_transition_events` | 生命周期转换审计 | recipeId · fromState · toState · trigger · operatorId · proposalId |
+| `recipe_warnings` | contradiction / redundancy 警告 | open/resolved/dismissed 三态，按 target/type/status/detectedAt 索引 |
+
+**运行时支撑（4 张表）**：
 
 | 表 | 职责 |
 |:---|:---|
 | `token_usage` | AI Token 消耗追踪——provider · model · inputTokens · outputTokens |
 | `remote_commands` | 远程指令队列——飞书等外部渠道的命令入队/执行 |
+| `remote_state` | 远程通道内联状态——key/value/updatedAt |
+| `schema_migrations` | 内部迁移版本表——version/applied_at |
 
 ### Migration 策略
 
-数据库迁移在 `DatabaseConnection.connect()` 时自动执行。系统支持三种迁移文件格式——`.sql`、`.js`、`.ts`——通过 `schema_migrations` 表追踪已应用版本。每次迁移在事务中执行，保证原子性：要么全部成功，要么回滚到迁移前状态。
+数据库迁移由 `lib/infrastructure/database/DatabaseConnection.ts` 的 `runMigrations()` 执行；Bootstrap 的 `initializeDatabase()` 先 `connect()`，再显式调用 `runMigrations()`。系统支持三种迁移文件格式——`.sql`、`.js`、`.ts`——通过 `schema_migrations` 表追踪已应用版本。每次迁移在事务中执行，保证原子性：要么全部成功，要么回滚到迁移前状态。
 
 迁移的设计原则是**向后兼容**：新增列使用 `DEFAULT` 值，不会删除已有列。这保证了旧版本产生的数据库文件在新版本中依然可用——用户升级 Alembic 版本后不需要重建知识库。
 
@@ -182,7 +190,7 @@ maxConcurrency = 2   // 最多 2 个批次并行（p-limit 背压控制）
 索引构建的完整流程：**scan → chunk → detect → embed → upsert**。
 
 ```yaml
-1. 扫描：遍历 recipes/ 目录，收集 .md/.swift/.ts 等 14 种扩展名
+1. 扫描：遍历 recipes/candidates/Alembic 子目录和 README，收集 .md/.swift/.ts 等 16 种扩展名
 2. 分块：Chunker v2 自动选择策略（AST / section / fixed）
    - maxChunkTokens = 512, overlapTokens = 50
 3. 增量检测：SHA256 前 16 字符作为 sourceHash，跳过未变化的文档
@@ -252,26 +260,27 @@ AuditStore 提供多维度查询——按时间范围、按执行者、按操作
 DatabaseConnection 是整个数据层的入口——管理唯一的 SQLite 连接，执行迁移，配置运行时参数。
 
 ```typescript
+// lib/infrastructure/database/DatabaseConnection.ts
 class DatabaseConnection {
   connect(): Promise<SqliteDatabase> {
-    // 1. 开发仓库保护
-    if (isAlembicDevRepo(projectRoot)) {
-      dbPath = path.join(os.tmpdir(), 'alembic-dev', 'data.db');
+    // 1. Ghost/标准模式路径解析 + 排除项目保护
+    if (isExcludedProject(projectRoot).excluded) {
+      resolvedDbPath = path.join(os.tmpdir(), 'alembic-dev', 'alembic.db');
     }
 
     // 2. 打开连接 + 运行时配置
-    const db = new Database(dbPath);
+    const db = new Database(resolvedDbPath);
     db.pragma('journal_mode = WAL');      // 写前日志
     db.pragma('foreign_keys = ON');        // 外键约束
     db.pragma('busy_timeout = 3000');      // 写锁等待 3 秒
 
     // 3. 初始化 Drizzle ORM
     this.drizzle = initDrizzle(db);
-
-    // 4. 自动迁移
-    await this.runMigrations();
-
     return db;
+  }
+
+  runMigrations(): Promise<void> {
+    // 读取 migrations/*.{sql,js,ts}，事务内执行，并写 schema_migrations
   }
 }
 ```
@@ -282,7 +291,7 @@ class DatabaseConnection {
 - **`foreign_keys = ON`**：SQLite 默认不启用外键约束（历史原因）。Alembic 的 `knowledge_edges` 表引用 `knowledge_entries.id`，没有这个配置，删除知识条目不会级联清理关系边。
 - **`busy_timeout = 3000`**：当另一个进程持有写锁时，不立即返回 `SQLITE_BUSY` 错误，而是等待最多 3 秒。这避免了 MCP Server 和 CLI 同时写入时的频繁失败。
 
-**开发仓库保护**是一个精巧的防护机制：`isAlembicDevRepo()` 检测当前项目是否是 Alembic 源码仓库本身。如果是，数据库文件重定向到 `$TMPDIR/alembic-dev/`——防止开发和测试期间的 MCP Server 在源码仓库中产生运行时数据。这个检测配合 PathGuard（阻止创建 `.asd/` 目录）和 SetupService（拒绝执行 setup），形成三重保护。
+**排除项目保护**是一个精巧的防护机制：`lib/shared/isOwnDevRepo.ts` 的 `isExcludedProject()` 同时覆盖 Alembic 源码仓库、生态项目（如 AlembicBook）和 `.asd-skip` 标记项目。如果命中排除规则，数据库重定向到 `$TMPDIR/alembic-dev/alembic.db`；否则走 `PathGuard.assertProjectWriteSafe()`，确保 DB 文件只会落在允许的项目数据区。
 
 ### ServiceContainer 启动序列
 
@@ -355,7 +364,7 @@ reloadAiProvider(newProvider) {
 
 ### ServiceMap 类型安全
 
-70+ 服务的类型安全依赖 `ServiceMap` 接口——一个 TypeScript 映射，把字符串键绑定到具体的服务类型：
+`lib/injection/ServiceMap.ts` 中当前有 80 个键：75 个公开服务键，外加 `_projectRoot`、`_config`、`_lang`、`_fileCache`、`_embedProvider` 这 5 个由 Bootstrap 或容器内部注入的状态键。它是一个 TypeScript 映射，把字符串键绑定到具体的服务类型：
 
 ```typescript
 export interface ServiceMap {
@@ -368,10 +377,13 @@ export interface ServiceMap {
   agentService: AgentService;
   agentRuntimeBuilder: AgentRuntimeBuilder;
   agentRunCoordinator: AgentRunCoordinator;
-  capabilityCatalog: V2CapabilityCatalog;
-  toolRouter: V2ToolRouterAdapter;
   toolRegistry: UnifiedToolCatalog;
-  // ... 60+ 更多服务
+  signalBus: SignalBus;
+  hitRecorder: HitRecorder;
+  panoramaService: PanoramaService;
+  cacheCoordinator: CacheCoordinator;
+  // ... 60+ 更多公开服务
+  _projectRoot: string; // 内部注入状态
 }
 ```
 
@@ -482,33 +494,36 @@ KnowledgeRepository 是仓储层的核心——知识条目的 CRUD 和复杂查
 简单操作使用 Drizzle：
 
 ```typescript
+// lib/repository/knowledge/KnowledgeRepository.impl.ts
 async findById(id: string): Promise<KnowledgeEntry | null> {
-  const row = await this.db.select()
+  const row = this.#drizzle.select()
     .from(knowledgeEntries)
     .where(eq(knowledgeEntries.id, id))
-    .limit(1);
-  return row[0] ? this._rowToEntity(row[0]) : null;
+    .limit(1)
+    .get();
+  return row ? this._rowToEntity(row) : null;
 }
 ```
 
-复杂查询保留 raw SQL——动态过滤条件（可能按 lifecycle、language、category、kind 的任意组合筛选）和 JSON 字段查询（按命中次数排序 `stats_json->>'$.hitCount'`）在 ORM 中难以优雅表达：
+复杂查询保留 raw SQL——动态过滤条件、搜索条件、分页和动态排序在 ORM 中难以优雅表达；动态列名不能参数化，所以必须走 `_assertSafeColumn()`：
 
 ```typescript
 async findWithPagination(filters, options) {
-  let sql = 'SELECT * FROM knowledge_entries WHERE 1=1';
+  const conditions: string[] = [];
   const params: unknown[] = [];
 
   if (filters.lifecycle) {
-    sql += ' AND lifecycle = ?';
+    conditions.push('lifecycle = ?');
     params.push(filters.lifecycle);
   }
   if (filters._search) {
-    sql += ' AND (title LIKE ? OR content LIKE ?)';
+    conditions.push(`(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')`);
     params.push(`%${filters._search}%`, `%${filters._search}%`);
   }
   // 列名白名单验证防注入
   this._assertSafeColumn(options.orderBy);
-  sql += ` ORDER BY ${options.orderBy} ${options.order}`;
+  const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+  const sql = `SELECT * FROM knowledge_entries${where} ORDER BY ${options.orderBy} ${options.order}`;
   // ...
 }
 ```
@@ -551,10 +566,10 @@ Drizzle 和 Prisma 是 TypeScript 生态中两个主流 ORM。Alembic 选择 Dri
 
 Alembic 在"npm 包"的部署约束下构建了一套完整的数据基础设施：
 
-- **SQLite + WAL** 提供关系存储，14 张表覆盖知识、分析、审计、会话四个领域
+- **SQLite + WAL** 提供关系存储，16 张运行时表 + 1 张内部迁移表覆盖知识、分析、审计、会话、远程通道和进化治理
 - **HNSW + SQ8 量化** 提供高性能向量搜索，BatchEmbedder 50× 加速索引构建
 - **三层缓存**（内存 LRU · 文件持久化 · 跨进程协调）覆盖不同时效需求
-- **自建 DI 容器** 管理 70+ 服务的延迟初始化和 AI Provider 热重载
+- **自建 DI 容器** 管理 75 个公开服务键的延迟初始化和 AI Provider 热重载
 - **Drizzle + raw SQL 混用** 在类型安全和查询灵活性之间取得平衡
 
 这些选择的共同原则是：**内嵌优先**——每个组件都不依赖外部进程。SQLite 替代 PostgreSQL，HNSW 替代 Elasticsearch，内存 LRU 替代 Redis，自建 DI 替代装饰器框架。代价是每个方向的能力天花板都低于专用方案，但对于知识库规模在万条以内的典型项目，这些天花板远未触及。

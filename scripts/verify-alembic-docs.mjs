@@ -188,6 +188,9 @@ async function collectCodeFacts(sourceRoot) {
   facts.enhancementPacks = await collectEnhancementFacts(sourceRoot);
   facts.serviceDomains = await collectServiceDomainFacts(sourceRoot);
   facts.importAliases = await collectImportAliasFacts(sourceRoot);
+  facts.database = await collectDatabaseFacts(sourceRoot);
+  facts.serviceMap = await collectServiceMapFacts(sourceRoot);
+  facts.indexing = await collectIndexingFacts(sourceRoot);
   return facts;
 }
 
@@ -278,6 +281,46 @@ async function collectImportAliasFacts(sourceRoot) {
   const pkg = text ? JSON.parse(text) : {};
   const aliases = Object.keys(pkg.imports ?? {}).sort();
   return { count: aliases.length, aliases };
+}
+
+async function collectDatabaseFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'lib/infrastructure/database/drizzle/schema.ts');
+  const text = await readTextIfExists(file);
+  const tables = [...text.matchAll(/export const\s+(\w+)\s*=\s*sqliteTable\(\s*['"]([^'"]+)['"]/g)]
+    .map((m) => ({ exportName: m[1], tableName: m[2] }))
+    .sort((a, b) => a.tableName.localeCompare(b.tableName));
+  const internal = tables.filter((table) => table.tableName === 'schema_migrations');
+  return {
+    count: tables.length,
+    runtimeCount: tables.length - internal.length,
+    internalCount: internal.length,
+    tables,
+  };
+}
+
+async function collectServiceMapFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'lib/injection/ServiceMap.ts');
+  const text = await readTextIfExists(file);
+  const body = text.match(/export interface ServiceMap\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+  const keys = [...body.matchAll(/^\s{2}([A-Za-z_][A-Za-z0-9_]*):/gm)].map((m) => m[1]);
+  return {
+    count: keys.length,
+    publicCount: keys.filter((key) => !key.startsWith('_')).length,
+    internalCount: keys.filter((key) => key.startsWith('_')).length,
+    keys,
+  };
+}
+
+async function collectIndexingFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'lib/infrastructure/vector/IndexingPipeline.ts');
+  const text = await readTextIfExists(file);
+  const extBlock = text.match(/SCANNABLE_EXTENSIONS\s*=\s*new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? '';
+  const extensions = [...extBlock.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+  const scanDirsBlock = text.match(/this\.\#scanDirs\s*=\s*options\.scanDirs\s*\|\|\s*\[([\s\S]*?)\];/)?.[1] ?? '';
+  const scanDirs = [...scanDirsBlock.matchAll(/'([^']+)'|`([^`]+)`/g)]
+    .map((m) => m[1] ?? m[2])
+    .sort();
+  return { extensionCount: extensions.length, extensions, scanDirs };
 }
 
 async function readTextIfExists(file) {
@@ -583,6 +626,12 @@ function printReport(payload) {
     console.log(
       `Code facts: ${codeFacts.serviceDomains.count} service domains, ` +
         `${codeFacts.enhancementPacks.count} enhancement packs, ${codeFacts.importAliases.count} import aliases`
+    );
+    console.log(
+      `Code facts: ${codeFacts.database.count} database tables ` +
+        `(${codeFacts.database.runtimeCount} runtime + ${codeFacts.database.internalCount} internal), ` +
+        `${codeFacts.serviceMap.publicCount} public DI keys, ` +
+        `${codeFacts.indexing.extensionCount} indexable extensions`
     );
   }
   console.log(

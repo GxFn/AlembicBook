@@ -20,7 +20,7 @@ Alembic 用**六通道交付**覆盖两种模式——按需查询（MCP 工具�
 
 ### MCP Server——19 个工具的协议层
 
-MCP（Model Context Protocol）是 Anthropic 提出的标准协议，定义了 AI Agent 与外部工具之间的通信方式。协议提供三种能力——**Tool**（工具调用）、**Resource**（数据资源）和 **Prompt**（提示模板）。Alembic 使用 Tool 能力，注册了 19 个工具：
+MCP（Model Context Protocol）是 Anthropic 提出的标准协议，定义了 AI Agent 与外部工具之间的通信方式。协议提供三种能力——**Tool**（工具调用）、**Resource**（数据资源）和 **Prompt**（提示模板）。Alembic 使用 Tool 能力，工具清单来自 `lib/external/mcp/tools.ts` 的 `TOOLS` 导出；当前真实导出是 19 个工具：
 
 | # | 工具 | Tier | 用途 |
 |:---|:---|:---|:---|
@@ -43,7 +43,7 @@ MCP（Model Context Protocol）是 Anthropic 提出的标准协议，定义了 A
 | 17 | `alembic_task` | Agent | 意图管理 · 任务生命周期 · 决策记录 |
 | 18 | `alembic_enrich_candidates` | Admin | 候选知识富化 |
 | 19 | `alembic_knowledge_lifecycle` | Admin | 知识生命周期管理 |
-19 个工具分为两个层级——**Agent 层**（17 个，AI Agent 可调用）和 **Admin 层**（2 个，仅管理员工具链使用）。层级通过环境变量 `ALEMBIC_MCP_TIER` 控制，MCP Server 在列出工具时过滤：
+19 个工具分为两个层级——**Agent 层**（17 个，AI Agent 可调用）和 **Admin 层**（2 个，仅管理员工具链使用）。层级通过环境变量 `ALEMBIC_MCP_TIER` 控制，`lib/external/mcp/McpServer.ts` 在 `ListTools` 处理器中按 `TIER_ORDER` 过滤：
 
 ```typescript
 // ListTools 处理器：根据 Tier 过滤可见工具
@@ -53,7 +53,7 @@ setRequestHandler(ListToolsRequestSchema, () => {
 });
 ```
 
-**请求流程**——从 IDE 到知识库再回来。当前 MCP 工具也接入了轻量工具路由，不再由 `McpServer` 直接调用 handler：
+**请求流程**——从 IDE 到知识库再回来。当前 MCP 工具也接入了轻量工具路由，不再由 `McpServer` 直接调用 handler；`lib/external/mcp/McpCapabilityProjection.ts` 把 MCP 工具投影为 `mcp-tool` manifest，`lib/external/mcp/McpToolAdapter.ts` 再回调实际 handler：
 
 ```text
 IDE Agent → CallToolRequest{name, arguments}
@@ -69,7 +69,7 @@ IDE Agent → CallToolRequest{name, arguments}
 ← IDE Agent
 ```
 
-Gateway 映射仍是安全边界——不是所有工具调用都需要权限检查。`alembic_search`（只读查询）直接放行；`alembic_submit_knowledge`（写入操作）和 `alembic_skill`（create/update/delete 操作）会解析出 Gateway action/resource。路由映射在 `TOOL_GATEWAY_MAP` 中声明，某些工具使用 `resolver` 函数根据参数动态决定是否需要关卡——例如 `alembic_skill` 的 `list` 操作是只读的，`create` 操作才需要权限。
+Gateway 映射仍是安全边界——不是所有工具调用都需要权限检查。`alembic_search`（只读查询）直接放行；`alembic_submit_knowledge`（写入操作）和 `alembic_skill`（create/update/delete 操作）会解析出 Gateway action/resource。路由映射在 `TOOL_GATEWAY_MAP` 中声明，某些工具使用 `resolver` 函数根据参数动态决定是否需要关卡——例如 `alembic_skill` 的 `list` 操作是只读的，`create` 操作才需要权限。注意这不是把 MCP handler 强行塞进完整 `Gateway.execute()` 四阶段，而是把同一套 action/resource 语义投影到工具治理元数据中。
 
 **多 IDE 适配**——MCP Server 使用 stdio 传输（标准输入/输出），这是最通用的方式：
 
@@ -333,7 +333,7 @@ IntentState 的完整生命周期——从 Prime 初始化到 Close 持久化为
 
 ### Gateway 四阶段管线
 
-Gateway 是 Alembic 的安全和审计中枢——MCP 工具调用和 HTTP API 请求都经过它。四个阶段：
+Gateway 是 Alembic 的安全和审计中枢。HTTP API 请求可以走完整 `Gateway.execute()` 四阶段；MCP 工具调用则先用 `McpServer._resolveMcpGatewayMapping()` 解析治理语义，再通过轻量工具路由执行 handler。四阶段本身是：
 
 ```yaml
 Validate → Guard → Route → Audit
@@ -349,7 +349,7 @@ MCP/HTTP 对 Gateway 的使用方式不同：
 - **MCP 工具调用**——`McpServer._resolveMcpGatewayMapping()` 根据 `TOOL_GATEWAY_MAP` 解析 action/resource，并把映射写入 `ToolCallRequest.governance`。只读工具没有映射，写操作和高风险操作带着治理元数据进入 `LightweightRouter + McpToolAdapter`。
 - **`execute()`**——完整四阶段。用于 HTTP API 请求。
 
-这种设计让 MCP 和 HTTP 共享同一套 action/resource 语义，但 MCP 的处理函数可以独立于 Gateway 的 Action Handler——因为 MCP 工具的参数格式和 HTTP 路由不同，处理逻辑需要各自适配。
+这种设计让 MCP 和 HTTP 共享同一套 action/resource 语义，但 MCP 的处理函数可以独立于 Gateway 的 Action Handler——因为 MCP 工具的参数格式和 HTTP 路由不同，处理逻辑需要各自适配。源码边界分别在 `lib/core/gateway/Gateway.ts`、`lib/external/mcp/McpServer.ts` 和 `lib/external/mcp/tools.ts`。
 
 ### 写入工具的尾追溯协议
 
@@ -976,7 +976,7 @@ MCP 搜索没有这个限制——它按需获取，搜索结果通常 5-10 条�
 
 MCP 协议和六通道交付是 Alembic 知识价值链的最后一环——知识从数据库到达 AI 的"最后一公里"：
 
-- **MCP Server** 注册 19 个工具，通过 stdio 传输服务 Cursor / VS Code / Claude Code，Gateway 四阶段管线保证安全和审计
+- **MCP Server** 注册 19 个工具，通过 stdio 传输服务 Cursor / VS Code / Claude Code；写操作通过 `TOOL_GATEWAY_MAP` 解析治理语义，再由 `LightweightRouter + McpToolAdapter` 执行
 - **六通道交付**把知识推送到 IDE 原生文件——通道 A 的 15 条 alwaysApply 规则保证冷启动不犯错，通道 B 的主题规则按需加载，通道 F 的 Agent 指令覆盖非 Cursor IDE
 - **KnowledgeCompressor** 在 800 token 的预算内压缩规则为一行式表述，排名得分决定谁进入 Top 15
 - **FileProtection** 保护用户文件不被覆盖，标记边界注入让 Alembic 和用户内容和平共存
