@@ -108,12 +108,26 @@ lib/tools/
     "action": "submit",
     "params": {
       "title": "Constructor injection for CookieProviding",
+      "description": "CookieProviding dependencies are injected instead of read from globals.",
+      "content": {
+        "markdown": "CookieProviding in this project keeps cookie storage and URLSession behavior behind explicit constructor-injected dependencies. When adding networking features, follow the same boundary: accept the provider or its collaborators through initializers, keep persistence details outside request builders, and cite the concrete file and method that established the pattern before submitting new knowledge.",
+        "rationale": "The current implementation makes storage and session choices explicit at construction time, which keeps tests isolated and prevents hidden global state from leaking into networking code."
+      },
       "kind": "pattern",
-      "trigger": "cookie-providing-di"
+      "trigger": "cookie-providing-di",
+      "whenClause": "When implementing cookie-dependent networking features.",
+      "doClause": "Inject CookieProviding dependencies through constructors.",
+      "reasoning": {
+        "whyStandard": "The existing code uses explicit dependency boundaries.",
+        "sources": ["Packages/Network/Sources/CookieProviding.swift:42"],
+        "confidence": 0.86
+      }
     }
   }
 }
 ```
+
+当前实现里 `knowledge.submit` 的 schema 和 handler 都要求 `reasoning.sources` 是非空数组。内部 V2 提交路径会调用 `RecipeProductionGateway.create({ source: 'agent-tool', items, options: { skipSimilarityCheck: true, skipConsolidation: true } })`，因此它主要依赖 Producer prompt、会话去重、rejection gate 和后续治理来避免重复；外部 MCP 的 `alembic_submit_knowledge` 才是带 consolidation 尾追溯协议的完整提交入口。
 
 ## Capability V2
 
@@ -279,7 +293,7 @@ ToolRequirementAnalyzer
 
 V2 增加了两条更直接的记忆通道：
 
-- `memory.note_finding`：分析阶段把关键发现写入 `ActiveContext` scratchpad，并参与 QualityGate 的 evidenceScore。
+- `memory({ action: "note_finding" })`：分析阶段把关键发现写入 `ActiveContext` scratchpad，并参与 QualityGate 的 evidenceScore。analyst 策略的 `RECORD` 阶段会把可见工具收窄成 memory-only，并要求至少 3 条结构化发现。
 - `memory.get_previous_evidence`：后续维度先查询前序证据，避免重复搜索、重复读文件。
 
 Chat 场景更偏 `PersistentMemory`；分析阶段更偏 `ActiveContext`；生产阶段更偏 `SessionStore`。V2 工具里的 `memory` action 则给 Agent 一个显式操作这些记忆层的入口。
@@ -302,7 +316,7 @@ Tool System V2 的代价是 action 需要多一层参数包装：`tool + action 
 1. **LLM 选择更稳定**：6 个工具名比几十个函数名更容易选对。
 2. **schema 负担更小**：首轮只给轻量 schema，细节按需查询。
 3. **执行边界更清楚**：Agent V2 工具、MCP 工具、Dashboard/Skill/macOS/Workflow 表面各走自己的 router。
-4. **记忆与证据更顺手**：`memory.note_finding` 和 `get_previous_evidence` 把跨维度协作变成一等工具能力。
+4. **记忆与证据更顺手**：`memory({ action: "note_finding" })` 和 `get_previous_evidence` 把跨维度协作变成一等工具能力。
 5. **旧 Runtime 可平滑迁移**：`V2ToolRouterAdapter` 继续产出 `ToolResultEnvelope`，不破坏 ReAct 循环和诊断链路。
 
 ## 小结

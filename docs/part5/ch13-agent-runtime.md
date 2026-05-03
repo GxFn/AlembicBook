@@ -238,6 +238,18 @@ return new AgentRuntime({
 
 `SystemPromptBuilder` 负责组装 persona、fileCache、Capability prompt fragment、动态上下文和语言偏好。系统场景还会根据预算注入“轮次预算”。
 
+### Analyst 记录阶段
+
+当前 `analyst` 探索策略不是旧的 `SCAN → EXPLORE → VERIFY → SUMMARIZE` 四段式，而是：
+
+```text
+SCAN → EXPLORE → VERIFY → RECORD → SUMMARIZE
+```
+
+`RECORD` 是一个专门的结构化记录窗口。`AgentRuntime.#getIterationToolSchemas()` 会在这个阶段把 LLM 可见工具收窄到 `memory`，并且 schema 只允许 `memory({ action: "note_finding", params: { finding, evidence, importance } })`。`ExplorationTracker` 统计成功的 `note_finding` 数量，至少记录 3 条核心发现后才允许进入 `SUMMARIZE`。
+
+这个改动修复了过去的一类质量问题：分析正文里已经有发现，但没有写进结构化 scratchpad，QualityGate 和 Producer 无法稳定消费。现在 `note_finding` 是 QualityGate 的硬性证据输入；最终 Markdown 报告不能替代它。
+
 ## 工具执行
 
 Runtime 内的 `ToolExecutionPipeline` 现在只做 Runtime 横切关注点：
@@ -262,7 +274,7 @@ Runtime 在调用 `V2ToolRouterAdapter` 时会传入完整的运行时上下文�
 - `safetyPolicy`: 从 PolicyEngine 中取出的 `SafetyPolicy`
 - `fileCache`、`dataRoot`、`lang`、`aiProvider`
 - `submittedTitles`、`submittedPatterns`、`submittedTriggers`
-- `bootstrapDedup`、`dimensionScopeId`、`terminalTest` 等工作流上下文
+- `bootstrapDedup`、`dimensionScopeId`、`terminalCapability`、`toolPolicyHints` 等工作流上下文
 
 因此 Runtime 不再自己执行 handler，也不再维护一套独立工具缓存。Runtime 只保留“当前阶段允许调用哪些工具名”的白名单；具体 action、参数、并发和输出预算交给 V2 工具层处理。
 
@@ -299,7 +311,8 @@ Runtime 仍保留几类引擎级恢复机制：
 | 阶段超时 | `PipelineStrategy` 的 stage budget 通过 `budgetOverride.timeoutMs` 控制 |
 | LLM 错误 | 连续错误计数，AbortError 不计入普通错误 |
 | 空响应 | 系统源允许有限重试，用户源更快退出 |
-| SUMMARIZE | `toolChoice = 'none'`，并对仍返回工具调用的情况做兜底 |
+| RECORD | analyst 管线的 memory-only 补记录阶段，只允许 `memory({ action: "note_finding", ... })` |
+| SUMMARIZE | `toolChoice = 'none'`，并对仍返回工具调用的情况做兜底；如果模型违反 `toolChoice=none`，Runtime 会忽略工具调用并记录 diagnostics |
 | 强制总结 | 信息不足或熔断时用 `forced-summary.ts` 合成收尾 |
 
 `DiagnosticsCollector` 贯穿入口、Runtime 和工具层，记录 stage toolset、blocked tool、AI error、empty response、timeout、gate failure 和 tool envelope。它是现在排查 Agent 行为的主渠道。
@@ -334,13 +347,19 @@ AgentService.run(bootstrap-session)
 
 ### Rescan Dimension
 
-重扫会在 `bootstrapDimensionPipeline` 中根据 `hasExistingRecipes` 和 `prescreenDone` 决定是否插入 evolution 阶段：
+重扫会在 `bootstrapDimensionPipeline` 中根据 `hasExistingRecipes` 和 `prescreenDone` 决定是否插入 evolution 阶段。当前 internal rescan 会前置构建 `evolutionPrescreen` 并传入 `prescreenDone=true`，所以常规单维度填充路径是：
+
+```text
+analyze → quality_gate → produce → rejection_gate
+```
+
+只有在存在旧 Recipe 且 prescreen 尚未完成的兜底路径里，StageFactory 才插入：
 
 ```text
 evolve → evolution_gate → analyze → quality_gate → produce → rejection_gate
 ```
 
-这样同一个 `bootstrap-dimension` Profile 可以服务冷启动和知识重扫，只是上下文不同。
+同时，StageFactory 会读取 `rescanContext.gap`，把 Producer 阶段的 `maxSubmits` 和 `softSubmitLimit` 设为该维度 gap 数量。这样同一个 `bootstrap-dimension` Profile 可以服务冷启动和知识重扫，只是上下文、阶段组合和生产预算不同。
 
 ## 权衡
 

@@ -959,6 +959,8 @@ analyze → quality_gate → produce → rejection_gate
 - 已有知识标题不能重复。
 - decaying Recipe 可以通过 `supersedes` 提交替代版本，但替代内容必须基于当前代码。
 
+这条约束现在不只存在于 prompt 里。`AgentStageFactoryRegistry` 会读取 `rescanContext.gap`，把 Producer 阶段的 `maxSubmits` 与 `softSubmitLimit` 都设成 gap 值；同时 V2 `knowledge.submit` handler 要求 `reasoning.sources` 是非空数组。也就是说，内部 rescan 的新增候选必须同时满足“数量受 gap 限制”和“每条都有文件级证据”。
+
 这就是“未处理弹窗统一交给增量扫描”的实际落点：实时监听负责捕获证据和提醒人，rescan 负责批量审计、把复杂判断交给 Agent，并把新增候选限制在明确的 gap 内。
 
 ## 候选提交与分层融合

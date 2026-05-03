@@ -6,7 +6,7 @@
 
 ## 这本书讲什么
 
-[Alembic](https://github.com/GxFn/Alembic) 是一个 AI 代码知识引擎，为 Cursor / Copilot 等 AI 助手构建本地项目知识层。本书 6 个篇章、18 章正文 + 4 篇附录，从架构到实现逐模块解构其技术细节。
+[Alembic](https://github.com/GxFn/Alembic) 是一个 AI 代码知识引擎，为 Cursor / Copilot 等 AI 助手构建本地项目知识层。本书 7 个篇章、19 章正文 + 4 篇附录，从架构到实现逐模块解构其技术细节。
 
 ### Part 1 — 起点与哲学
 
@@ -55,6 +55,12 @@
 | Ch16 | 数据基础设施 |
 | Ch17 | MCP 协议与六通道交付 |
 | Ch18 | 界面层 — Dashboard · CLI · 多端接入 |
+
+### Part 7 — 真实数据
+
+| 章 | 标题 |
+|---|------|
+| Ch19 | BiliDili 冷启动全记录 |
 
 ### 附录
 
@@ -112,6 +118,7 @@ docs/
 ├── part4/                # 服务层 (Ch09-12)
 ├── part5/                # Agent 智能层 (Ch13-15)
 ├── part6/                # 基础设施与接入 (Ch16-18)
+├── part7/                # 真实数据 (Ch19)
 ├── appendix/             # 附录 (A-D)
 ├── public/images/        # 章节插图
 └── .vitepress/

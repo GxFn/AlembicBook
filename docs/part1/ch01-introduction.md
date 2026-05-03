@@ -144,7 +144,7 @@ IDE Agent 的每个行为，都会触发有机体内不同器官的协同响应�
 
 **免疫 — Guard**
 
-双向免疫系统。正向：四层检测（正则 → 代码级多行 → tree-sitter AST → 跨文件），内置 8 语言规则，三态输出（pass / violation / uncertain）。反向：ReverseGuard 验证 Recipe 引用的 API 符号是否仍存在（5 种漂移类型）。Agent 完成任务时自动触发 Review，将违规连同相关 Recipe 一起交给 Agent 修复。RuleLearner 追踪 P/R/F1 自动调优。*→ [Ch10 Guard 引擎](../part4/ch10-guard)*
+双向免疫系统。正向：四层检测（正则 → 代码级多行 → tree-sitter AST → 跨文件），内置 76 条规则，覆盖 10 种语言标识，三态输出（pass / violation / uncertain）。反向：ReverseGuard 验证 Recipe 引用的 API 符号是否仍存在（5 种漂移类型）。Agent 完成任务时自动触发 Review，将违规连同相关 Recipe 一起交给 Agent 修复。RuleLearner 追踪 P/R/F1 自动调优。*→ [Ch10 Guard 引擎](../part4/ch10-guard)*
 
 **造物 — Tool Forge**
 
@@ -210,7 +210,7 @@ alembic guard:ci --min-score 90   # CI 质量门禁
 | AST 支持语言 | 11 个 WASM 语法包（Go · Python · Java · Kotlin · Swift · JS · TS · TSX · Rust · ObjC · Dart） |
 | Agent 工具 | Tool System V2：6 个语义工具 / 19 个 action；MCP：19 个 `alembic_*` 工具 |
 | 知识维度框架 | 25 维（13 通用 + 7 语言特定 + 5 框架特定） |
-| 搜索信号 | 6 维加权 |
+| 搜索信号 | 7 路信号加权（含 Vector） |
 | Guard 检测层 | 4 层（正则 → 代码级 → AST → 跨文件） |
 | 知识生命周期 | 6 态状态机 |
 | 交付通道 | 6 通道 |

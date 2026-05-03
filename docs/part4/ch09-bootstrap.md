@@ -174,7 +174,9 @@ stages:
 evolve → evolution_gate
 ```
 
-但当前 internal rescan 的实装会先构建 `evolutionPrescreen`，再把它传入 `dispatchInternalDimensionExecution()`。因此 rescan 的维度填充通常不会再插入 per-dimension evolve stage，而是运行 `analyze → quality_gate → produce → rejection_gate`；旧 Recipe 的进化判断已经被前置的 `RecipeImpactPlanner + runEvolutionAudit()` 接走。冷启动和重扫仍共用同一套单维度 Agent pipeline，只是输入上下文和阶段组合不同。
+但当前 internal rescan 的实装会先构建 `evolutionPrescreen`，再把它传入 `dispatchInternalDimensionExecution()`。因此 rescan 的维度填充通常不会再插入 per-dimension evolve stage，而是运行 `analyze → quality_gate → produce → rejection_gate`；旧 Recipe 的进化判断已经被前置的 `RecipeImpactPlanner + runEvolutionAudit()` 接走。
+
+还有一个最新实现细节：`AgentStageFactoryRegistry` 会读取 `strategyContext.rescanContext.gap`，把 Producer 阶段的 `maxSubmits` 和 `softSubmitLimit` 都压到该维度 gap 数量。也就是说，重扫的 Producer 不是“能提交多少算多少”，而是被 gap plan 直接限流。冷启动和重扫仍共用同一套单维度 Agent pipeline，只是输入上下文、阶段组合和生产预算不同。
 
 ## 外部维度完成
 
@@ -286,7 +288,7 @@ runRescanCleanPolicy() / runForceRescanCleanPolicy() / snapshotRecipes()
 - **批量进化审计**：`RecipeImpactPlanner.plan()` 生成候选后，`runEvolutionAudit()` 启动 `evolution-audit` profile。Agent 读取真实代码后调用 `knowledge.manage(operation: "evolve" | "deprecate" | "skip_evolution")`，提案来源标记为 `rescan-evolution`。
 - **维度 gap-fill**：后续 internal dimension execution 只补齐 gap。`BootstrapRescanState` 会把有效旧 Recipe 写入去重集合，把 decaying Recipe 和 occupied triggers 注入 prompt，Producer 被限制为最多提交本维度 gap 数量的候选。
 
-因此 internal rescan 不是“每个维度全量重跑并顺便检查旧知识”。它先用工程 diff 和 SourceRef 找出受影响 Recipe，把复杂判断交给 Evolution Agent；然后维度 pipeline 只在有 coverage-gap、recipe-decay 或 file-change reason 的维度里补新知识。
+因此 internal rescan 不是“每个维度全量重跑并顺便检查旧知识”。它先用工程 diff 和 SourceRef 找出受影响 Recipe，把复杂判断交给 Evolution Agent；然后维度 pipeline 只在有 coverage-gap、recipe-decay 或 file-change reason 的维度里补新知识，并把 Producer 提交上限收敛到该维度的 gap。
 
 ## Recipe 审计与 Gap Plan
 

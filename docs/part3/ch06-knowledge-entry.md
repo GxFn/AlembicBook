@@ -151,7 +151,7 @@ interface ReasoningProps {
 }
 ```
 
-`reasoning` 是知识的"证据链"。`whyStandard` 解释为什么这是标准做法——不是泛泛的"这是最佳实践"，而是结合项目上下文的具体论述。`sources` 是非空的文件路径数组，指向知识提取的原始来源。`confidence` 是 0-1 的置信度分数，由 AI Agent 在提取时自评，后续由 QualityScorer 校准。
+`reasoning` 是知识的"证据链"。`whyStandard` 解释为什么这是标准做法——不是泛泛的"这是最佳实践"，而是结合项目上下文的具体论述。虽然类型层仍允许 `sources?` 兼容历史对象，但当前 V2 `knowledge.submit` 会强制要求 `reasoning.sources` 是非空文件路径数组，指向知识提取的原始来源。`confidence` 是 0-1 的置信度分数，由 AI Agent 在提取时自评，后续由 QualityScorer 校准。
 
 置信度为什么用 0-1 而非百分制？因为它的语义本质是概率——"这条知识有 85% 的可能是项目级的标准做法"。概率值可以直接参与 ConfidenceRouter 的路由决策，而百分制数字需要额外的归一化步骤。
 
@@ -210,7 +210,7 @@ export const V3_FIELD_SPEC = [
     rule: '英文祈使句 ≤60 tokens，以动词开头',
     pipeline: '⚠️ HARD filter dependency — missing → 0 output',
   },
-  // ...共 19 个 REQUIRED + 1 个 EXPECTED + 5 个 OPTIONAL
+  // ...共 19 个 REQUIRED（15 个顶层 + 4 个嵌套）+ 1 个 EXPECTED + 5 个 OPTIONAL
 ];
 ```
 
@@ -268,7 +268,7 @@ export class UnifiedValidator {
 }
 ```
 
-**Layer 1（字段完整性）** 遍历 `V3_FIELD_SPEC` 中的每个字段定义——REQUIRED 缺失产生 error，EXPECTED 缺失产生 warning，OPTIONAL 缺失不报。同时执行格式校验：`content` 和 `reasoning` 必须是对象而非字符串，`kind` 值必须在 `rule | pattern | fact` 之内，`trigger` 应以 `@` 开头。
+**Layer 1（字段完整性）** 遍历 `V3_FIELD_SPEC` 中的每个字段定义——REQUIRED 缺失产生 error，EXPECTED 缺失产生 warning，OPTIONAL 缺失不报。同时执行格式校验：`content` 和 `reasoning` 必须是对象而非字符串，`reasoning.sources` 必须是非空数组，`kind` 值必须在 `rule | pattern | fact` 之内，`trigger` 应以 `@` 开头。
 
 **Layer 2（内容质量）** 来自原 `CandidateGuardrail` 的启发式规则：
 - `content.markdown` 不足 200 字符 → error

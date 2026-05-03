@@ -192,7 +192,7 @@ BiliDili/
 
 ### 维度级指标（第二轮）
 
-每个维度都经历 **Analyze → QualityGate → Produce** 的 PipelineStrategy 管线：
+每个维度都经历 **Analyze → QualityGate → Produce** 的 PipelineStrategy 管线。这里的表格是 BiliDili 第二轮实测数据；按当前代码，Analyze 阶段内部已经增加 `RECORD` 结构化记录窗口，即 `SCAN → EXPLORE → VERIFY → RECORD → SUMMARIZE`，至少 3 条 `note_finding` 后才进入总结：
 
 | 维度 | Input Token | Tool Calls | 候选 | QG 分 | 耗时 | 备注 |
 |------|------------|------------|------|-------|------|------|
@@ -377,7 +377,7 @@ QualityGate 在每个维度的 Analyze 阶段结束后评分，使用四维度�
    - 第二轮退化（hard timeout）：`design-patterns`
    - **第一轮的两个退化维度在第二轮恢复**，虽然分数不满（networking-api=70, agent-guidelines=66），但已能正常分析并产出候选
 
-3. **architecture 分数下降**（100 → 66）：第二轮中 evidence=0，评语 *“Findings lack file-level evidence”*。analyze 仅 12 iters 即完成（SCAN→EXPLORE→VERIFY→SUMMARIZE 全流程走完），分析深度足够但文件级证据引用缺失。
+3. **architecture 分数下降**（100 → 66）：第二轮中 evidence=0，评语 *“Findings lack file-level evidence”*。这正是后来引入 `RECORD` 阶段的直接动因：旧流程里 analyze 可能在 12 iters 内走完 `SCAN→EXPLORE→VERIFY→SUMMARIZE`，分析正文足够但没有把文件级证据写进结构化 scratchpad；当前实现会在总结前打开 memory-only 补记录窗口，要求至少 3 条 `note_finding`。
 
 4. **error-resilience 分数上升**（66 → 100）：第一轮中该维度 evidence=0 / coherence=80，第二轮得益于更充裕的 34 轮预算，Agent 有足够轮次收集文件级证据。
 

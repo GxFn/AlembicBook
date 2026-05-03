@@ -29,7 +29,7 @@ Alembic 的代码组织在 `lib/` 目录下，形成 7 个逻辑层。每层有�
 │  lib/agent/ — AgentService · Profiles · Runtime · Memory │
 ├─────────────────────────────────────────────────┤
 │  Layer 5: Service                               │
-│  lib/service/ — 16 子域的业务编排                │
+│  lib/service/ — 17 子域的业务编排                │
 ├─────────────────────────────────────────────────┤
 │  Layer 6: Core + Domain                         │
 │  lib/core/ — AST · Constitution · Gateway       │

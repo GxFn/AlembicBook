@@ -235,14 +235,21 @@ async function collectGrammarFacts(sourceRoot) {
 async function collectDimensionFacts(sourceRoot) {
   const file = path.join(sourceRoot, 'lib/domain/dimension/DimensionRegistry.ts');
   const text = await readTextIfExists(file);
-  const ids = [...text.matchAll(/id:\s*'([^']+)'/g)].map((m) => m[1]);
-  const unique = [...new Set(ids)];
+  const dimensions = [...text.matchAll(/const\s+\w+:\s*UnifiedDimension\s*=\s*\{([\s\S]*?)\n\};/g)]
+    .map((match) => {
+      const body = match[1];
+      const id = body.match(/id:\s*'([^']+)'/)?.[1];
+      const layer = body.match(/layer:\s*'([^']+)'/)?.[1];
+      return id && layer ? { id, layer } : null;
+    })
+    .filter(Boolean);
+  const ids = [...new Set(dimensions.map((dimension) => dimension.id))];
   const layers = {
-    universal: (text.match(/layer:\s*'universal'/g) ?? []).length,
-    language: (text.match(/layer:\s*'language'/g) ?? []).length,
-    framework: (text.match(/layer:\s*'framework'/g) ?? []).length,
+    universal: dimensions.filter((dimension) => dimension.layer === 'universal').length,
+    language: dimensions.filter((dimension) => dimension.layer === 'language').length,
+    framework: dimensions.filter((dimension) => dimension.layer === 'framework').length,
   };
-  return { count: unique.length, layers, ids: unique };
+  return { count: ids.length, layers, ids };
 }
 
 async function collectRelationFacts(sourceRoot) {

@@ -175,8 +175,9 @@ type AgentActionSpace =
 - `needsCandidates === false`：只跑 analyze。
 - 没有已有 Recipe：`analyze → quality_gate → produce → rejection_gate`。
 - 有已有 Recipe 且未 prescreen：`evolve → evolution_gate → analyze → quality_gate → produce → rejection_gate`。
+- internal rescan 已完成 prescreen 时：不再插入 per-dimension evolve，运行 `analyze → quality_gate → produce → rejection_gate`，并把 Producer 的 `maxSubmits` / `softSubmitLimit` 设为 `rescanContext.gap`。
 
-这就是当前“冷启动和增量重扫共用单维度执行 Profile”的关键。
+这就是当前“冷启动和增量重扫共用单维度执行 Profile”的关键：Profile 不变，StageFactory 按上下文改变阶段和预算。
 
 ## 组合示例
 
