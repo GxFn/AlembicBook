@@ -20,7 +20,7 @@ AgentRunInput
   → Strategy.execute()
   → AgentRuntime.reactLoop()
   → ToolExecutionPipeline
-  → ToolRouter
+  → V2ToolRouterAdapter
 ```
 
 这个拆分的意义是把“运行一个 Agent”从单类职责拆成四层：
@@ -65,10 +65,10 @@ AgentRuntime 仍然遵循 CoALA 的五阶段认知模型，但组件映射已经
 | Perception | `AgentMessage` + `AgentService.buildAgentMessage()` | 统一 HTTP/MCP/Lark/内部工作流输入 |
 | Working Memory | `LoopContext` + `MessageAdapter` + `ContextWindow` + `ActiveContext` | 保存消息历史、压缩上下文、记录推理链 |
 | Reasoning | `SystemPromptBuilder` + `aiProvider.chatWithTools()` | 构建系统提示词，调用 LLM 决策下一步 |
-| Action | `ToolExecutionPipeline` + `ToolRouter` | 先做 runtime 白名单与观察记录，再进入统一工具路由 |
+| Action | `ToolExecutionPipeline` + `V2ToolRouterAdapter` | 先做 runtime 白名单与观察记录，再进入 V2 工具路由 |
 | Reflection | `ExplorationTracker` + `MemoryCoordinator` + `PolicyEngine` | 收集信号、阶段转换、记忆注入、质量约束 |
 
-旧文档里写的是 `ToolExecutionPipeline + ToolRegistry`。现在实际执行不再直接调用 `ToolRegistry.handler`，而是经由 `ToolRouter.execute()`，让 runtime、MCP、Dashboard、Terminal、Skill 等不同表面共用同一套治理与结果信封。
+旧文档里写的是 `ToolExecutionPipeline + ToolRegistry`。现在 Runtime 实际调用的是 `V2ToolRouterAdapter.execute()`：LLM 看到 `code`、`terminal`、`knowledge`、`graph`、`memory`、`meta` 6 个 V2 工具，具体操作放在 `action` 字段里。MCP、Dashboard、Skill 等外部表面不走这 6 个工具名，而是通过 `LightweightRouter` 和各自 adapter 执行。
 
 ## 入口：AgentService
 
@@ -200,7 +200,7 @@ return new AgentRuntime({
 
 两个细节值得注意：
 
-- Runtime **必须有 ToolRouter**。构造函数会从 `config.toolRouter`、`toolRegistry.getRouter()` 或容器里解析；解析不到直接抛错。
+- Runtime **必须有 toolRouter**。当前 AgentModule 注入的是 `V2ToolRouterAdapter`；如果缺失，构造阶段直接抛错。
 - `actionSpace.mode === 'listed'` 会变成 `additionalTools`，在不污染 Capability 的前提下给某个 Profile 临时开放额外工具。
 
 ## ReAct 循环
@@ -230,7 +230,7 @@ return new AgentRuntime({
 | `sharedState` | 跨阶段去重与维度上下文，例如 submittedTitles、_dimensionMeta |
 | `budget` | maxIterations、maxTokens、temperature、timeoutMs |
 | `allowedToolIds` | 当前 loop 的工具白名单 |
-| `toolSchemas` | 从 `CapabilityCatalog.toToolSchemas(ids)` 投影出的 LLM 工具定义 |
+| `toolSchemas` | 从 `V2CapabilityCatalog.toToolSchemas(ids)` 投影出的 LLM 工具定义 |
 | `abortSignal` | 上游取消信号，贯穿 LLM 与工具执行 |
 | `diagnostics` | 阶段工具集、拦截工具、AI 错误、超时等诊断 |
 
@@ -249,9 +249,9 @@ allowlistGate
   → submitDedup
 ```
 
-默认管线不再包含旧文档中的 `SafetyGate` 和 `CacheCheck`。安全和输入治理已经迁入 `ToolRouter + GovernanceEngine` 的 discover / plan / approve / execute 四阶段。缓存命中也通过 `ToolResultEnvelope.cache` 回传给 Runtime。
+默认管线不再包含旧文档中的 `SafetyGate` 和 `CacheCheck`。V2 中，参数校验和并发控制在 `ToolRouterV2`；命令安全、cwd 约束和 sandbox 在 `terminal.exec` handler；搜索/读取缓存由 `DeltaCache`、`SearchCache` 和 `ToolResultMeta.cached` 表达。`V2ToolRouterAdapter` 再把这些结果包装成 Runtime 兼容的 `ToolResultEnvelope`。
 
-Runtime 在调用 ToolRouter 时会传入完整的运行时上下文：
+Runtime 在调用 `V2ToolRouterAdapter` 时会传入完整的运行时上下文：
 
 - `surface: 'runtime'`
 - `actor: { role: 'runtime', user: runtime.id }`
@@ -262,7 +262,7 @@ Runtime 在调用 ToolRouter 时会传入完整的运行时上下文：
 - `submittedTitles`、`submittedPatterns`、`submittedTriggers`
 - `bootstrapDedup`、`dimensionScopeId`、`terminalTest` 等工作流上下文
 
-因此工具安全不是 Runtime 自己判断，而是统一交给工具层治理，Runtime 只保留“当前能力是否允许这个工具”的白名单。
+因此 Runtime 不再自己执行 handler，也不再维护一套独立工具缓存。Runtime 只保留“当前阶段允许调用哪些工具名”的白名单；具体 action、参数、并发和输出预算交给 V2 工具层处理。
 
 ## Strategy
 
@@ -312,7 +312,7 @@ AgentService.run(chat-default)
   → RuntimeBuilder(capabilities: conversation + code_analysis)
   → SingleStrategy
   → reactLoop()
-  → ToolRouter(runtime surface)
+  → V2ToolRouterAdapter(runtime surface)
 ```
 
 Chat 的 `source` 会被映射成 `user`，空响应和错误恢复更保守，预算默认 8 轮 / 120 秒。
@@ -356,7 +356,7 @@ evolve → evolution_gate → analyze → quality_gate → produce → rejection
 
 > **Agent 是 Profile 驱动的服务化运行单元；Runtime 是执行内核，不是全部架构。**
 
-`AgentService` 负责入口，`AgentProfileCompiler` 负责配置归一，`AgentRunCoordinator` 负责并发拆分，`AgentRuntimeBuilder` 负责装配，`AgentRuntime` 负责 ReAct 循环，`ToolRouter` 负责工具治理。这个分层就是当前 `lib/agent/` 的真实结构。
+`AgentService` 负责入口，`AgentProfileCompiler` 负责配置归一，`AgentRunCoordinator` 负责并发拆分，`AgentRuntimeBuilder` 负责装配，`AgentRuntime` 负责 ReAct 循环，`V2ToolRouterAdapter + ToolRouterV2` 负责 Agent 工具执行。这个分层就是当前 `lib/agent/` 的真实结构。
 
 ::: tip 下一章
 [正交组合 — Capability × Strategy × Policy](./ch14-orthogonal)

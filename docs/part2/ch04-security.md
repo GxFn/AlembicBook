@@ -4,7 +4,7 @@
 
 ## 问题场景
 
-Alembic 通过 MCP 协议把 59 个内部工具 + ToolRouter暴露给 Cursor、VS Code Copilot、Claude Code 等外部 AI Agent。这意味着一个你无法完全控制的 AI 正在调用你的系统——它可能尝试删除 Recipe、覆盖已有知识、在文件系统上执行危险命令。
+Alembic 通过 MCP 协议把 19 个 `alembic_*` 工具暴露给 Cursor、VS Code Copilot、Claude Code 等外部 AI Agent；内部 Agent Runtime 还会使用 6 个 V2 语义工具（`code`、`terminal`、`knowledge`、`graph`、`memory`、`meta`）完成代码分析和知识生产。这意味着一个你无法完全控制的 AI 正在调用你的系统——它可能尝试删除 Recipe、覆盖已有知识、在文件系统上执行危险命令。
 
 问题不是"AI 会不会作恶"，而是"如何在 AI 犯错时限制爆炸半径"。
 
@@ -344,9 +344,12 @@ enforce(actor, action, resource) {
 }
 ```
 
-## SafetyPolicy：Agent 行为沙箱
+## SafetyPolicy 与 V2 工具沙箱
 
-前三层（Constitution → Gateway → Permission）守护的是"谁能做什么操作"。但 Agent 在推理循环中还会调用工具执行命令——`SafetyPolicy` 在 Agent 执行层做最后一道防线。
+前三层（Constitution → Gateway → Permission）守护的是"谁能做什么操作"。但 Agent 在推理循环中还会调用 V2 工具执行命令、读取文件或写文件——行为沙箱在两处共同生效：
+
+- `SafetyPolicy` 提供 sender allowlist、命令黑名单、文件 scope 和人工确认要求。
+- V2 handler 自己做执行前校验，例如 `terminal.exec` 检查危险命令并进入 Seatbelt 沙箱，`code.write` 拒绝项目外路径和受保护目录。
 
 ### 命令黑名单与白名单
 
@@ -413,29 +416,47 @@ validateBefore(context) {
 }
 ```
 
-`PolicyEngine` 在 Agent 每次工具调用前执行所有注册的 Policy：
+`PolicyEngine` 保留了运行时策略入口，V2 工具也会收到 `safetyPolicy`：
 
 ```typescript
-// PolicyEngine.validateToolCall() — 实时工具拦截
+// PolicyEngine.validateToolCall() — 运行时策略入口
 validateToolCall(toolName, args) {
   const safety = this.get(SafetyPolicy);
   if (!safety) { return { ok: true }; }
 
-  // 拦截 shell 命令
-  if (toolName === 'terminal_run' && args?.command) {
-    const check = safety.checkCommand(args.command);
-    if (!check.safe) { return { ok: false, reason: check.reason }; }
-  }
-
-  // 拦截文件读写路径
-  if ((toolName === 'write_project_file' || toolName === 'read_project_file') && args?.filePath) {
-    const check = safety.checkFilePath(args.filePath);
-    if (!check.safe) { return { ok: false, reason: check.reason }; }
+  // V2 code 工具的路径参数统一检查
+  if (toolName === 'code') {
+    const p = args.params ?? args;
+    for (const filePath of extractFilePaths(p)) {
+      const check = safety.checkFilePath(filePath);
+      if (!check.safe) { return { ok: false, reason: check.reason }; }
+    }
   }
 
   return { ok: true };
 }
 ```
+
+命令执行的关键拦截点在 `terminal.exec` handler。它不是旧的 `terminal_run` / `run_safe_command`，而是 V2 的单一 action：
+
+```typescript
+async function handleExec(params, ctx) {
+  const command = params.command;
+  const cwd = path.resolve(ctx.projectRoot, params.cwd ?? ctx.projectRoot);
+  if (!cwd.startsWith(ctx.projectRoot)) {
+    return fail(`cwd must be within project root`);
+  }
+
+  const securityCheck = checkCommandSafety(command);
+  if (!securityCheck.safe) {
+    return fail(`Command blocked: ${securityCheck.reason}`);
+  }
+
+  return execInSandboxOrDirect(command, cwd, timeout, ctx);
+}
+```
+
+`checkCommandSafety()` 拦截 `sudo`、`rm -rf /`、`dd`、`chmod 777`、`curl | sh` 等高风险模式；`ToolContextFactory` 注入的 `SandboxExecutorBridge` 再用 Seatbelt profile 将网络关闭、文件系统限制在项目写范围内。
 
 ## PathGuard：文件系统双层沙箱
 
@@ -621,9 +642,9 @@ MCP/HTTP/CLI 请求
   │ "actor 有权限对 resource 执行 action 吗？"
   │ 8 级递进匹配，精确 → 翻转 → 通配 → 拒绝
   │
-  ▼ Layer 4: SafetyPolicy
+  ▼ Layer 4: SafetyPolicy + V2 handler sandbox
   │ "Agent 要执行的命令/文件操作安全吗？"
-  │ 10 条危险命令正则黑名单，20+ 安全命令白名单
+  │ 10 条危险命令正则黑名单，V2 terminal/code handler 二次校验
   │
   ▼ Layer 5: PathGuard
   │ "文件写入路径在允许范围内吗？"
@@ -641,7 +662,7 @@ MCP/HTTP/CLI 请求
 - Constitution 找不到角色 → `PermissionDenied`
 - Gateway validate 缺少 actor → `InternalError`
 - Permission 缺少权限 → `PermissionDenied`
-- SafetyPolicy 匹配危险命令 → 工具调用被拦截
+- SafetyPolicy 或 V2 handler 匹配危险命令 → 工具调用被拦截
 - PathGuard 越界写入 → `PathGuardError`
 - ConfidenceRouter 低置信度 → 知识进入 pending 而非 auto_approve
 
@@ -733,15 +754,17 @@ cleanup({ maxAgeDays: 90 })
 ### 场景 3：Agent 尝试写入项目外文件
 
 ```text
-→ AgentRuntime 执行 write_project_file({ filePath: '/etc/hosts', content: '...' })
-  → PolicyEngine.validateToolCall('write_project_file', { filePath: '/etc/hosts' })
-    → SafetyPolicy.checkFilePath('/etc/hosts')
-    → ❌ 路径不在项目 scope 内
-    → return { ok: false, reason: "Path outside allowed scope" }
+→ AgentRuntime 执行 code({ action: 'write', params: { path: '../../etc/hosts', content: '...' } })
+  → ToolExecutionPipeline.allowlistGate ✅（system_interaction 允许 code）
+  → ToolRouterV2.validateParams ✅（有 path/content）
+  → code.write handler
+    → absPath = path.resolve(projectRoot, '../../etc/hosts')
+    → ❌ absPath 不在 projectRoot 内
+    → return fail("Access denied: path is outside project root")
   → 工具调用被拦截，Agent 收到错误响应
 ```
 
-SafetyPolicy（Layer 4）在 Agent 执行工具前拦截。即使 SafetyPolicy 失效，PathGuard（Layer 5）会在文件实际写入时抛出 `PathGuardError`。
+V2 handler 在实际写入前拦截。即使这一层失效，PathGuard（Layer 5）会在系统级文件写入路径上继续抛出 `PathGuardError`。
 
 ## 权衡与替代方案
 

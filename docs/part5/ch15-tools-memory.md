@@ -1,235 +1,261 @@
 # 工具体系与记忆系统
 
-> 工具系统已经从 `lib/agent/tools` 拆成独立的 `lib/tools/` 子系统；记忆系统仍在 `lib/agent/memory` 中，为 Runtime 提供工作记忆、会话记忆和长期语义记忆。
+> Tool System V2 把 Agent 可见工具从“几十个平铺函数”收敛为 6 个语义工具、19 个 action。记忆系统仍在 `lib/agent/memory`，但与 V2 工具的 `memory` action 和 `ToolContextFactory` 连接得更紧。
 
 ## 问题场景
 
-Agent 的 ReAct 循环需要调用工具：搜索知识、读源码、查 AST、提交知识、执行受治理的终端命令、加载 Skill、触发 Dashboard 操作。过去文档把这些都描述为“Agent 内部 60 个 Tool”。当前实现已经更清晰：
+Agent 的 ReAct 循环需要做很多事：搜索代码、读取文件、查 AST/调用图、搜索知识、提交候选、执行受控终端命令、记录阶段发现、查询工具 schema。旧实现把这些能力拆成几十个独立工具，LLM 每轮都要在一长串名字里选择，文档里也常写成“59 个内部工具”或“Agent 内部 60 个 Tool”。
 
-- `lib/tools/handlers/` 中有 **59 个内部工具定义**，供 Runtime 通过 internal adapter 调用。
-- `lib/external/mcp/tools.ts` 暴露 **19 个 MCP 工具**，供 IDE Agent 调用。
-- 终端、Skill、macOS、Dashboard、Workflow 都作为不同 `CapabilityKind` 接入 ToolRouter。
-- Runtime 不直接执行 handler，而是通过 `ToolRouter` 走统一治理。
+当前实现已经升级到 **Tool System V2**：
 
-因此现在的工具系统不是一个注册表加 handler，而是：
+- `lib/tools/v2/registry.ts` 是 Agent 工具的单一真相源。
+- LLM 可见的核心工具只有 **6 个**：`code`、`terminal`、`knowledge`、`graph`、`memory`、`meta`。
+- 每个工具内部用 `action` 区分操作，当前合计 **19 个 action**。
+- Runtime 通过 `V2ToolRouterAdapter` 接入 V2；MCP、Dashboard、Skill、macOS、Workflow 等非 Agent 表面通过 `LightweightRouter` 接入各自 adapter。
+
+因此现在的工具系统不再是“一个 registry 存 60 个 handler”，而是：
 
 ```text
-Capability / ActionSpace
-  → CapabilityCatalog.toToolSchemas(ids)
-  → LLM function calls
+CapabilityV2.allowedTools
+  → V2CapabilityCatalog 生成轻量 schema
+  → LLM function call: code({ action, params })
   → AgentRuntime ToolExecutionPipeline
-  → ToolRouter
-    → GovernanceEngine
-    → Adapter
-    → ToolResultEnvelope
+  → V2ToolRouterAdapter
+  → ToolRouterV2
+    → parseToolCall()
+    → validateParams()
+    → concurrency lock
+    → ToolContextFactory
+    → action.handler()
+  → ToolResult
+  → ToolResultEnvelope
 ```
 
 ## 目录边界
 
-当前 `lib/tools/` 分层如下：
+当前工具目录分成两层：Agent V2 核心工具，以及平台表面的轻量路由。
 
 ```text
 lib/tools/
-├── catalog/
-│   ├── ToolRegistry.ts          # 内部工具 handler 存储，不再承担统一治理
-│   ├── CapabilityCatalog.ts     # capability manifest 查询与 schema 投影
-│   ├── CapabilityManifest.ts    # 风险、执行、治理、信任等 manifest 类型
-│   └── CapabilityProjection.ts  # 从 ToolDefinition 推导 ToolCapabilityManifest
+├── v2/
+│   ├── registry.ts              # 6 个工具 + 19 个 action 的单一真相源
+│   ├── router.ts                # ToolRouterV2：解析、校验、并发、截断
+│   ├── types.ts                 # ToolSpec / ToolAction / ToolResult / ToolContext
+│   ├── handlers/
+│   │   ├── code.ts              # search/read/outline/structure/write
+│   │   ├── terminal.ts          # exec
+│   │   ├── knowledge.ts         # search/submit/detail/manage
+│   │   ├── graph.ts             # overview/query
+│   │   ├── memory.ts            # save/recall/note_finding/get_previous_evidence
+│   │   └── meta.ts              # tools/plan/review
+│   ├── capabilities/            # ConversationV2、BootstrapAnalyze、SystemV2 等
+│   ├── cache/                   # DeltaCache、SearchCache
+│   ├── compressor/              # OutputCompressor
+│   └── adapter/
+│       ├── V2CapabilityCatalog.ts
+│       ├── V2ToolRouterAdapter.ts
+│       └── ToolContextFactory.ts
 ├── core/
-│   ├── ToolRouter.ts            # 统一执行入口
-│   ├── GovernanceEngine.ts      # discover / plan / approve / execute 决策
-│   ├── ToolContracts.ts         # ToolCallRequest / Adapter contract
-│   ├── ToolResultEnvelope.ts    # 统一结果信封
-│   └── Tool*Services.ts         # 传给 handler 的服务契约
-├── handlers/                    # 59 个内部工具定义
-├── adapters/
-│   ├── InternalToolAdapter.ts
-│   ├── DashboardOperationAdapter.ts
-│   ├── TerminalAdapter.ts
-│   ├── SkillAdapter.ts
-│   ├── MacSystemAdapter.ts
-│   └── WorkflowAdapter.ts
+│   ├── LightweightRouter.ts     # 非 Agent 表面的轻量路由
+│   └── ToolResultEnvelope.ts    # Runtime 兼容的统一结果信封
+├── catalog/
+│   ├── CapabilityCatalog.ts
+│   └── UnifiedToolCatalog.ts    # Dashboard/Terminal/Skill/MCP/Forge manifest 目录
+├── adapters/                    # Dashboard、Terminal、Skill、macOS、Workflow
 └── workflow/WorkflowRegistry.ts
 ```
 
-工具已经成为独立平台层。Agent 只是它的一个调用表面。
+这里有一个重要边界：**V2 工具服务 Agent Runtime；MCP 工具服务外部 IDE Agent。** 它们共享工具路由契约和结果信封，但不是同一组工具名。
 
-## ToolRegistry 的新角色
+## V2 工具注册表
 
-`ToolRegistry` 仍然存在，但职责收窄：
+`TOOL_REGISTRY` 当前声明 6 个工具、19 个 action：
 
-- 注册 `ToolDefinition`。
-- 暴露 `getInternalTool(name)` 给 `InternalToolAdapter`。
-- 存储 ToolForge 投影出来的临时内部工具。
-- 保存 `ToolRouter` 引用，方便 RuntimeBuilder 获取。
+| 工具 | Actions | 作用 |
+|:---|:---|:---|
+| `code` | `search`、`read`、`outline`、`structure`、`write` | 搜索源码、读文件、自适应 AST 骨架、目录树、受控写文件 |
+| `terminal` | `exec` | 在项目目录内执行受治理命令，压缩输出 |
+| `knowledge` | `search`、`submit`、`detail`、`manage` | 搜索、提交、查看和管理知识 |
+| `graph` | `overview`、`query` | 项目 AST 概览、实体/关系/调用查询 |
+| `memory` | `save`、`recall`、`note_finding`、`get_previous_evidence` | 工作记忆、跨维度证据复用、关键发现记录 |
+| `meta` | `tools`、`plan`、`review` | 工具自省、计划记录、候选自检 |
 
-它不再负责参数归一化、安全治理、surface 判断、Gateway 权限或结果信封。这些都已迁到 ToolRouter 体系。
+这个设计解决了旧工具系统的两个问题：
 
-```typescript
-class ToolRegistry implements InternalToolHandlerStore, ForgedInternalToolStore {
-  register(toolDef: ToolDefinition): void
-  registerAll(defs: ToolDefinition[]): void
-  getInternalTool(name: string): InternalToolHandlerEntry | null
-  projectForgedTool(tool: ForgedInternalToolDefinition): void
-  revokeForgedTool(name: string): boolean
-  setRouter(router: ToolRouterContract | null): void
-  getRouter(): ToolRouterContract | null
+1. **工具名稳定**：LLM 只需要选择 `code` / `knowledge` 这类大类工具，再用 action 表达意图。
+2. **schema 更轻**：首轮 schema 只暴露 `{ action, params }`，完整参数说明按需通过 `meta.tools` 查询。
+
+例如读取文件不再是 `read_project_file`，而是：
+
+```json
+{
+  "tool": "code",
+  "arguments": {
+    "action": "read",
+    "params": { "path": "src/App.tsx", "startLine": 20, "endLine": 80 }
+  }
 }
 ```
 
-`AgentModule` 初始化时会：
+提交知识不再是 `submit_knowledge`，而是：
 
-1. 创建 `CapabilityCatalog`，合并内部工具、Dashboard 操作、Terminal、Skill、macOS manifest。
-2. 创建 `ToolRegistry` 并注册 `ALL_TOOLS`。
-3. 创建 `ToolRouter`，挂载多个 Adapter。
-4. 把 router 设置回 registry。
-
-## Capability Manifest
-
-每个可执行能力都投影成 `ToolCapabilityManifest`：
-
-| 区域 | 内容 |
-|:---|:---|
-| 基础信息 | `id`、`title`、`kind`、`description`、`owner`、`lifecycle`、`surfaces` |
-| 输入输出 | `inputSchema`、`outputSchema`、examples、failureModes |
-| 风险画像 | sideEffect、dataAccess、writeScope、network、credentialAccess、confirmation、OWASP tags |
-| 执行画像 | adapter、timeoutMs、maxOutputBytes、abortMode、cachePolicy、concurrency、artifactMode |
-| 治理画像 | gatewayAction、auditLevel、policyProfile、approvalPolicy、allowedRoles、composer/remote/nonInteractive |
-| 外部信任 | MCP、Skill、macOS 等外部来源的 trust profile |
-
-`CapabilityProjection.ts` 会从内部工具的 metadata 推导 manifest：
-
-- 只读工具默认 `policyProfile: read`，可 session cache，并行安全。
-- 副作用工具默认 `policyProfile: write`，需要完整审计，单工具并发。
-- `rebuild_index`、`bootstrap_knowledge` 这类工具提升到 admin。
-- side-effect 且没有明确治理策略会 fail closed。
-
-## ToolRouter
-
-`ToolRouter.execute(request)` 是统一执行入口。它的流程是：
-
-```text
-1. catalog.getManifest(toolId)
-2. normalizeRequestArgs(args, manifest.inputSchema)
-3. governance.decide(request, manifest)
-4. adapter.preview() 补充执行预览
-5. 不允许 / 需确认 / 无 manifest → 返回 blocked 或 needs-confirmation envelope
-6. 命中 cache → 返回 cached envelope
-7. acquireConcurrencySlot()
-8. createExecutionSignalScope()
-9. adapter.execute()
-10. timeout / cache write / diagnostics record / release
+```json
+{
+  "tool": "knowledge",
+  "arguments": {
+    "action": "submit",
+    "params": {
+      "title": "Constructor injection for CookieProviding",
+      "kind": "pattern",
+      "trigger": "cookie-providing-di"
+    }
+  }
+}
 ```
 
-统一路由带来三个工程收益：
+## Capability V2
 
-- **surface 一致**：Runtime、MCP、Dashboard、Skill 都走相同的 manifest 和治理字段。
-- **结果一致**：所有工具都返回 `ToolResultEnvelope`，Runtime 不用猜测 handler 返回结构。
-- **安全一致**：Gateway、Policy、角色、确认、超时、并发、外部信任都在同一处处理。
+Capability 仍然回答“当前场景能用什么工具”，但 V2 把白名单从 `string[]` 升级为 `tool → action[]`：
 
-## GovernanceEngine
+```typescript
+export abstract class CapabilityV2 extends Capability {
+  abstract get allowedTools(): Record<string, string[]>;
+}
+```
 
-GovernanceEngine 分四步：
+内置 Capability 映射到 V2 工具：
 
-| 阶段 | 检查 |
+| Capability | 允许工具 |
 |:---|:---|
-| discover | capability 是否存在、是否 disabled、当前 surface 是否暴露 |
-| plan | input schema 是否存在、参数是否通过 schema 校验 |
-| approve | 角色、Runtime Policy、side-effect fail-closed、确认策略、Gateway checkOnly |
-| execute | abortSignal 是否已触发 |
+| `conversation` | `code.search/read/outline/structure`、`knowledge.search/detail/submit`、`graph.overview/query`、`memory.save/recall`、`meta.tools` |
+| `code_analysis` / `bootstrap_analyze` | `code.search/read/outline/structure`、`terminal.exec`、`graph.overview/query`、`memory.save/recall/note_finding/get_previous_evidence`、`meta.plan` |
+| `knowledge_production` / `bootstrap_produce` | `code.read`、`knowledge.submit`、`memory.recall`、`meta.review` |
+| `scan_analyze` | `code.search/read/outline`、`terminal.exec`、`knowledge.search`、`graph.query`、`memory.save/note_finding/get_previous_evidence` |
+| `scan_production` | `code.read`、`knowledge.submit`、`memory.recall` |
+| `system_interaction` | `code.search/read/outline/structure/write`、`terminal.exec`、`graph.overview`、`meta.tools` |
+| `evolution_analysis` | `code.search/read`、`knowledge.search/detail/manage`、`graph.query` |
 
-Runtime 的 `SafetyPolicy` 会作为 `request.runtime.policyValidator` 传入 approve 阶段。MCP/HTTP/Dashboard surface 会额外检查 allowedRoles 和 Gateway mapping。
+`V2CapabilityCatalog` 从 `TOOL_REGISTRY` 生成 LLM schema。它保留了旧 Runtime 期望的 duck-type 接口（`toToolSchemas()` / `toMixedSchemas()`），所以 Runtime 不需要知道背后已经从几十个平铺工具换成了 6 个 V2 工具。
 
-## Adapter
+## ToolRouterV2
 
-当前 Adapter 代表不同执行后端：
+`ToolRouterV2.execute(call, ctx)` 的职责非常克制：
 
-| Adapter | kind | 说明 |
+```text
+1. TOOL_REGISTRY[tool].actions[action] 查找 action
+2. validateParams() 检查 required 和 enum
+3. 可选 CapabilityV2Def 检查 tool/action 是否允许
+4. 按 action.concurrency 获取锁
+5. 注入 ctx.toolRegistry，调用 action.handler()
+6. 按 maxOutputTokens 截断字符串输出
+7. 返回 ToolResult
+```
+
+每个 action 的 metadata 同时表达运行策略：
+
+| 字段 | 取值 | 用途 |
 |:---|:---|:---|
-| `InternalToolAdapter` | `internal-tool` | 执行 `lib/tools/handlers` 中的内部 handler |
-| `DashboardOperationAdapter` | `dashboard-operation` | 执行 Dashboard 操作，例如 bootstrap/rescan/cancel |
-| `TerminalAdapter` | `terminal-profile` | 执行结构化终端命令、脚本、shell、PTY、session 管理 |
-| `SkillAdapter` | `skill` | 搜索、加载、校验 Skill 文档和资源 |
-| `MacSystemAdapter` | `macos-adapter` | 本机 macOS 信息、权限状态、窗口列表、截图 |
-| `WorkflowAdapter` | `workflow` | 执行注册到 `WorkflowRegistry` 的 workflow |
-| `McpToolAdapter` | `mcp-tool` | MCP Server 内部用于把 MCP tool handler 接入 ToolRouter |
+| `cache` | `none` / `session` / `delta` | 搜索、读取等结果缓存提示 |
+| `concurrency` | `parallel` / `single` / `exclusive` | 并行安全、同工具互斥、全局独占 |
+| `risk` | `read-only` / `write` / `side-effect` | 用于自省、审计和风险说明 |
+| `maxOutputTokens` | number | handler 返回后强制裁剪 |
 
-终端执行是这次拆分里变化最大的部分。旧的 `run_safe_command` 被拆成：
+相比旧的 `GovernanceEngine` 四阶段，V2 更轻：Agent 核心工具把“参数校验、并发、输出预算”放在 Router；更重的权限、Gateway、外部信任仍留在 MCP 和平台表面的 manifest 路由里。
 
-- `terminal_run`：结构化 `{ bin, args }`。
-- `terminal_script`：非交互 `/bin/sh` 脚本，脚本写入 artifact，默认需要确认。
-- `terminal_shell`：受治理的 `/bin/sh -lc` 命令字符串。
-- `terminal_pty`：一次性 PTY transcript，适合需要伪终端行为的命令。
-- `terminal_session_status` / `terminal_session_close` / `terminal_session_cleanup`：session metadata 管理。
+## ToolContextFactory
 
-TerminalAdapter 在 preview 阶段就会用 terminal policy 评估风险，执行阶段再走 `TerminalExecutors`。
+V2 handler 不直接依赖 ServiceContainer，而是拿到一个精简的 `ToolContext`。`ToolContextFactory` 每次调用前组装上下文：
+
+```text
+ToolCallRequest
+  → ToolContextFactory.create()
+    → projectRoot
+    → projectGraph / codeEntityGraph / searchEngine / recipeGateway / knowledgeRepo
+    → astAnalyzer / safetyPolicy / sandboxExecutor
+    → DeltaCache / SearchCache / OutputCompressor / SessionStore
+    → tokenBudget / abortSignal / memoryCoordinator
+```
+
+这里的设计很有意思：重量级服务按需从 DI 容器取，轻量组件（`DeltaCache`、`SearchCache`、`OutputCompressor`、`SimpleSessionStore`）在 Factory 构造时创建并跨工具调用复用。这样 `code.read` 的 delta cache、`knowledge.search` 的 search cache、`terminal.exec` 的输出压缩都能共享同一轮 Agent 会话的状态。
+
+终端执行也在这里接入沙箱。`SandboxExecutorBridge` 用 macOS Seatbelt profile 执行 `/bin/sh -c`，默认网络关闭、文件系统限制在 project-write；没有注入 sandbox 时才降级为 plain exec，主要用于测试或非 macOS 环境。
 
 ## Runtime ToolExecutionPipeline
 
-Agent Runtime 中仍有一条轻量中间件管线：
+Runtime 内仍有一条轻量中间件管线，但它不再承担“安全总控”或“缓存总控”：
 
 | 中间件 | 当前职责 |
 |:---|:---|
-| `allowlistGate` | 检查工具是否在当前 Capability / ActionSpace 白名单中；ToolForge 临时工具可放行 |
-| `observationRecord` | 写入 MemoryCoordinator observation |
-| `trackerSignal` | 调用 ExplorationTracker 记录工具信号 |
-| `traceRecord` | 写入 ActiveContext action/observation |
-| `submitDedup` | 对 `submit_knowledge` / `submit_with_check` 做标题、trigger、模式指纹去重 |
+| `allowlistGate` | 检查工具名是否在当前 Capability / ActionSpace 白名单中；ToolForge 临时工具可放行 |
+| `observationRecord` | 写入 `MemoryCoordinator.recordObservation()` |
+| `trackerSignal` | 调用 `ExplorationTracker.recordToolCall()` |
+| `traceRecord` | 写入 `ActiveContext` 推理链 |
+| `submitDedup` | 对 `knowledge.submit` 做 title、trigger、代码模式指纹去重 |
 
-旧文档中的 SafetyGate 已经迁到 ToolRouter/GovernanceEngine；CacheCheck 也以 envelope cache 信息表达。
+执行阶段统一调用 `runtime.toolRouter.execute()`。在当前 AgentModule 中，`toolRouter` 是 `V2ToolRouterAdapter`，它把 V2 的 `ToolResult` 包装成 Runtime 兼容的 `ToolResultEnvelope`。
 
-## ToolResultEnvelope
+旧文档中的 `SafetyGate` 和 `CacheCheck` 已经不在默认 pipeline 中。命令安全在 `terminal.exec` handler 与 sandbox 中处理；缓存由 V2 handler 通过 `DeltaCache` / `SearchCache` / `ToolResultMeta.cached` 表达；Runtime 只负责选择工具、记录观察和维护推理状态。
 
-所有 Adapter 都返回同一种信封：
+## 非 Agent 表面
 
-```typescript
-interface ToolResultEnvelope<T = unknown> {
-  ok: boolean;
-  toolId: string;
-  callId: string;
-  parentCallId?: string;
-  startedAt: string;
-  durationMs: number;
-  status: 'success' | 'error' | 'blocked' | 'aborted' | 'timeout' | 'needs-confirmation';
-  text: string;
-  structuredContent?: T;
-  artifacts?: ToolArtifactRef[];
-  resources?: ToolResourceRef[];
-  cache?: ToolResultCacheInfo;
-  diagnostics: ToolResultDiagnostics;
-  trust: ToolResultTrust;
-  nextActionHint?: string;
-}
+Agent V2 工具不是整个系统唯一的工具入口。Alembic 还有一层平台工具路由：
+
+```text
+UnifiedToolCatalog
+  → LightweightRouter
+    → DashboardOperationAdapter
+    → TerminalAdapter
+    → SkillAdapter
+    → MacSystemAdapter
+    → WorkflowAdapter
+    → McpToolAdapter
 ```
 
-Runtime 使用 `structuredContent` 给 LLM；MCP Server 把 envelope 序列化成 MCP text content；DiagnosticsCollector 记录 envelope 元数据。
+`LightweightRouter` 是替代旧重型 ToolRouter 的平台路由器。它只做三件事：查 manifest、找 adapter、包装结果。Dashboard、Terminal、Skill、macOS、Workflow、MCP 等表面仍使用 `ToolCapabilityManifest` 描述风险、执行策略、治理字段和外部信任。
+
+这也是为什么源码中同时存在 `V2CapabilityCatalog` 和 `UnifiedToolCatalog`：
+
+- `V2CapabilityCatalog`：给 Agent Runtime 生成 6 个 V2 工具 schema。
+- `UnifiedToolCatalog`：给非 Agent 表面和 ToolForge 管理 manifest、handler 和临时工具。
 
 ## MCP 工具
 
-`lib/external/mcp/tools.ts` 当前声明 19 个 MCP 工具：
+MCP Server 对外仍暴露 `alembic_*` 工具，而不是直接暴露 `code` / `knowledge` 这 6 个 V2 工具。`lib/external/mcp/tools.ts` 当前声明 **19 个 MCP 工具**：
 
 | 层级 | 工具 |
 |:---|:---|
-| Agent | `alembic_health`、`alembic_search`、`alembic_knowledge`、`alembic_structure`、`alembic_graph`、`alembic_call_context`、`alembic_guard` |
+| Agent 查询 | `alembic_health`、`alembic_search`、`alembic_knowledge`、`alembic_structure`、`alembic_graph`、`alembic_call_context`、`alembic_guard` |
 | Agent 写入/工作流 | `alembic_submit_knowledge`、`alembic_skill`、`alembic_bootstrap`、`alembic_rescan`、`alembic_evolve`、`alembic_consolidate`、`alembic_dimension_complete`、`alembic_wiki`、`alembic_panorama`、`alembic_task` |
 | Admin | `alembic_enrich_candidates`、`alembic_knowledge_lifecycle` |
 
-MCP Server 自身也通过 `ToolRouter` 执行这些工具，只是 adapter 是 `McpToolAdapter`，真正 handler 仍在 `lib/external/mcp/handlers/`。
+MCP 请求路径是：
+
+```text
+CallToolRequest{name, arguments}
+  → McpServer._handleToolCall()
+  → _resolveMcpGatewayMapping()
+  → LightweightRouter
+  → McpToolAdapter
+  → lib/external/mcp/handlers/*
+  → ToolResultEnvelope
+```
+
+`buildMcpToolCapabilities()` 会把这些 MCP 声明投影为 `mcp-tool` manifest，附加 risk、execution、governance 和 externalTrust。写操作通过 `TOOL_GATEWAY_MAP` 做动态 Gateway 映射；只读查询不需要 Gateway 预检。
 
 ## ToolForge
 
-ToolForge 仍在 `lib/agent/forge`，但它现在投影到新的工具体系：
+ToolForge 仍在 `lib/agent/forge`，但它现在投影到 `UnifiedToolCatalog`：
 
 ```text
 ToolRequirementAnalyzer
   → Reuse / Compose / Generate
   → SandboxRunner 验证
   → TemporaryToolRegistry
-  → ToolRegistry.projectForgedTool()
-  → CapabilityCatalog / WorkflowRegistry 参与治理
+  → UnifiedToolCatalog.projectForgedTool()
+  → CapabilityCatalog / WorkflowRegistry 参与路由
 ```
 
-生成出的临时工具不会绕过治理。`allowlistGate` 只对确认为 `TemporaryToolRegistry` 管理的动态工具放行；执行仍进入 ToolRouter。
+生成出的临时工具不会绕过 Runtime 白名单。`allowlistGate` 只对确认为 `TemporaryToolRegistry` 管理的动态工具放行；真正执行时仍进入统一路由和结果信封。
 
 ## 多层记忆体系
 
@@ -249,7 +275,12 @@ ToolRequirementAnalyzer
 - `allocateBudget(role)`：按 analyst / producer / user 重新分配预算。
 - `cacheToolResult()`：缓存只读工具结果。
 
-Chat 场景更偏 PersistentMemory；分析阶段更偏 ActiveContext；生产阶段更偏 SessionStore。
+V2 增加了两条更直接的记忆通道：
+
+- `memory.note_finding`：分析阶段把关键发现写入 `ActiveContext` scratchpad，并参与 QualityGate 的 evidenceScore。
+- `memory.get_previous_evidence`：后续维度先查询前序证据，避免重复搜索、重复读文件。
+
+Chat 场景更偏 `PersistentMemory`；分析阶段更偏 `ActiveContext`；生产阶段更偏 `SessionStore`。V2 工具里的 `memory` action 则给 Agent 一个显式操作这些记忆层的入口。
 
 ## ExplorationTracker
 
@@ -260,21 +291,22 @@ ExplorationTracker 仍是系统任务的节奏控制器。它追踪：
 - uniqueFiles、uniquePatterns、uniqueQueries。
 - Nudge 和 toolChoice。
 
-`SignalDetector` 从工具调用结果里判断是否产生新信息；`NudgeGenerator` 在预算紧张、信息饱和或需要强制退出时生成提示。
+`SignalDetector` 从 V2 工具调用结果里判断是否产生新信息；`NudgeGenerator` 在预算紧张、信息饱和或需要强制退出时生成提示。
 
 ## 权衡
 
-工具拆分的代价是概念更多：ToolRegistry、CapabilityCatalog、ToolRouter、GovernanceEngine、Adapter、Envelope 都要理解。收益是更大的：
+Tool System V2 的代价是 action 需要多一层参数包装：`tool + action + params` 比单个函数名更抽象。收益更大：
 
-1. **治理集中**：所有 surface 共用 manifest 与 governance。
-2. **结果标准化**：Runtime、MCP、Dashboard 不再各自处理返回格式。
-3. **扩展更干净**：新增终端、Skill、macOS、Workflow 能力时，不必塞进 AgentRuntime。
-4. **安全边界更清楚**：Runtime 白名单管“当前 Agent 能不能用”，ToolRouter 管“这个能力能不能执行”。
+1. **LLM 选择更稳定**：6 个工具名比几十个函数名更容易选对。
+2. **schema 负担更小**：首轮只给轻量 schema，细节按需查询。
+3. **执行边界更清楚**：Agent V2 工具、MCP 工具、Dashboard/Skill/macOS/Workflow 表面各走自己的 router。
+4. **记忆与证据更顺手**：`memory.note_finding` 和 `get_previous_evidence` 把跨维度协作变成一等工具能力。
+5. **旧 Runtime 可平滑迁移**：`V2ToolRouterAdapter` 继续产出 `ToolResultEnvelope`，不破坏 ReAct 循环和诊断链路。
 
 ## 小结
 
 当前工具体系的核心结论是：
 
-> **工具不再属于 Agent；Agent 只是 ToolRouter 的一个调用者。**
+> **Agent 面前不再是 59 个内部工具，而是 6 个 V2 语义工具；复杂度被收进 action、handler、context 和 router。**
 
-`lib/tools/` 负责工具注册、manifest、治理、adapter 和结果信封。`lib/agent/` 负责选择工具、组织推理、记录记忆。两者通过 Capability 白名单和 ToolRouter 连接。
+`lib/tools/v2/` 负责 Agent 核心工具；`LightweightRouter + UnifiedToolCatalog` 负责平台表面；`lib/agent/` 负责选择工具、组织推理、记录记忆。三者的边界清楚以后，Alembic 的工具系统才真正从“工具集合”变成了“工具平台”。

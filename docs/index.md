@@ -30,7 +30,7 @@ features:
     details: ProjectIntelligence 冷启动/重扫、四层 Guard 免疫系统、三模式混合搜索引擎
   - icon: 🤖
     title: Part V · Agent 智能层
-    details: ReAct 推理循环、Capability × Strategy × Policy 正交组合、59 个内部工具 + ToolRouter与记忆系统
+    details: ReAct 推理循环、Capability × Strategy × Policy 正交组合、Tool System V2 与记忆系统
   - icon: 🚀
     title: Part VI · 平台与交付
     details: MCP 协议实现、六通道知识交付、Task 意图生命周期、Dashboard · CLI · 多端接入

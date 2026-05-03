@@ -68,7 +68,7 @@ alembic ui        # 启动后台服务，IDE 和 MCP 工具依赖此服务运行
 
 Agent 扫描整个项目，提取出团队的编码模式、架构约定、调用习惯，同时生成项目 Wiki。冷启动只做一次，之后就进入日常使用。
 
-冷启动背后是一条完整的管线：文件收集 → 10 语言 AST 解析（Tree-sitter）→ 25 维度框架分析 → 59 个内部工具 + ToolRouter编排的 Agent 推理循环 → 人工审核。Agent 不是简单的"让 LLM 读代码然后总结"，而是在结构化分析的基础上做确定性标记，只把真正不确定的部分交给 LLM 消解。
+冷启动背后是一条完整的管线：文件收集 → 10 语言 AST 解析（Tree-sitter）→ 25 维度框架分析 → Tool System V2（6 个语义工具、19 个 action）编排的 Agent 推理循环 → 人工审核。Agent 不是简单的"让 LLM 读代码然后总结"，而是在结构化分析的基础上做确定性标记，只把真正不确定的部分交给 LLM 消解。
 
 ### 日常：说一句话就行
 
@@ -206,7 +206,7 @@ alembic guard:ci --min-score 90   # CI 质量门禁
 | 维度 | 数据 |
 |------|------|
 | AST 支持语言 | 10 种（Go · Python · Java · Kotlin · Swift · TS · JS · Rust · ObjC · Dart） |
-| Agent 工具 | 59 个内部工具 + 19 个 MCP 工具 |
+| Agent 工具 | Tool System V2：6 个语义工具 / 19 个 action；MCP：19 个 `alembic_*` 工具 |
 | 知识维度框架 | 25 维（13 通用 + 7 语言特定 + 5 框架特定） |
 | 搜索信号 | 6 维加权 |
 | Guard 检测层 | 4 层（正则 → 代码级 → AST → 跨文件） |

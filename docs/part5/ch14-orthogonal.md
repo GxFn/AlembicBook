@@ -86,18 +86,19 @@ class Capability {
 }
 ```
 
-当前内置六种 Capability：
+当前 Capability 已迁到 V2 工具模型。每个 Capability 声明的是 `tool → action[]`，而不是一串平铺工具名：
 
 | Capability | 主要工具 |
 |:---|:---|
-| `conversation` | `search_knowledge`、`search_recipes`、`get_recipe_detail`、`submit_knowledge`、`knowledge_overview` |
-| `code_analysis` | `get_project_overview`、`search_project_code`、`read_project_file`、`query_code_graph`、`query_call_graph`、`note_finding` |
-| `knowledge_production` | `check_duplicate`、`validate_candidate`、`submit_with_check`、`submit_knowledge`、`quality_score` |
-| `scan_production` | `collect_scan_recipe`、`read_project_file` |
-| `system_interaction` | `terminal_run`、`terminal_script`、`terminal_shell`、`terminal_pty`、macOS 能力、`write_project_file` 等 |
-| `evolution_analysis` | `search_recipes`、`quality_score`、`propose_evolution`、`confirm_deprecation`、`skip_evolution` |
+| `conversation` | `code.search/read/outline/structure`、`knowledge.search/detail/submit`、`graph.overview/query`、`memory.save/recall`、`meta.tools` |
+| `code_analysis` | `code.search/read/outline/structure`、`terminal.exec`、`graph.overview/query`、`memory.save/recall/note_finding/get_previous_evidence`、`meta.plan` |
+| `knowledge_production` | `code.read`、`knowledge.submit`、`memory.recall`、`meta.review` |
+| `scan_analyze` | `code.search/read/outline`、`terminal.exec`、`knowledge.search`、`graph.query`、`memory.save/note_finding/get_previous_evidence` |
+| `scan_production` | `code.read`、`knowledge.submit`、`memory.recall` |
+| `system_interaction` | `code.search/read/outline/structure/write`、`terminal.exec`、`graph.overview`、`meta.tools` |
+| `evolution_analysis` | `code.search/read`、`knowledge.search/detail/manage`、`graph.query` |
 
-注意 `system_interaction` 已经不再使用旧的 `run_safe_command`。终端能力拆成了 `terminal_run`、`terminal_script`、`terminal_shell`、`terminal_pty` 和 session 管理能力，并由 `TerminalAdapter`、terminal policy、ToolRouter governance 共同治理。
+注意 `system_interaction` 已经不再使用旧的 `run_safe_command`，也不再把终端拆成多个 LLM 可见工具。Agent 侧统一调用 `terminal({ action: "exec", params: { command } })`；命令黑名单、cwd 约束、Seatbelt 沙箱和输出压缩在 `terminal` handler 与 `ToolContextFactory` 中处理。
 
 Capability 只声明工具白名单和提示词，不执行工具逻辑。实际执行在 `lib/tools/`。
 
@@ -128,20 +129,21 @@ Policy 回答“边界在哪”。
 | `BudgetPolicy` | maxIterations、maxTokens、temperature、timeoutMs |
 | `SafetyPolicy` | sender allowlist、文件范围、命令安全等运行时约束 |
 | `QualityGatePolicy` | 执行后检查证据长度、文件引用、工具调用数量 |
-| `PolicyEngine` | 组合多个 Policy，并提供 `validateToolCall()` 给 ToolRouter governance 使用 |
+| `PolicyEngine` | 组合多个 Policy，并把 `SafetyPolicy` 等运行时约束透传给工具上下文 |
 
 工具安全的职责已经分层：
 
 ```text
 Runtime allowlistGate
-  → ToolRouter GovernanceEngine
-    → discover: capability 是否存在、surface 是否暴露
-    → plan: input schema 校验和参数归一
-    → approve: role、runtime policy、Gateway checkOnly、确认策略
-    → execute: abort / timeout / adapter
+  → V2ToolRouterAdapter
+    → ToolRouterV2.parseToolCall()
+    → validateParams()
+    → concurrency lock
+    → ToolContextFactory
+    → action.handler()
 ```
 
-因此 Policy 不再承担所有工具治理，它是 ToolRouter approve 阶段的一个输入。
+因此 Policy 不再承担所有工具治理。Runtime 层用 `allowlistGate` 管“这个阶段能不能叫这个工具”；V2 Router 管“这个 action 参数是否合法、是否需要互斥、输出是否超预算”；MCP / Dashboard 等外部表面再通过 `LightweightRouter + manifest` 处理 Gateway、角色和外部信任。
 
 ## ActionSpace
 
@@ -227,7 +229,7 @@ policy:
 1. **任务可注册**：系统任务不再散落在调用点，而是统一表达为 Profile。
 2. **并发可声明**：父任务如何拆分、如何合并，可以由 Profile 描述。
 3. **阶段可生成**：Pipeline 不必写死在 Preset 中，可以由 StageFactory 按上下文生成。
-4. **工具可治理**：Capability 和 ActionSpace 共同决定白名单，ToolRouter 统一治理执行。
+4. **工具可治理**：Capability 和 ActionSpace 共同决定白名单，V2 Router 统一执行 Agent 工具；MCP / Dashboard 等表面由 `LightweightRouter` 接入 manifest 治理。
 
 ## 小结
 

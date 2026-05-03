@@ -308,10 +308,10 @@ createRuntime(presetName: string, overrides: RuntimeOverrides = {}) {
 
 ### Capability：可复用的能力模块
 
-每个 Capability 提供三样东西：系统提示词片段、工具白名单、生命周期钩子。
+每个 Capability 提供三样东西：系统提示词片段、V2 工具/action 白名单、生命周期钩子。
 
 ```typescript
-// lib/agent/capabilities.ts
+// lib/tools/v2/capabilities/ConversationV2.ts
 //
 // 组合示例:
 //   用户聊天     = Conversation + CodeAnalysis
@@ -326,8 +326,14 @@ export class Conversation extends Capability {
     return `## 对话能力\n你是 Alembic 知识管理助手...`;
   }
 
-  get tools() {
-    return ['search_knowledge', 'search_recipes', 'get_recipe_detail', 'submit_knowledge'];
+  get allowedTools() {
+    return {
+      code: ['search', 'read', 'outline', 'structure'],
+      knowledge: ['search', 'detail', 'submit'],
+      graph: ['overview', 'query'],
+      memory: ['save', 'recall'],
+      meta: ['tools'],
+    };
   }
 }
 ```

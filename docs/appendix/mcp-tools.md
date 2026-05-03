@@ -104,4 +104,4 @@ Wiki 工作流。plan 为只读规划，finalize 会写入生成结果。
 | `alembic_enrich_candidates` | `knowledge:update` | `knowledge` |
 | `alembic_knowledge_lifecycle` | `knowledge:update` | `knowledge` |
 
-MCP Server 自身也通过 `ToolRouter` 执行工具。`buildMcpToolCapabilities()` 会把这些声明投影为 `mcp-tool` manifest，并附加 externalTrust、surface、risk、execution 和 governance profile。
+MCP Server 自身也通过 `LightweightRouter + McpToolAdapter` 执行工具。`buildMcpToolCapabilities()` 会把这些声明投影为 `mcp-tool` manifest，并附加 externalTrust、surface、risk、execution 和 governance profile。

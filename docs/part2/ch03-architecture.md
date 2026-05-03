@@ -205,7 +205,9 @@ export interface ServiceMap {
   guardService: GuardService;
   guardCheckEngine: GuardCheckEngine;
   // ═══ AgentModule ═══
-  toolRegistry: ToolRegistry;
+  capabilityCatalog: V2CapabilityCatalog;
+  toolRouter: V2ToolRouterAdapter;
+  toolRegistry: UnifiedToolCatalog;
   agentFactory: AgentService / AgentRuntimeBuilder;
   // ═══ SignalModule ═══
   signalBus: SignalBus;
@@ -220,9 +222,9 @@ export interface ServiceMap {
 
 ### Layer 4: Agent — 智能中枢
 
-Agent 层是系统的"大脑"——`AgentRuntime` 驱动 ReAct 推理循环，`AgentService / AgentRuntimeBuilder` 编译 Profile 并构建 Runtime，`ToolRouter` 通过统一治理层路由 59 个内部工具、19 个 MCP 工具以及 Dashboard/Terminal/Skill 等能力。
+Agent 层是系统的"大脑"——`AgentRuntime` 驱动 ReAct 推理循环，`AgentService / AgentRuntimeBuilder` 编译 Profile 并构建 Runtime。当前工具层分成两条路：Agent Runtime 使用 `V2ToolRouterAdapter` 路由 6 个 V2 语义工具（19 个 action）；MCP、Dashboard、Terminal、Skill、macOS、Workflow 等平台表面使用 `UnifiedToolCatalog + LightweightRouter`。
 
-Agent 层只依赖 Service 层和 Infrastructure 层，不直接操作数据库或文件系统。所有副作用通过工具调用间接执行——Agent 调用 `submit_knowledge` 工具，工具内部委托 `KnowledgeService.create()`，服务操作 `KnowledgeRepository`，仓储写入 SQLite。
+Agent 层只依赖 Service 层和 Infrastructure 层，不直接操作数据库或文件系统。所有副作用通过工具调用间接执行——Agent 调用 `knowledge.submit` action，工具内部委托 `RecipeProductionGateway` / `KnowledgeRepository`，仓储写入 SQLite。
 
 这种间接性是设计约束，不是偶然：Agent 的每个操作都经过工具层的权限检查和参数验证，不可能绕过 Gateway 直接修改数据。
 

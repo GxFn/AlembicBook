@@ -313,7 +313,7 @@ interface CreateRecipeResult {
 
 如果调用方指定了 `options.supersedes`（被替代的旧 Recipe ID），在新 Recipe 创建成功后自动创建 `deprecate` 类型的进化提案，关联新旧 Recipe。
 
-这个设计的核心价值是**入口统一**——Agent 通过 `submit_knowledge` 工具调用和用户通过 MCP `alembic_submit_knowledge` 走完全相同的校验管线。没有"捷径"可以绕过 Schema Validation 或 Similarity Check 直接创建 Recipe。
+这个设计的核心价值是**入口统一**——内部 Agent 通过 V2 的 `knowledge.submit` action，外部 IDE Agent 通过 MCP `alembic_submit_knowledge`，最终走同一条校验管线。没有"捷径"可以绕过 Schema Validation 或 Similarity Check 直接创建 Recipe。
 
 ### LifecycleStateMachine — 唯一权威
 

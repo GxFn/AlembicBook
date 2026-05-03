@@ -53,20 +53,23 @@ setRequestHandler(ListToolsRequestSchema, () => {
 });
 ```
 
-**请求流程**——从 IDE 到知识库再回来：
+**请求流程**——从 IDE 到知识库再回来。当前 MCP 工具也接入了轻量工具路由，不再由 `McpServer` 直接调用 handler：
 
 ```text
 IDE Agent → CallToolRequest{name, arguments}
   → McpServer._handleToolCall()
-    → _gatewayGate()          // 权限检查
-    → _resolveHandler()       // 路由到处理函数
-    → handler(ctx, args)      // 执行业务逻辑
-    → 序列化结果
-  → CallToolResponse{content: [{type: 'text', text: JSON}]}
+    → _resolveMcpGatewayMapping()
+    → LightweightRouter.execute()
+      → CapabilityCatalog.getManifest(name)
+      → McpToolAdapter.execute()
+      → _executeMcpHandler()
+      → handler(ctx, args)
+    → ToolResultEnvelope
+  → CallToolResponse{content: [{ type: 'text', text: JSON }]}
 ← IDE Agent
 ```
 
-Gateway 关卡是安全边界——不是所有工具调用都需要权限检查。`alembic_search`（只读查询）直接放行；`alembic_submit_knowledge`（写入操作）和 `alembic_skill`（create/update/delete 操作）必须经过 Gateway 的权限验证。路由映射在 `TOOL_GATEWAY_MAP` 中声明，某些工具使用 `resolver` 函数根据参数动态决定是否需要关卡——例如 `alembic_skill` 的 `list` 操作是只读的，`create` 操作才需要权限。
+Gateway 映射仍是安全边界——不是所有工具调用都需要权限检查。`alembic_search`（只读查询）直接放行；`alembic_submit_knowledge`（写入操作）和 `alembic_skill`（create/update/delete 操作）会解析出 Gateway action/resource。路由映射在 `TOOL_GATEWAY_MAP` 中声明，某些工具使用 `resolver` 函数根据参数动态决定是否需要关卡——例如 `alembic_skill` 的 `list` 操作是只读的，`create` 操作才需要权限。
 
 **多 IDE 适配**——MCP Server 使用 stdio 传输（标准输入/输出），这是最通用的方式：
 
@@ -341,12 +344,12 @@ Validate → Guard → Route → Audit
 ④ Audit：审计日志记录——成功或失败都写入 audit_logs
 ```
 
-MCP Server 使用 Gateway 的两种模式：
+MCP/HTTP 对 Gateway 的使用方式不同：
 
-- **`checkOnly()`**——只执行 Validate + Guard，不执行 Route。用于 `_gatewayGate()` 的权限预检——在工具调用前验证权限，通过后再调用实际处理函数。
+- **MCP 工具调用**——`McpServer._resolveMcpGatewayMapping()` 根据 `TOOL_GATEWAY_MAP` 解析 action/resource，并把映射写入 `ToolCallRequest.governance`。只读工具没有映射，写操作和高风险操作带着治理元数据进入 `LightweightRouter + McpToolAdapter`。
 - **`execute()`**——完整四阶段。用于 HTTP API 请求。
 
-这种设计让 MCP 和 HTTP 共享同一套权限和审计逻辑，但 MCP 的处理函数可以独立于 Gateway 的 Action Handler——因为 MCP 工具的参数格式和 HTTP 路由不同，处理逻辑需要各自适配。
+这种设计让 MCP 和 HTTP 共享同一套 action/resource 语义，但 MCP 的处理函数可以独立于 Gateway 的 Action Handler——因为 MCP 工具的参数格式和 HTTP 路由不同，处理逻辑需要各自适配。
 
 ### Task 生命周期——意图驱动的 Agent 工作流
 
@@ -814,11 +817,13 @@ AI Agent 需要了解"这个项目的 Cookie 管理方式"，调用 `alembic_sea
 
 ```text
 McpServer._handleToolCall('alembic_search', {query, mode})
-  → _gatewayGate()：搜索是只读操作，不在 TOOL_GATEWAY_MAP 中，直接放行
-  → _resolveHandler()：映射到 consolidated.consolidatedSearch()
-  → consolidatedSearch()：mode='auto' 路由到 searchHandlers.search()
+  → _resolveMcpGatewayMapping()：搜索是只读操作，不在 TOOL_GATEWAY_MAP 中
+  → LightweightRouter.execute()
+  → McpToolAdapter.execute()
+  → _executeMcpHandler() / _resolveHandler()
+  → search handler：mode='auto' 路由到 SearchEngine
   → SearchEngine：三路召回 + RRF 融合 + 三级重排
-  → 返回 Top-5 Recipe，序列化为 JSON
+  → ToolResultEnvelope，序列化为 JSON
 ← Agent 获得精准的 Cookie 管理模式描述
 ```
 

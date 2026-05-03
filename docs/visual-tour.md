@@ -16,7 +16,7 @@ Alembic 本质上做两件事：**一次构建有限答案，持续回答无限�
 
 ### 工程规模
 
-从工程规模看，Alembic 是一个 12 万行 TypeScript 的完整系统，支持 10 种编程语言、59 个内部工具 + 多类 Tool Capability、9 维度知识覆盖。
+从工程规模看，Alembic 是一个 12 万行 TypeScript 的完整系统，支持 10 种编程语言、Tool System V2（6 个语义工具 / 19 个 action）、19 个 MCP 工具和 9 维度知识覆盖。
 
 ![工程规模](/images/ch01/02-engineering-scale.png)
 
@@ -162,7 +162,7 @@ Agent 的行为由三个正交维度决定：Capability（能做什么）× Stra
 
 ### 工具与记忆
 
-59 个内部工具 + ToolRouter分为知识管理、代码分析、搜索检索、系统管理四大类。记忆系统包含短期记忆（对话上下文）和长期记忆（项目事实），支持跨会话持久化。
+Tool System V2 把 Agent 可见工具收敛为 `code`、`terminal`、`knowledge`、`graph`、`memory`、`meta` 6 个语义工具，并通过 19 个 action 覆盖代码分析、知识管理、终端执行、图谱查询、记忆记录和工具自省。记忆系统包含短期记忆（对话上下文）和长期记忆（项目事实），支持跨会话持久化。
 
 ![工具与记忆全景](/images/ch15/01-tools-memory-overview.png)
 

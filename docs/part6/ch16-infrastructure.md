@@ -366,7 +366,9 @@ export interface ServiceMap {
   vectorStore: VectorStore;
   guardCheckEngine: GuardCheckEngine;
   agentFactory: AgentService / AgentRuntimeBuilder;
-  toolRegistry: ToolRegistry;
+  capabilityCatalog: V2CapabilityCatalog;
+  toolRouter: V2ToolRouterAdapter;
+  toolRegistry: UnifiedToolCatalog;
   // ... 60+ 更多服务
 }
 ```
