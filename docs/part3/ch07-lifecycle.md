@@ -115,26 +115,30 @@ Alembic 的安全设计是：**Agent 永远不能直接修改已有知识，只�
 
 这个极简的类型设计是有意为之。早期版本有六种类型（`enhance`、`merge`、`correction`、`supersede`、`deprecate`、`contradiction`），但实践中发现：所有"对内容的改进"本质上都是 `update`，而 `merge` 和 `contradiction` 处理已经下沉到提交时的融合分析层（ConsolidationAdvisor）和 Agent 语义判断。两种类型 + 纯函数策略层（`EvolutionPolicy`）足以覆盖所有进化场景。
 
-风险不再由提案类型硬编码，而是由 `EvolutionPolicy.assessRisk()` 动态评估：
+当前代码把进化提案进一步收敛为两个门控层：创建时先判定是否进入 `observing`，执行时再由信号和指标判定是否真正落地。`EvolutionPolicy.assessRisk()` 仍保留为策略辅助函数，但 `EvolutionGateway` 创建 Proposal 时不会再用风险等级写入固定到期时间，而是显式传入 `expiresAt: 0`，让主路径由 `SignalBus` 驱动。
 
 ```typescript
 // lib/domain/evolution/EvolutionPolicy.ts
-static assessRisk(action: EvolutionAction, confidence: number, source: ProposalSource): RiskTier {
-  if (action === 'deprecate') { return 'high'; }
-  if (action === 'update' && confidence >= 0.8) { return 'low'; }
-  return 'medium';
+static resolveInitialStatus(type: 'update' | 'deprecate', confidence: number) {
+  const threshold = { update: 0.7, deprecate: 0.0 }[type];
+  return confidence >= threshold ? 'observing' : 'pending';
+}
+
+static shouldImmediateExecute(action: string, confidence: number, source: string) {
+  return action === 'deprecate' && confidence >= 0.8 && source !== 'metabolism';
 }
 ```
 
-风险等级决定了观察窗口的长度：
+也就是说，创建时真正生效的是四条规则：
 
-| 风险等级 | 观察窗口 | 典型场景 |
+| 条件 | 初始结果 | 含义 |
 |:---|:---|:---|
-| `low` | 24 小时 | 高置信度更新（confidence ≥ 0.8） |
-| `medium` | 72 小时 | 中等置信度更新 |
-| `high` | 7 天 | 所有废弃提案 |
+| `update` 且 `confidence >= 0.7` | `observing` | 可被后续 guard/search/quality/usage/lifecycle 信号评估 |
+| `update` 且 `confidence < 0.7` | `pending` | 需要 Dashboard/HTTP 手动 observe 或 execute |
+| `deprecate` 且 `confidence >= 0.8` 且来源不是 `metabolism` | 立即尝试 `deprecated` | 状态机拒绝时降级为 Proposal |
+| 其他 `deprecate` | `observing` | 废弃提案先观察，不直接改库 |
 
-`deprecate` 一律 7 天，因为一条知识可能只在每周一次的发版流程中被使用——7 天覆盖一个完整的开发周期。高置信度的 `update`（如 Agent 在读完代码后提出的精确修正）只需 24 小时观察有没有新增误报。
+手动 `observe` 仍会调用 `ProposalRepository.startObserving()`，这时仓储会把 `expiresAt` 重置为按类型计算的窗口（update 72h、deprecate 7d）。但主执行链不靠“时间到了就执行”，而是“相关信号到了就评估”；启动兜底和 CLI 才会批量检查 observing 提案。
 
 为什么不让 Agent 直接修改知识？根本原因是 SOUL 原则中的两条硬约束：**永不删除**（所有变更都是新增操作，旧版本保留在审计日志中）和**无 AI 不伪装**（AI 的判断必须标记为 AI 产出，不能假装是人工确认的）。进化提案机制天然满足这两条约束：旧内容不变、提案来源明确（`source: 'ide-agent' | 'relevance-audit' | 'decay-scan' | 'file-change'`）。
 
@@ -191,15 +195,15 @@ const TIMEOUT_TARGET = {
 
 **active → decaying**
 
-这是最关键的自动转换——它由 `DecayDetector` 的评分驱动。当 `DecayDetector` 评估一条 `active` 状态的 Recipe 分数低于 60 分时，通过 `EvolutionGateway.submit({ action: 'deprecate' })` 发起进化决策。`EvolutionGateway` 根据置信度决定是创建提案（信号驱动评估，无固定过期时间）还是直接执行（高置信度 ≥ 0.8 立即废弃）。
+这是最关键的自动转换，但当前实装不是 `DecayDetector` 直接改状态。`DecayDetector.scanAll()` 负责计算 `decayScore` 并对非 healthy Recipe 发射 `decay` signal；如果目标 Recipe 已有 observing 的 deprecate 提案，`ProposalExecutor` 会在这个信号上重新评估，分数达到 `<= 40` 时才通过状态机进入 `decaying` 或 `deprecated`。没有提案时，衰退结果主要用于 Dashboard、panorama 报告和 rescan 预筛。
 
 **decaying → active（自动恢复）**
 
-如果处于 `decaying` 状态的 Recipe 重新被搜索命中或被 Guard 使用（`searchHit` 或 `guardHit` 信号），`ProposalExecutor` 在评估废弃提案时发现衰退分数回升（当前分数比提案创建时高出 10 分以上），自动拒绝提案——Recipe 恢复到 `active`。此外，§9.1 保护机制会在源文件被直接修改（`direct`/`pattern` 级影响）时直接拒绝废弃提案，无需等待分数回升。这些自动恢复机制是信号驱动设计的典型体现——不需要人工干预，使用行为和编辑行为本身就是最好的信号。
+如果处于观察中的废弃提案收到新的搜索、Guard、quality 或 lifecycle 信号，`ProposalExecutor` 会重新读取 Recipe 当前 metrics。当前分数比提案 evidence 中的快照高出 10 分以上时，提案被拒绝；源文件被直接修改或 pattern 级修改时也会立即拒绝废弃提案。这些自动恢复机制是信号驱动设计的典型体现——不需要人工干预，使用行为和编辑行为本身就是最好的信号。
 
 **decaying → deprecated**
 
-30 天的衰退观察期内没有恢复信号，`LifecycleStateMachine.checkTimeouts()` 自动将其推进到 `deprecated`。特殊情况：如果 `DecayDetector` 给出 `dead` 级别（0-19 分），`EvolutionGateway` 跳过观察直接执行废弃。
+`LifecycleStateMachine.checkTimeouts()` 只处理已经进入 `decaying` 的 Recipe：超过 30 天会推进到 `deprecated`。`DecayDetector` 的 `dead` 级别不会自己跳过状态机；它只是产生更强的衰退信号，真正的废弃仍要来自 `EvolutionGateway` 的高置信度 deprecate 决策，或来自 observing deprecate 提案在 `ProposalExecutor` 中通过 `EvolutionPolicy.evaluateDeprecate()`。
 
 每一次状态转换都会被记录为不可变的 `TransitionEvent`：
 
@@ -416,13 +420,15 @@ decayScore = freshness × 0.3 + usage × 0.3 + quality × 0.2 + authority × 0.2
 
 评分结果映射为五个级别：
 
-| 分数 | 级别 | 系统行为 |
+| 分数 | 级别 | 当前系统行为 |
 |:---|:---|:---|
 | 80-100 | `healthy` | 无动作 |
-| 60-79 | `watch` | Dashboard 显示黄色警告 |
-| 40-59 | `decaying` | 触发 `active → decaying` 转换 |
-| 20-39 | `severe` | 缩短 Grace Period 至 15 天 |
-| 0-19 | `dead` | 跳过确认，直接 `deprecated` |
+| 60-79 | `watch` | 发射低风险衰退信号，Dashboard/panorama 可提示 |
+| 40-59 | `decaying` | 发射 `decay` signal；已有 deprecate 提案会被重新评估 |
+| 20-39 | `severe` | 发射更强衰退信号；提案执行可进入 `decaying` |
+| 0-19 | `dead` | 发射最高强度衰退信号；提案执行可进入 `deprecated` |
+
+这个区别很重要：`DecayDetector` 是评分器和信号源，不是状态机。状态改变只能由 `LifecycleStateMachine.transition()` 完成，通常由 `EvolutionGateway` 的立即废弃路径或 `ProposalExecutor` 的提案执行路径调用。
 
 除了综合评分，`DecayDetector` 还检测六种具体的衰退策略：
 
@@ -672,7 +678,7 @@ class RecipeSimilarity {
 
 ### EvolutionGateway — 统一决策入口
 
-`EvolutionGateway` 是所有进化决策的统一入口。无论来源是 Agent 工具、rescan evolution audit、FileChangeHandler 还是 DecayDetector，所有进化意图都通过 `submit()` 提交：
+`EvolutionGateway` 是信号驱动 Proposal 链的统一入口。外部 MCP 的 `alembic_evolve`、`FileChangeHandler`、`RecipeProductionGateway` 的融合/替代逻辑，以及 `alembic_consolidate` 都通过 `submit()` 提交进化意图。内部 `evolution-audit` profile 当前的 prompt 和 gate 使用 V2 `knowledge.manage` 表达 `evolve / deprecate / skip_evolution` 决策；这一层是 Agent 决策协议，和外部 MCP 直接调用 Gateway 的执行链要分开看。
 
 ```typescript
 // lib/service/evolution/EvolutionGateway.ts
@@ -712,9 +718,9 @@ EvolutionDecision 到达
         → NO:  创建 deprecate Proposal（信号驱动评估，无固定过期时间）
 ```
 
-`valid` action 是一个轻量操作——Agent 在增量扫描的 Phase A 中对健康的 Recipe 调用 `submit({ action: 'valid' })`，只刷新时间戳证明"我验证过了"，不创建任何提案。这是 Phase A 过滤效率的关键：80% 的健康 Recipe 走 `valid` 路径，只消耗一次时间戳写入。
+`valid` action 是一个轻量操作——外部 MCP `alembic_evolve` 在 `skip(still_valid)` 时会调用 `submit({ action: 'valid' })`，只刷新 `lastVerifiedAt`，不创建任何提案，也不触发状态转换。`skip(insufficient_info)` 则只计入 skipped，不刷新验证时间。
 
-高置信度废弃（`confidence ≥ 0.8`）的立即执行路径是一个重要的优化。当文件删除、外部 IDE Agent 或 rescan evolution audit 以高置信度确认某条 Recipe 已无代码依据时，没有必要先创建长期等待的提案——可以直接尝试废弃。但即使在这条快速路径上，废弃操作仍然必须通过 `LifecycleStateMachine` 的守卫检查；如果状态机拒绝这次转换，系统会自动降级为创建提案。
+高置信度废弃（`confidence ≥ 0.8`）的立即执行路径是一个重要的优化。当文件删除、外部 IDE Agent 或融合链路以高置信度确认某条 Recipe 已无代码依据时，没有必要先创建长期等待的提案——可以直接尝试废弃。但即使在这条快速路径上，废弃操作仍然必须通过 `LifecycleStateMachine` 的守卫检查；如果状态机拒绝这次转换，系统会自动降级为创建提案。
 
 **Evidence 升级机制（Dedup 后追加证据）**
 
@@ -739,9 +745,27 @@ if (newHasChanges && !existingHasChanges) {
 
 这解决了一个实际问题：`FileChangeHandler` 在文件保存时立即创建 Proposal，但此时只有 diff 检测元数据（`score`、`matchedTokens`）；后续 Agent 增量扫描可能产出更丰富的证据（包含 `suggestedChanges` 内容补丁）。如果没有升级机制，Agent 的 `suggestedChanges` 会被去重规则丢弃，`ContentPatcher` 就无法执行实际的内容更新。
 
+### ProposalRepository — 创建时的状态门控
+
+`ProposalRepository` 只存两种提案：`update` 和 `deprecate`。旧的 `enhance / correction / supersede / merge / contradiction / reorganize` 不再作为独立 Proposal 类型出现：内容类变化归一为 `update`，替代关系通过 `deprecate + relatedRecipeIds` 表达，语义合并前移到 `ConsolidationAdvisor` 和 `alembic_consolidate`。
+
+创建一条 Proposal 时，仓储先做去重：同一个 `targetRecipeId`、同一种 `type`，只要已有 `pending` 或 `observing` 提案，就直接返回 `null`。这不是错误，而是让 `EvolutionGateway` 进入 evidence 升级逻辑的信号。
+
+状态门控如下：
+
+| 阶段 | 代码位置 | 门控规则 |
+|:---|:---|:---|
+| 创建 | `ProposalRepository.create()` | 去重后生成 `ep-{timestamp}-{random}`，按 `EvolutionPolicy.resolveInitialStatus()` 写入 `pending/observing` |
+| 自动观察 | `resolveInitialStatus()` | `update >= 0.7` 自动 observing；低置信 update 留在 pending；deprecate 如果没有被立即执行，默认 observing |
+| 手动观察 | `startObserving()` | 仅允许 `pending → observing`，并重写 `expiresAt` 为 update 72h / deprecate 7d |
+| 执行完成 | `markExecuted()` | 只允许把 `observing` 标记为 executed，防止 pending 被绕过 |
+| 拒绝/过期 | `markRejected()` / `markExpired()` | 允许 `pending` 或 `observing` 进入终态 |
+
+`EvolutionGateway` 创建 Proposal 时传入 `expiresAt: 0`，这是“信号驱动”的明确标记。仓储仍保留默认窗口和 `findExpiredObserving()`，但主执行路径已经转向 `SignalBus`，启动兜底和手动操作只是防守性路径。
+
 ### ProposalExecutor — 信号驱动的提案评估
 
-`ProposalExecutor` 是提案生命周期的执行引擎。它的核心设计是**信号驱动**——不再依赖定时轮询或到期时间，而是订阅 `SignalBus` 的信号，每当相关信号到达时对目标 Recipe 的待评估提案进行一次判定。
+`ProposalExecutor` 是提案生命周期的执行引擎。它的核心设计是**信号驱动**——订阅 `SignalBus` 的信号，每当相关信号到达时对目标 Recipe 的 observing 提案做一次判定。`pending` 提案不会被信号路径处理，必须先由 Dashboard/API 进入 observing，或在 14 天后被启动兜底清理为 expired。
 
 ```typescript
 // lib/service/evolution/ProposalExecutor.ts
@@ -784,11 +808,23 @@ signal(type: 'guard' | 'search' | ..., target: recipeId)
         → NO: 继续正常评估
       EvolutionPolicy.evaluateDeprecate(currentDecay, snapshotDecay)
         → 'deprecated' (dead，score ≤ 19):  直接废弃
-        → 'decaying' (severe，score ≤ 40):  active → decaying（15 天缩短 grace）
+        → 'decaying' (severe，score ≤ 40):  active → decaying
         → 'reject' (recovered，分数回升 > 10):  Proposal 标记 REJECTED
 ```
 
 §9.1 保护机制是 `ProposalExecutor` 的关键增强：当 `FileChangeHandler` 发出的 `source_modified` signal 附带 `direct` 或 `pattern` 级影响时，说明该 Recipe 的源文件仍在被积极修改——此时废弃提案应该被拒绝，而非继续等待信号。这避免了"开发者正在重构代码 → 系统误判 Recipe 不再相关"的场景。
+
+**同一提案在不同触发时机下的分叉**
+
+`ProposalExecutor` 有三条入口，行为并不完全一样：
+
+| 入口 | 触发时机 | 处理对象 | 不满足门控时 |
+|:---|:---|:---|:---|
+| `subscribeToSignals()` | `UiStartupTasks` Stage 6 后长期订阅 | 有 target 的 `guard/search/decay/quality/usage/lifecycle` 信号，只处理 observing | update 静默等待；deprecate 的 recovered/source_modified 会 reject，decay slowed 继续等待 |
+| `checkAndExecute()` | Dashboard 启动 Stage 5、`asd evolve-check` 末尾 | 所有 observing + 超过 14 天的 pending | update/deprecate 都会按当前指标立即执行或 reject；旧 pending 变 expired |
+| `executeOne(id)` | Dashboard/HTTP 手动执行 | 单个 pending 或 observing；pending 会先 `startObserving()` | 立刻走执行判定，可能马上 reject |
+
+这个分叉解释了为什么信号路径里 update 没有使用记录时不会立刻失败：一次质量信号只能说明“有变化”，还不能说明“这个 Recipe 仍被消费”。但手动执行和启动兜底是明确的治理动作，所以会把 `no usage during observation` 作为 reject 原因写回 Proposal。
 
 `EvolutionPolicy` 的评估函数是纯函数——不访问数据库，不产生副作用，只根据输入的度量做出判断：
 
@@ -799,7 +835,7 @@ static evaluateUpdate(metrics: RecipeMetrics): UpdateVerdict {
     return { pass: false, reason: 'FP rate too high' };
   }
   if (metrics.guardHits === 0 && metrics.searchHits === 0) {
-    return { pass: false, reason: 'No usage signals during observation' };
+    return { pass: false, reason: 'no usage during observation' };
   }
   return { pass: true, reason: 'Metrics within acceptable range' };
 }
@@ -818,7 +854,37 @@ static evaluateDeprecate(currentDecay: number, snapshotDecay: number): Deprecate
 }
 ```
 
-`checkAndExecute()` 作为启动时的兜底机制——在 `UiStartupTasks` Stage 5 调用，清理过期 14 天的 `pending` 提案，并对所有 `observing` 提案做一次评估。主流程已由 `subscribeToSignals()` 接管，`checkAndExecute()` 只是防守性备份。
+**Update 执行门控**
+
+一条 update Proposal 即使已经进入 observing，也必须再次通过 `EvolutionPolicy.evaluateUpdate()`：误报率必须 `< 0.4`，且 `guardHits` 或 `searchHits` 至少有一个大于 0。通过后才进入状态机：
+
+```text
+observing update
+  → LifecycleStateMachine 校验 active → evolving 是否合法
+  → ContentPatcher.applyProposal()
+      success=true  → evolving → staging
+      success=false → evolving → active
+  → Proposal.markExecuted()
+```
+
+`ContentPatcher` 是内容层的最后一道门：只从 evidence 中提取第一个非空 `suggestedChanges`，优先按 JSON 解析 `{ patchVersion, changes }`；JSON 不合法且文本长度超过 20 时，才降级为 `content.markdown` 全量替换。可修改字段只有 `coreCode`、`doClause`、`dontClause`、`whenClause`、`content.markdown`、`content.rationale`、`sourceRefs`、`headers`。数组字段必须是 JSON array；`replace-section` 找不到目标标题时会追加新 section；`sourceRefs` 更新后会同步重写 `recipe_source_refs` 桥接表。
+
+如果没有 `suggestedChanges`、字段不在白名单、patch 解析失败或没有任何字段被修改，`ContentPatcher` 返回 skipped。执行器不会把这视作系统错误：Recipe 会从 `evolving` 回到 `active`，Proposal 标记 executed，resolution 写成 `patch skipped, reverted to active`。这让“只有语义证据、没有可应用补丁”的提案仍然可以结束，而不会把 Recipe 卡在 `evolving`。
+
+**Deprecate 执行门控**
+
+deprecate 的执行判定只看当前 `decayScore` 和提案 evidence 中的快照。存在 `snapshotAt + metrics` 时使用快照分数作为基线；没有快照时，用当前分数作为基线，因此只有当前分数本身进入严重区间才会执行。
+
+```text
+currentDecay > snapshotDecay + 10 → reject（恢复）
+currentDecay <= 19               → deprecated
+currentDecay <= 40               → decaying
+其他                              → reject 或继续等信号
+```
+
+状态改变仍必须通过 `LifecycleStateMachine` 的合法转移表。比如 `active → deprecated`、`active → decaying`、`decaying → deprecated` 合法；如果目标当前状态不允许这次转换，提案会被 reject，而不是直接改数据库。对于 supersede/merge 场景，执行成功后还会写一条 `knowledge_edges`：新 Recipe 指向旧 Recipe，relation 为 `deprecated_by`。
+
+`checkAndExecute()` 作为启动时的兜底机制——在 `UiStartupTasks` Stage 5 调用，清理超过 14 天的 `pending` 提案，并对所有 `observing` 提案做一次评估。主流程由 Stage 6 的 `subscribeToSignals()` 接管，`checkAndExecute()` 只是防守性备份。
 
 信号驱动设计相比时间驱动的优势：
 - **响应更及时**：当 Guard 刚命中一条 Recipe，相关提案立即被评估，而非等到下次轮询
@@ -854,7 +920,11 @@ ProjectIntelligenceCapability.run()
 
 同一 Recipe 被多个文件影响时，planner 会按优先级合并：`source-deleted` 高于 partial，高于 modified-pattern，高于 missing；同时合并 affectedFiles 和 matchedTokens。这保证 Agent 看到的是“一个 Recipe 的综合影响证据”，而不是一堆碎片事件。
 
-真正转交给内部 Agent 的是 `runEvolutionAudit()`。它启动 `evolution-audit` profile，把候选 Recipe、sourceRefs、impactEvidence 和项目概览交给 Evolution Agent。Agent 只能做三类事：`knowledge.manage(operation: "evolve")` 创建更新提案，`deprecate` 确认废弃，或 `skip_evolution` 说明仍有效/信息不足。这个调用是 fire-and-forget，不阻塞本次 rescan 的 HTTP 响应；后续提案会通过 `EvolutionGateway` 和 `ProposalExecutor` 继续走信号驱动评估。
+真正转交给内部 Agent 的是 `runEvolutionAudit()`。它启动 `evolution-audit` profile，把候选 Recipe、sourceRefs、impactEvidence 和项目概览交给 Evolution Agent。Agent 的协议只有三类决策：`knowledge.manage(operation: "evolve")`、`deprecate`、`skip_evolution`。`EvolutionAgentRun.projectEvolutionAuditResult()` 和 `evolutionGateEvaluator()` 都是按这些 tool call 计数和验收：每个 Recipe 必须出现一个决策，否则 gate 要求重试。
+
+这里要注意当前内部 V2 tool 的真实边界：`knowledge.manage` handler 读取的是 `id` 字段，并调用 `ctx.knowledgeRepo` 上的 `evolve / deprecate / skipEvolution` 接口；而 evolver prompt 和 gate 示例使用的是 `recipeId`。外部 MCP 的 `alembic_evolve` 已经明确直连 `EvolutionGateway`，但内部 audit 这条链路在代码上是 Agent 决策协议 + V2 knowledge tool handler，不等同于外部 MCP 的 Gateway handler。写文档时要把“Agent 该做出的决策”和“外部 Gateway 执行链”分开，否则容易把 prompt/gate 合同误写成同一个服务调用栈。
+
+这个调用是 fire-and-forget，不阻塞本次 rescan 的 HTTP 响应；后续能落到 Proposal 的决策才继续进入信号驱动评估。
 
 ### Coverage Classification：三层评分
 
@@ -1053,7 +1123,7 @@ Agent 在项目冷启动时提取了一条关于 `CookieProviding` 的 Recipe，
 4. **T+0**：`EvolutionPolicy.shouldImmediateExecute(0.9)` → true，直接通过 `LifecycleStateMachine.transition(→ deprecated)` 执行
 5. **T+N（下次扫描）**：`SourceRefReconciler.reconcile()` 补充发现其他间接引用了 `NetworkManager` 的 Recipe，标记为 `stale`
 6. **T+N**：`auditRecipesForRescan()` 结合 SourceRef 健康度和 lifecycle 兜底分类，发现这些 Recipe 的 sourceRefs 严重缺失 → `decay` 或 `severe` 等级
-7. **T+N**：Agent 验证确认 → `EvolutionGateway.submit({ action: 'deprecate' })` → 创建 Proposal（信号驱动评估）
+7. **T+N**：外部 MCP/已接入 Gateway 的 Agent 验证确认 → `EvolutionGateway.submit({ action: 'deprecate' })`；内部 rescan audit 则先以 `knowledge.manage` 决策协议记录 Agent 判断
 8. **T+N+信号评估**：`ProposalExecutor` 在信号评估中确认 decay score 无回升 → `decaying → deprecated`
 
 ### 场景 3：Agent 驱动的知识更新
@@ -1099,7 +1169,7 @@ Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误
 8. **T+3s**：HTTP 响应返回影响摘要给 VSCode 扩展
 9. **T+3s**：扩展检测到 `eventSource = 'ide-edit'` + `suggestReview = true` + 存在 `pattern` 级影响，再通过全局冷却和 per-Recipe 退避 → 展示弹窗："⚡ Alembic: 检测到 PaginationController 受近期编辑影响，建议进化评估。"
 10. **T+选择**：开发者点击 "Review" → IDE Chat 打开，预填 prompt 包含受影响 Recipe 的标题和变更路径；退避计数重置
-11. **T+下次 rescan**：如果用户没有处理弹窗，`RecipeImpactPlanner` 会从增量 diff + SourceRef 重新识别 Recipe A 的 `source-modified-pattern` 候选，`runEvolutionAudit()` 让内部 Agent 读新代码并提交 `evolve`。Gateway 发现已有 file-change Proposal 时会尝试 evidence 升级，追加带 `suggestedChanges` 的更丰富证据
+11. **T+下次 rescan**：如果用户没有处理弹窗，`RecipeImpactPlanner` 会从增量 diff + SourceRef 重新识别 Recipe A 的 `source-modified-pattern` 候选，`runEvolutionAudit()` 让内部 Agent 读新代码并提交 `evolve` 决策。若后续外部 MCP 或已接入 Gateway 的演化决策携带 `suggestedChanges` 到达，Gateway 会发现已有 file-change Proposal 并尝试 evidence 升级
 
 这个场景展示了文件变更如何从 IDE 端事件一路触发到知识进化：HTTP report 负责实时弹窗，SignalBus 负责系统内部的提案评估，增量 rescan 负责把未处理或批量变化重新归并为可验证的 Evolution candidates。
 
@@ -1113,7 +1183,7 @@ Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误
 
 - **触发层**：VSCode `FileChangeCollector` 将 IDE/Git/Working Tree 事件经 `EventBuffer` 合并后 POST 到 `/api/v1/file-changes`，再由 `FileChangeDispatcher` 分发给 `FileChangeHandler`
 - **信号层**：`FileChangeHandler` 产出的 quality signal 被系统内部消费——Signal 沉淀、增量扫描前置、ProposalExecutor 信号评估；VSCode 弹窗消费的是 HTTP report，不直接订阅 SignalBus
-- **决策层**：`RecipeImpactPlanner` 和 `auditRecipesForRescan()` 在 Phase A 中过滤候选 Recipe，`EvolutionGateway` 统一接收进化决策（含 evidence 升级），Phase B 新增候选经过 `RecipeProductionGateway` 与外部 MCP 融合层过滤
+- **决策层**：`RecipeImpactPlanner` 和 `auditRecipesForRescan()` 在 Phase A 中过滤候选 Recipe；外部 MCP、文件变更和融合链路通过 `EvolutionGateway` 接收进化决策（含 evidence 升级）；内部 evolution audit 先通过 V2 `knowledge.manage` 形成 Agent 决策协议；Phase B 新增候选经过 `RecipeProductionGateway` 与外部 MCP 融合层过滤
 - **落地层**：最终产出三种结果——新 Recipe 通过 `ConfidenceRouter` 进入 staging/pending、merge/update 通过 `EvolutionGateway` 创建提案、灰色地带交由外部 Agent 通过 `alembic_consolidate` 决策
 
 ## 权衡与替代方案
@@ -1133,7 +1203,7 @@ Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误
 - **修改正确的概率 << 幻觉错误的成本**：Agent 修改对了，知识库改善一点点；Agent 修改错了，可能导致后续所有基于此 Recipe 的代码检查和生成都出错。
 - **静默漂移的可追溯性**：如果允许直接修改，要准确回答"这条知识为什么变成现在这样"需要完整的 diff 历史——而进化提案机制天然记录了每次变更的原因、来源和判据。
 
-提案机制的代价是增加了中间步骤和延迟。一个 `update` 类型的改进需要至少 24 小时的观察期才能生效（低风险），废弃操作需要经历信号驱动的评估期（`decaying` 状态最长 30 天超时兜底）。在 Alembic 的设计判断中，**知识库的准确性比更新的及时性更重要**——一条过时但正确的知识，远好于一条新但错误的知识。
+提案机制的代价是增加了中间步骤和延迟。一个 `update` 类型的改进不会因为 Agent 提交就立刻改库，而要等到 observing 状态下的使用/质量信号满足门控；废弃操作要么走高置信立即废弃并接受状态机校验，要么经历信号驱动评估和 `decaying` 的 30 天超时兜底。在 Alembic 的设计判断中，**知识库的准确性比更新的及时性更重要**——一条过时但正确的知识，远好于一条新但错误的知识。
 
 ### staging 期的价值
 
@@ -1147,7 +1217,7 @@ Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误
 
 知识生命周期是 Alembic 中最能体现"信号驱动"设计哲学的子系统。六态状态机不是复杂性的来源，而是复杂性的管理工具——每个状态对应一种明确的知识状态语义，每次转换都有可追溯的触发条件和审计日志。
 
-进化架构围绕三个核心组件展开：`EvolutionGateway` 作为统一入口接收所有进化决策，`ProposalExecutor` 通过信号驱动评估提案，`LifecycleStateMachine` 作为状态转换的唯一权威。所有评估判据集中在 `EvolutionPolicy` 纯函数中——不访问数据库、不产生副作用，使得进化决策可测试、可推理。
+进化架构围绕三个核心组件展开：`EvolutionGateway` 接收外部 MCP、文件变更和融合链路的进化决策，`ProposalExecutor` 通过信号驱动评估 observing 提案，`LifecycleStateMachine` 作为状态转换的唯一权威。内部 `evolution-audit` 先以 V2 `knowledge.manage` 作为 Agent 决策协议，这一点需要和 Gateway 执行链区分开。所有评估判据集中在 `EvolutionPolicy` 纯函数中——不访问数据库、不产生副作用，使得进化决策可测试、可推理。
 
 整个设计遵循一个核心原则：**确定性高的自动化，需要理解力的交给 Agent**。文件删除导致的废弃、暂存期满的自动晋升、证据分数低于阈值的衰退判定——这些是代码逻辑可以确定性处理的。矛盾检测、语义融合、灰色地带的知识评估——这些留给 Agent，因为它们需要真正的语义理解。
 

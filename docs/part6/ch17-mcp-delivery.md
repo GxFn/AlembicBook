@@ -408,7 +408,7 @@ rate limit
 
 **`alembic_evolve` — 外部进化决策入口**
 
-`alembic_evolve` 只接受批量 decisions，最终全部进入 `EvolutionGateway`：
+`alembic_evolve` 只接受批量 decisions，handler 先检查 `EvolutionGateway` 是否可用，再逐条处理。它的校验和门控都很窄：`propose_evolution` 必须带 evidence；`confirm_deprecation` 会补默认 reason；`skip(still_valid)` 才刷新验证时间，`skip(insufficient_info)` 只计数不改库。
 
 ```text
 propose_evolution
@@ -437,7 +437,9 @@ skip(insufficient_info)
   → 只计入 skipped，不刷新 lastVerifiedAt
 ```
 
-这条路径同时服务两种场景：VSCode 弹窗 Review 后的手动验证，以及 `alembic_rescan` Mission Briefing 要求的“每个维度先 evolve 再 gap-fill”。
+进入 Gateway 后还要继续过 Proposal 链的门控：update 置信度固定 0.8，通常创建 observing 提案；deprecate 置信度固定 0.9，满足 `shouldImmediateExecute()`，会先尝试状态机直接废弃，状态机拒绝时才降级为 deprecate Proposal。外部 MCP 因此是当前最完整、最确定的“Agent 决策 → Gateway → ProposalExecutor/LifecycleStateMachine”进化入口。
+
+这条路径同时服务两种场景：VSCode 弹窗 Review 后的手动验证，以及 `alembic_rescan` Mission Briefing 要求的“每个维度先 evolve 再 gap-fill”。内部 `evolution-audit` profile 则使用 V2 `knowledge.manage` 决策协议，不能把它和这个外部 MCP handler 的调用栈写成同一条。
 
 **`alembic_consolidate` — 语义合并回调**
 
