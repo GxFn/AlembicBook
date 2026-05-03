@@ -34,6 +34,8 @@ lib/workflows/
     └── presentation/
 ```
 
+本章的主代码锚点是 `lib/workflows/cold-start/external/ExternalColdStartWorkflow.ts`、`lib/workflows/cold-start/internal/InternalColdStartWorkflow.ts`、`lib/workflows/knowledge-rescan/external/ExternalKnowledgeRescanWorkflow.ts`、`lib/workflows/knowledge-rescan/internal/InternalKnowledgeRescanWorkflow.ts`。共享的结构分析阶段在 `lib/workflows/capabilities/project-intelligence/ProjectIntelligenceRunner.ts`，重扫的覆盖分类与 gap 计划在 `lib/workflows/capabilities/planning/knowledge/KnowledgeRescanPlanner.ts`。
+
 ![Cold Start / Rescan 工作流关系](/images/ch09/01-dual-path-architecture.png)
 
 ## 共同底座：ProjectIntelligenceCapability

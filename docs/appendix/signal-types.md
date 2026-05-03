@@ -1,12 +1,13 @@
 # 信号类型清单
 
-> 12 种信号的发送者、消费者、触发条件。
+> 12 种信号定义来自 `lib/infrastructure/signal/SignalBus.ts`；发送者和消费者按当前代码中的 `send()` / `subscribe()` 调用校验。
 
 ## 信号结构
 
 每个信号包含以下字段：
 
 ```typescript
+// lib/infrastructure/signal/SignalBus.ts
 interface Signal {
   type: SignalType;                    // 信号类别（12 种）
   source: string;                      // 产出模块标识
@@ -70,10 +71,10 @@ interface Signal {
 | `StagingManager.enter` | Recipe 进入 staging | 1 |
 | `StagingManager.rollback` | staging 回滚 | 0 |
 | `StagingManager.promote` | staging 晋升为 active | 1 |
-| `RecipeLifecycleSupervisor` | 生命周期状态变更 | 1 |
-| `ContradictionDetector` | 检测到知识矛盾 | 矛盾严重度 |
+| `LifecycleStateMachine` | 权威状态机完成状态转换 | 0.5 |
 | `RedundancyAnalyzer` | 检测到知识冗余 | 冗余度 |
-| `ProposalExecutor` | 进化提案执行完成 | 1 |
+
+当前代码没有独立的 `RecipeLifecycleSupervisor` 运行时类；生命周期副作用收敛在 `lib/service/evolution/LifecycleStateMachine.ts`。矛盾与重组也已经从 `evolution_proposals` 的 Proposal 类型中移出，持久化为 `lib/repository/evolution/WarningRepository.ts` 管理的 RecipeWarning，而不是由一个 `ContradictionDetector` 直接发射 lifecycle signal。
 
 ### exploration
 
@@ -89,6 +90,7 @@ interface Signal {
 | `ReverseGuard` | Recipe→Code 反向验证发现问题 | 1 |
 | `RuleLearner` | 规则质量评估 | 1 - falsePositiveRate |
 | `RuleLearner.precisionDrop` | 规则精度下降 | 精度值 |
+| `FileChangeHandler` | 文件变更 diff 影响到 active Recipe | pattern/reference/direct 权重 |
 | `SourceRefReconciler` | 源引用过时率 | 过时比例 |
 | `SourceRefReconciler` | 源引用失效 | 1 |
 
@@ -134,9 +136,10 @@ interface Signal {
 | `ComplianceReporter` | guard · quality | 合规性报告生成 |
 | `MultiSignalRanker` | quality · usage | 搜索结果多信号精排 |
 | `PanoramaService` | guard · lifecycle · usage | 全景视图缓存失效 |
-| `Rescan / Evolution` | decay · quality · anomaly | 通过重扫计划、进化审计和提案执行治理知识衰退、矛盾与冗余 |
+| `ProposalExecutor` | guard · search · decay · quality · usage · lifecycle | 对目标 Recipe 的 observing Proposal 做信号驱动评估 |
+| `Rescan / Evolution` | quality · decay · anomaly | 通过重扫计划、进化审计和提案执行治理知识衰退、冗余与源引用漂移 |
 | `SignalCollector` | `*`（全部） | Skill 推荐引擎维度快照 |
-| Intent JSONL | intent | Intent 信号持久化到 JSONL 文件 |
+| Intent persistence | intent | `lib/injection/modules/SignalModule.ts` 将 IntentChain 写入 JSONL |
 
 ## HitRecorder 事件→信号映射
 

@@ -217,20 +217,20 @@ interface KnowledgeGap {
 
 Alembic 中的每一个有意义的事件都产生一个**信号**。12 种信号类型覆盖了系统的全部行为：
 
-| 信号类型 | 产生场景 | 消费者 |
+| 信号类型 | 产生场景 | 当前主要消费者 |
 |:---|:---|:---|
-| `guard` | Guard 规则命中 | HitRecorder, DecayDetector |
-| `guard_blind_spot` | Guard 低覆盖区域 | Panorama |
-| `search` | 搜索命中 | HitRecorder, DecayDetector |
-| `usage` | 用户查看/采纳/应用 Recipe | HitRecorder, Lifecycle |
-| `lifecycle` | Recipe 状态转换(pending→active) | Dashboard, Metabolism |
-| `exploration` | Bootstrap 扫描发现 | PanoramaService |
-| `quality` | 质量评分变化 | Metabolism |
-| `panorama` | 全景覆盖率变化(≥5%) | Dashboard |
-| `decay` | 衰退检测事件 | Metabolism |
-| `forge` | 知识锻造事件 | HitRecorder |
-| `intent` | 用户意图分类 | AgentRouter |
-| `anomaly` | 阈值突破 | Dashboard, Alert |
+| `guard` | Guard 规则命中、`HitRecorder.guardHit` | `SignalAggregator`、`ComplianceReporter`、`ProposalExecutor`、`SignalBridge` |
+| `guard_blind_spot` | Guard uncertain 超阈值 | `SignalBridge`、`SignalTraceWriter` |
+| `search` | 搜索完成、`HitRecorder.searchHit` | `SignalAggregator`、`ProposalExecutor` |
+| `usage` | 用户查看/采纳/应用 Recipe | `SignalAggregator`、`MultiSignalRanker`、`PanoramaService`、`ProposalExecutor` |
+| `lifecycle` | `LifecycleStateMachine` / `StagingManager` / Bootstrap 状态变化 | `PanoramaService`、`SignalAggregator`、`ProposalExecutor` |
+| `exploration` | Agent 探索阶段变化 | `SignalTraceWriter`、`SignalCollector` |
+| `quality` | ReverseGuard、RuleLearner、FileChangeHandler、SourceRefReconciler 的质量信号 | `ComplianceReporter`、`MultiSignalRanker`、`ProposalExecutor`、`SignalAggregator` |
+| `panorama` | 全景覆盖率变化 | `SignalBridge`、`SignalTraceWriter` |
+| `decay` | `DecayDetector.scanAll()` 的衰退评分结果 | `SignalAggregator`、`ProposalExecutor` |
+| `forge` | 临时工具注册/过期、ToolForge 完成 | `SignalAggregator`、`SignalTraceWriter` |
+| `intent` | `alembic_task` close/fail 持久化意图链 | Intent JSONL subscriber、`SignalTraceWriter` |
+| `anomaly` | `SignalAggregator` 检测到窗口突增 | `SignalBridge`、`SignalTraceWriter`、后续 rescan / 人工排查入口 |
 
 每个信号携带统一的结构：
 
@@ -251,7 +251,7 @@ interface Signal {
 
 **同步分发**（< 0.1ms per emit）：信号发送不经过队列——`emit` 调用时立即同步执行所有订阅者的 handler。这保证了信号的**因果序**——A 事件产生的信号一定在 B 事件之前被处理，如果 A 先发生。
 
-**异常隔离**：消费者的异常不阻断分发。如果 DecayDetector 的 handler 抛出错误，HitRecorder 的 handler 仍然会执行。每个 handler 的异常被 catch 后记录日志但不传播。
+**异常隔离**：消费者的异常不阻断分发。如果 `ProposalExecutor` 的 handler 抛出错误，`SignalAggregator` 和 `SignalTraceWriter` 的 handler 仍然会执行。每个 handler 的异常被 catch 后吞掉，不向发送方传播。
 
 **订阅模式**：支持精确订阅、多类型订阅和通配符：
 
@@ -341,7 +341,7 @@ baseline = 0.8 × baseline + 0.2 × count  // 指数移动平均
 
 `baseline` 是指数移动平均（EMA），权重 0.8:0.2——新的数据点只占 20% 的权重，防止偶发波动干扰基线。当某种信号在 5 分钟内的数量突然超过基线 3 倍时，发出 `anomaly` 信号。
 
-这能捕获什么？比如：Guard 命中信号通常每分钟 5-10 条（有人在正常写代码），突然一分钟内 50 条——可能有人在大规模重构代码，或者引入了一个与多条 Recipe 冲突的大改动。这个 `anomaly` 信号会触发 Metabolism 的分析流程。
+这能捕获什么？比如：Guard 命中信号通常每分钟 5-10 条（有人在正常写代码），突然一分钟内 50 条——可能有人在大规模重构代码，或者引入了一个与多条 Recipe 冲突的大改动。当前代码不会再从 `anomaly` 自动拉起一个集中式代谢循环；它更像一条高优先级观测信号，进入 `SignalTraceWriter` / EventBus 留痕，并为后续 rescan、Dashboard 或人工排查提供触发依据。
 
 ## 知识进化治理：信号、审计与 Rescan
 
@@ -349,38 +349,46 @@ baseline = 0.8 × baseline + 0.2 × count  // 指数移动平均
 
 当前相关组件是：
 
-| 组件 | 职责 |
-|:---|:---|
-| `FileChangeHandler` | 接收文件变更，产生影响信号；结构性变化交给后续 rescan |
-| `RelevanceAuditor` | 在 `alembic_rescan` 时验证 Recipe 与当前代码事实是否仍相关 |
-| `EvolutionGateway` | 统一创建 evolution / deprecation / consolidation 类提案 |
-| `ProposalExecutor` | 执行已确认或到期的提案 |
-| `DecayDetector`、`RedundancyAnalyzer`、`ConsolidationAdvisor` | 提供衰退、冗余和合并建议 |
-| `KnowledgeRescanPlanner` | 把 audit verdict、coverage gap、manual request、file diff 输入合并为维度执行计划 |
+| 组件 | 代码位置 | 职责 |
+|:---|:---|:---|
+| `FileChangeHandler` | `lib/service/evolution/FileChangeHandler.ts` | 接收文件变更，做 diff-based 影响评估，发射 `quality` signal，并把可确定的 update/deprecate 意图交给 `EvolutionGateway` |
+| `KnowledgeRescanPlanner` | `lib/workflows/capabilities/planning/knowledge/KnowledgeRescanPlanner.ts` | 在 `alembic_rescan` 中用 candidatePlan、SourceRef 桥接表、lifecycle 兜底三层信息重新分类 Recipe |
+| `EvolutionGateway` | `lib/service/evolution/EvolutionGateway.ts` | 统一提交 update / deprecate 提案；高置信 deprecate 可先尝试立即执行，失败再降级为 Proposal |
+| `ProposalExecutor` | `lib/service/evolution/ProposalExecutor.ts` | 订阅 guard/search/decay/quality/usage/lifecycle，只评估目标 Recipe 的 observing Proposal |
+| `LifecycleStateMachine` | `lib/service/evolution/LifecycleStateMachine.ts` | 状态转换唯一权威，转换成功后发射 lifecycle signal |
+| `DecayDetector` | `lib/service/evolution/DecayDetector.ts` | 主动扫描时计算衰退分数并发射 decay signal，不直接修改 lifecycle |
+| `RedundancyAnalyzer`、`ConsolidationAdvisor` | `lib/service/evolution/RedundancyAnalyzer.ts` / `lib/service/evolution/ConsolidationAdvisor.ts` | 提供冗余和提交前融合建议 |
+| `WarningRepository` | `lib/repository/evolution/WarningRepository.ts` | 持久化 contradiction / redundancy 类 RecipeWarning；它们不再是 Proposal 类型 |
 
 换句话说，知识代谢不再是一个后台“周期性大循环”，而是两条链路：
 
 ```text
 日常链路:
-  文件变化 / Guard / 使用反馈
-    → SignalBus / HitRecorder
-    → EvolutionGateway / ProposalExecutor
+  文件变化
+    → /api/v1/file-changes
+    → FileChangeDispatcher / FileChangeHandler
+    → quality signal + EvolutionGateway.submit()
+    → ProposalExecutor 在后续相关信号上评估 observing Proposal
+    → LifecycleStateMachine 执行合法状态转换
+
+  Guard / Search / 使用反馈
+    → HitRecorder 即时发 signal、30 秒批量写 stats
+    → SignalAggregator / MultiSignalRanker / ProposalExecutor 消费
 
 重扫链路:
   alembic_rescan
     → snapshotRecipes()
-    → rescanClean()
-    → ProjectIntelligenceCapability.run()
-    → RelevanceAuditor
-    → KnowledgeRescanPlan
-    → evolution prescreen + gap fill
+    → RecipeImpactPlanner candidatePlan
+    → auditRecipesForRescan()
+    → KnowledgeRescanPlan / EvolutionPrescreen
+    → gap fill / rescan evolution candidates
 ```
 
-`rescan` 的价值在于它带着当前项目事实重新审计所有保留 Recipe：健康的继续保留，watch 的进入观察，decay/severe/dead 进入进化或废弃路径；同时按维度计算覆盖缺口，只让需要补齐的维度继续执行。
+`rescan` 的价值在于它带着当前项目事实重新审计所有保留 Recipe：健康的继续保留，watch 的进入观察，decay/severe/dead 进入进化或废弃路径；同时按维度计算覆盖缺口，只让需要补齐的维度继续执行。这个审计不是旧文档里的四项固定权重打分，而是当前 `auditRecipesForRescan()` 的三层判定：先看 diff-based impact candidate，再看 SourceRef active/stale 比例，最后用 lifecycle 和 sourceRefs 存活情况兜底。
 
-## Panorama 与 Metabolism 的互动
+## Panorama 与治理链路的互动
 
-三个子系统不是孤立的——它们形成一条完整的数据链路：
+Panorama、Signal 和 Evolution 不是孤立的——它们形成一条完整的数据链路：
 
 ```text
 Bootstrap 生成初始 Panorama
@@ -394,26 +402,24 @@ Panorama 发现知识空白
 信号聚合检测异常
   → SignalAggregator → anomaly 信号
   ↓
-代谢周期启动（防抖 30 秒）
-  → DecayDetector + ContradictionDetector + RedundancyAnalyzer
-  → EvolutionProposal[] → StagingManager
+文件变更或 rescan 带来可验证证据
+  → FileChangeHandler / auditRecipesForRescan
+  → EvolutionGateway / ProposalExecutor
+  → LifecycleStateMachine
   ↓
 Panorama 重新计算
   → 覆盖率变化 ≥ 5% → panorama 信号 → Dashboard 更新
 ```
 
-增量扫描（`rescan`）更新 Panorama 时，`RecipeRelevanceAuditor` 对所有 Recipe 做**相关性审计**——检查四个维度：
+增量扫描（`rescan`）更新 Panorama 时，`auditRecipesForRescan()` 对所有 Recipe 做**相关性审计**。当前实现按证据可靠性分三层：
 
-| 维度 | 默认权重 | 检测内容 |
+| 层级 | 数据来源 | 判定方式 |
 |:---|:---|:---|
-| 触发器仍匹配 | 0.20 | Recipe 的文件匹配模式是否还能匹配到文件 |
-| 符号存活 | 0.30 | coreCode 中的 API 符号是否还存在 |
-| 依赖完整 | 0.15 | 模块依赖关系是否还存在 |
-| 代码文件存在 | 0.35 | sourceRefs 引用的文件是否还存在 |
+| 1 | `RecipeImpactPlanner` candidatePlan | `source-deleted` 得 10 分，`source-deleted-partial` 得 30 分，`source-modified-pattern` 按 impactScore 映射到 20-60 分区间 |
+| 2 | `recipe_source_refs` 桥接表 | 计算 active/stale SourceRef 比例；全部 stale 得 15 分，部分 stale 按 active ratio 映射 |
+| 3 | Recipe lifecycle + sourceRefs 兜底 | active/evolving 通常 90 分；staging 70 分；decaying 35 分；active 但所有 sourceRefs 缺失会降到 55 分 |
 
-架构类 Recipe 的权重分配不同——`triggerStillMatches` 和 `codeFilesExist` 各占 0.45，因为架构规则更多依赖文件结构而非具体 API 符号。
-
-审计结果映射到与 DecayDetector 类似的判定级别，但宽限期更短（decay: 7 天，severe: 3 天，dead: 立即）。这是因为审计是在 `rescan` 时执行的——用户主动触发了扫描，对结果的期望更迫切。
+评分最后交给 `lib/domain/evolution/EvolutionPolicy.ts` 的 `classifyRelevance()`：80+ healthy，60-79 watch，40-59 decay，20-39 severe，低于 20 dead。这个分层比旧版本的“触发器/符号/依赖/文件四维权重”更接近真实代码，因为它优先相信文件变化与 SourceRef 事实，只有缺乏桥接数据时才退回 lifecycle。
 
 ## 运行时行为
 
@@ -430,7 +436,7 @@ Panorama 重新计算
   → Popularity 信号增加微量
 ```
 
-**场景 2：90 天无命中 → 衰退流程**
+**场景 2：90 天无命中 → 衰退信号与提案评估**
 
 ```yaml
 DecayDetector 评估 @legacy-callback-pattern:
@@ -442,25 +448,29 @@ DecayDetector 评估 @legacy-callback-pattern:
   decayScore = (0×0.3 + 0×0.3 + 0.65×0.2 + 0.7×0.2) × 100 = 27
 
   级别: severe (20–39)
-  → active → decaying，宽限期 15 天
-  → 15 天后无反面证据 → deprecated
+  → send('decay', 'DecayDetector', 0.73, target=recipeId)
+  → 若已有 observing deprecate Proposal，ProposalExecutor 重新读取 metrics
+  → EvolutionPolicy.evaluateDeprecate(27, snapshot)
+  → LifecycleStateMachine 决定是否 active → decaying
 ```
 
-**场景 3：代码重构 → 矛盾检测**
+**场景 3：代码重构 → rescan 审计与 RecipeWarning**
 
 ```yaml
 项目从 NSLock 迁移到 actor：
   新 Recipe: "使用 actor 进行状态隔离"
   旧 Recipe: "使用 NSLock 保护共享状态"
 
-ContradictionDetector:
-  主题重叠: ["同步", "状态", "并发"] → Jaccard 0.6
-  否定模式: 新 Recipe 的 dontClause 包含 "不要使用 NSLock"
-  → 硬矛盾 (confidence 0.85)
+rescan / Agent evolve:
+  RecipeImpactPlanner 发现旧 Recipe 的 sourceRefs 被重构影响
+  auditRecipesForRescan 将旧 Recipe 判为 decay/severe/dead
+  EvolutionGateway 提交 deprecate 或 update 意图
+  ProposalExecutor 等待 guard/search/decay/quality/usage/lifecycle 信号评估
 
-  → lifecycle 信号 → 旧 Recipe 进入 decaying
-  → EvolutionProposal: type='deprecate'
-  → StagingManager: 置信度 0.85 → 宽限期 72 小时
+RecipeWarning:
+  contradiction / redundancy 不再作为 ProposalType
+  WarningRepository 持久化 open/resolved/dismissed warning
+  Dashboard/API 再决定展示、解决或忽略
 ```
 
 **场景 4：Panorama 发现知识空白**
@@ -490,8 +500,8 @@ PanoramaService.getGaps():
 传统做法：每天凌晨跑一次全量扫描，生成衰退报告。Alembic 不这样做：
 
 1. **浪费**。如果今天没人使用知识库，凌晨的扫描完全白跑——消耗 CPU 和数据库 I/O 但不产出任何有用信息。
-2. **延迟高**。如果上午发现了一个严重矛盾，要等到第二天凌晨才能检测到。信号驱动的代谢在矛盾发生后 30 秒内就开始分析。
-3. **颗粒度粗**。Cron 只能决定"什么时候跑"，不能决定"因为什么跑"。信号驱动精确知道是哪种事件触发了代谢——衰退信号触发 DecayDetector，质量信号触发 ContradictionDetector。
+2. **延迟高**。如果上午文件被重构，等到第二天凌晨才发现 SourceRef 断裂，VSCode 弹窗、quality signal 和 rescan 都会失去即时性。
+3. **颗粒度粗**。Cron 只能决定"什么时候跑"，不能决定"因为什么跑"。当前架构用文件变更、SourceRef、decay、quality、usage 等信号把原因保留下来，再由 `EvolutionGateway` 和 `ProposalExecutor` 做有上下文的判断。
 
 ### 30 秒缓冲的取舍
 
@@ -517,8 +527,8 @@ Panorama 的 Tarjan + 拓扑排序 + 覆盖率分析在大项目（10,000+ 文�
 Panorama、Signal、Metabolism 三系统的设计可以归结为三个核心原则：
 
 1. **感知先于行动**。Panorama 用图算法（Tarjan + Kahn）把项目从一堆文件变成有层次的模块拓扑、有覆盖率的热力图。没有这个全景，后续的一切分析都缺少坐标系。
-2. **信号驱动替代轮询**。12 种信号类型 + SignalBus 同步分发 + HitRecorder 批量缓冲，构成了一个事件驱动的神经网络。代谢循环只在有信号时才启动——不浪费一次 CPU 周期。
-3. **渐进式治理**。衰退不是 0/1 判定而是 0–100 连续分数；矛盾分为硬/软两级；冗余有加权融合阈值；提案有 7 天 TTL 和置信度分级的宽限期。这些渐进机制防止了激进的自动化决策损害知识库的稳定性。
+2. **信号驱动替代轮询**。12 种信号类型 + SignalBus 同步分发 + HitRecorder 批量缓冲，构成了一个事件驱动的神经网络。系统不再依赖一个集中式 KnowledgeMetabolism 循环，而是让文件变化、rescan 和 observing Proposal 各自进入明确的治理入口。
+3. **渐进式治理**。衰退不是 0/1 判定而是 0–100 连续分数；相关性审计分 healthy/watch/decay/severe/dead；冗余和矛盾进入 WarningRepository 或融合顾问；提案的 update/deprecate 执行统一经过 EvolutionPolicy 与 LifecycleStateMachine。这些渐进机制防止了激进的自动化决策损害知识库的稳定性。
 
 下一章我们将进入 Part V — Agent 智能层，看看 AI 如何通过 ReAct 推理循环参与知识生产。
 

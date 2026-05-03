@@ -60,6 +60,7 @@ try {
 
   const commit = git(alembicRoot, ['rev-parse', 'HEAD']);
   const dirty = git(alembicRoot, ['status', '--short']);
+  const codeFacts = await collectCodeFacts(alembicRoot);
   const chapters = await collectChapterFiles(docsRoot, args.chapter);
   const report = [];
 
@@ -77,6 +78,7 @@ try {
       dirty: dirty.length > 0,
       usedClone,
     },
+    codeFacts,
     docsRoot: slash(path.relative(repoRoot, docsRoot)) || '.',
     summary,
     chapters: report,
@@ -174,6 +176,115 @@ function cloneRepo(repo, ref, dest) {
 
 function git(cwd, argsForGit) {
   return run('git', argsForGit, cwd).trim();
+}
+
+async function collectCodeFacts(sourceRoot) {
+  const facts = {};
+  facts.mcpTools = await collectMcpToolFacts(sourceRoot);
+  facts.v2Tools = await collectV2ToolFacts(sourceRoot);
+  facts.grammars = await collectGrammarFacts(sourceRoot);
+  facts.dimensions = await collectDimensionFacts(sourceRoot);
+  facts.relations = await collectRelationFacts(sourceRoot);
+  facts.enhancementPacks = await collectEnhancementFacts(sourceRoot);
+  facts.serviceDomains = await collectServiceDomainFacts(sourceRoot);
+  facts.importAliases = await collectImportAliasFacts(sourceRoot);
+  return facts;
+}
+
+async function collectMcpToolFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'lib/external/mcp/tools.ts');
+  const text = await readTextIfExists(file);
+  const matches = [...text.matchAll(/name:\s*'([^']+)'\s*,\n\s*tier:\s*'([^']+)'/g)].filter((m) =>
+    m[1].startsWith('alembic_')
+  );
+  const names = matches.map((m) => m[1]);
+  return {
+    count: names.length,
+    agent: matches.filter((m) => m[2] === 'agent').length,
+    admin: matches.filter((m) => m[2] === 'admin').length,
+    names,
+  };
+}
+
+async function collectV2ToolFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'lib/tools/v2/registry.ts');
+  const text = await readTextIfExists(file);
+  const toolNames = [
+    ...new Set([...text.matchAll(/const\s+[A-Z_]+_SPEC:[\s\S]*?name:\s*'([^']+)'/g)].map((m) => m[1])),
+  ];
+  const actionNames = [...text.matchAll(/^    ([a-z_]+):\s*\{/gm)].map((m) => m[1]);
+  return {
+    toolCount: toolNames.length,
+    actionCount: actionNames.length,
+    tools: toolNames,
+    actions: actionNames,
+  };
+}
+
+async function collectGrammarFacts(sourceRoot) {
+  const dir = path.join(sourceRoot, 'resources/grammars');
+  const files = existsSync(dir)
+    ? (await readdir(dir)).filter((name) => name.endsWith('.wasm')).sort()
+    : [];
+  return { count: files.length, files };
+}
+
+async function collectDimensionFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'lib/domain/dimension/DimensionRegistry.ts');
+  const text = await readTextIfExists(file);
+  const ids = [...text.matchAll(/id:\s*'([^']+)'/g)].map((m) => m[1]);
+  const unique = [...new Set(ids)];
+  const layers = {
+    universal: (text.match(/layer:\s*'universal'/g) ?? []).length,
+    language: (text.match(/layer:\s*'language'/g) ?? []).length,
+    framework: (text.match(/layer:\s*'framework'/g) ?? []).length,
+  };
+  return { count: unique.length, layers, ids: unique };
+}
+
+async function collectRelationFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'lib/domain/knowledge/values/Relations.ts');
+  const text = await readTextIfExists(file);
+  const arrayMatch = text.match(/RELATION_BUCKETS\s*=\s*\[([\s\S]*?)\];/);
+  const buckets = arrayMatch ? [...arrayMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : [];
+  return { count: buckets.length, buckets };
+}
+
+async function collectEnhancementFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'lib/core/enhancement/index.ts');
+  const text = await readTextIfExists(file);
+  const packs = [...text.matchAll(/import\('\.\/([^']+)\.js'\)/g)].map((m) => m[1]).sort();
+  return { count: packs.length, packs };
+}
+
+async function collectServiceDomainFacts(sourceRoot) {
+  const dir = path.join(sourceRoot, 'lib/service');
+  const domains = [];
+  if (existsSync(dir)) {
+    for (const entry of await readdir(dir)) {
+      const st = await stat(path.join(dir, entry));
+      if (st.isDirectory()) {
+        domains.push(entry);
+      }
+    }
+  }
+  domains.sort();
+  return { count: domains.length, domains };
+}
+
+async function collectImportAliasFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'package.json');
+  const text = await readTextIfExists(file);
+  const pkg = text ? JSON.parse(text) : {};
+  const aliases = Object.keys(pkg.imports ?? {}).sort();
+  return { count: aliases.length, aliases };
+}
+
+async function readTextIfExists(file) {
+  if (!existsSync(file)) {
+    return '';
+  }
+  return readFile(file, 'utf8');
 }
 
 function run(cmd, cmdArgs, cwd) {
@@ -459,9 +570,21 @@ function summarize(report) {
 }
 
 function printReport(payload) {
-  const { alembic, summary, chapters } = payload;
+  const { alembic, codeFacts, summary, chapters } = payload;
   console.log(`Alembic source: ${alembic.source}`);
   console.log(`Alembic commit: ${alembic.commit}${alembic.dirty ? ' (dirty)' : ''}`);
+  if (codeFacts) {
+    console.log(
+      `Code facts: ${codeFacts.grammars.count} WASM grammars, ` +
+        `${codeFacts.v2Tools.toolCount} V2 tools/${codeFacts.v2Tools.actionCount} actions, ` +
+        `${codeFacts.mcpTools.count} MCP tools (${codeFacts.mcpTools.agent} agent + ${codeFacts.mcpTools.admin} admin), ` +
+        `${codeFacts.dimensions.count} dimensions, ${codeFacts.relations.count} relation buckets`
+    );
+    console.log(
+      `Code facts: ${codeFacts.serviceDomains.count} service domains, ` +
+        `${codeFacts.enhancementPacks.count} enhancement packs, ${codeFacts.importAliases.count} import aliases`
+    );
+  }
   console.log(
     `Docs checked: ${summary.chapters} chapters, ${summary.anchors} anchors, ${summary.ok} ok, ${summary.missing} missing, ${summary.outOfRange} line out of range`
   );

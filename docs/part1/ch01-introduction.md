@@ -70,6 +70,8 @@ Agent 扫描整个项目，提取出团队的编码模式、架构约定、调�
 
 冷启动背后是一条完整的管线：文件收集 → Tree-sitter WASM 解析（11 个语法包，覆盖 10 个主要语言族）→ 25 维度框架激活 → Tool System V2（6 个语义工具、19 个 action）编排的 Agent 推理循环 → 人工审核。Agent 不是简单的"让 LLM 读代码然后总结"，而是在结构化分析的基础上做确定性标记，只把真正不确定的部分交给 LLM 消解。
 
+当前这组数字来自代码里的单一真相源：语法包在 `resources/grammars/`，维度来自 `lib/domain/dimension/DimensionRegistry.ts`，Agent 工具来自 `lib/tools/v2/registry.ts`，外部 MCP 工具来自 `lib/external/mcp/tools.ts`。后续章节里凡是讨论这些数量，都应该回到这些位置验证，而不是沿用旧文档里的静态说法。
+
 ### 日常：说一句话就行
 
 | 你说 | 你得到 |
@@ -130,7 +132,7 @@ IDE Agent 的每个行为，都会触发有机体内不同器官的协同响应�
 
 **骨骼 — Panorama**
 
-有机体的结构感知。AST + 调用图推断模块角色与分层（四信号融合，13 种角色类型），Tarjan SCC 计算耦合度，Kahn 拓扑排序推断分层，DimensionAnalyzer 生成 11 维健康雷达，输出覆盖率热力图和能力缺口报告。所有器官共享这份项目全貌。*→ [Ch03 架构全景](../part2/ch03-architecture) · [Ch05 代码理解](../part2/ch05-ast)*
+有机体的结构感知。AST + 调用图推断模块角色与分层（四信号融合，13 种角色类型），Tarjan SCC 计算耦合度，Kahn 拓扑排序推断分层，`DimensionAnalyzer` 基于 `DimensionRegistry` 和项目语言解析当前激活维度的健康雷达，输出覆盖率热力图和能力缺口报告。所有器官共享这份项目全貌。*→ [Ch03 架构全景](../part2/ch03-architecture) · [Ch05 代码理解](../part2/ch05-ast)*
 
 **消化 — Governance**
 
@@ -146,7 +148,7 @@ IDE Agent 的每个行为，都会触发有机体内不同器官的协同响应�
 
 **造物 — Tool Forge**
 
-能力边界处的创造力。三种模式渐进——复用（0ms）→ 组合（10ms，原子工具拼装）→ 生成（~5s，LLM 写代码 → vm 沙箱验证：5s 超时 + 18 条安全规则）。临时工具 30min TTL，到期自动回收。LLM 只在锻造时参与，执行过程完全确定性。*→ [Ch13 AgentRuntime](../part5/ch13-agent-runtime) · [Ch14 正交组合](../part5/ch14-orthogonal)*
+能力边界处的创造力。三种模式渐进——复用（0ms）→ 组合（10ms，原子工具拼装）→ 生成（~5s，LLM 写代码 → vm 沙箱验证：5s 超时 + 17 条禁止模式）。临时工具 30min TTL，到期自动回收。LLM 只在锻造时参与，执行过程完全确定性。*→ [Ch13 AgentRuntime](../part5/ch13-agent-runtime) · [Ch14 正交组合](../part5/ch14-orthogonal)*
 
 ### 设计哲学
 
@@ -191,7 +193,7 @@ alembic guard:ci --min-score 90   # CI 质量门禁
 ### 更多
 
 - **Cold Start / Knowledge Rescan** — ProjectIntelligence 全量结构分析 + 25 维执行，冷启动干净建库，重扫保留 Recipe 并治理缺口 *→ [Ch09 Bootstrap](../part4/ch09-bootstrap)*
-- **知识图谱** — 14 种关联关系，查询影响路径和依赖深度
+- **知识图谱** — `lib/domain/knowledge/values/Relations.ts` 中的 `Relations` 值对象定义 14 个关系桶，`knowledge_edges` 表承载 recipe、module、method 等实体之间的可查询边
 - **语义搜索** — HNSW 向量索引 + 加权字段匹配混合检索，RRF 融合 + 7 路信号排序 *→ [Ch11 混合检索](../part4/ch11-search)*
 - **sourceRefs** — Recipe 携带源码证据，Agent 无需自行验证
 - **飞书远程** — 手机发消息，意图识别分流到 Bot 或 IDE

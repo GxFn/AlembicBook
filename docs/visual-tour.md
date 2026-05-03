@@ -148,7 +148,7 @@ SearchEngine 的 auto 模式先跑关键词评估 Confidence（0–100），基�
 
 ### Panorama · Signal · 代谢
 
-三个子系统构成知识的自我治理链路：Panorama（感知项目结构与覆盖率）→ Signal（捕获 12 种行为信号）→ Metabolism（驱动衰退检测、矛盾发现、冗余分析、进化提案）。
+三个子系统构成知识的自我治理链路：Panorama（感知项目结构与覆盖率）→ Signal（捕获 12 种行为信号）→ Evolution Governance（文件变更、rescan 审计、RecipeWarning 与进化提案）。
 
 ![三系统数据链路](/images/ch12/01-three-system-dataflow.png)
 
@@ -200,6 +200,6 @@ MCP 工具中最特殊的 `alembic_task` 管理 Agent 自身的行为——五�
 
 ## 一句话总结
 
-> **Alembic = 代码理解（AST）+ 知识建模（KnowledgeEntry）+ 质量治理（Guard + Metabolism）+ 智能交付（Agent + MCP）**
+> **Alembic = 代码理解（AST）+ 知识建模（KnowledgeEntry）+ 质量治理（Guard + Evolution）+ 智能交付（Agent + MCP）**
 >
 > 从源代码到项目知识，从知识到开发者手中——这就是 Alembic 的完整故事。

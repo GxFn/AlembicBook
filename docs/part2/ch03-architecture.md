@@ -151,7 +151,7 @@ async initialize(bootstrapComponents) {
 模块注册后还有三步后初始化：
 
 ```typescript
-// 异步加载 17 个框架增强包（Tree-sitter 语言增强）
+// 异步加载 14 个框架增强包（Tree-sitter 语言增强）
 await initEnhancementRegistry();
 
 // 绑定 EventBus → SearchEngine.refreshIndex（知识变更时自动刷新索引）
@@ -232,26 +232,27 @@ Agent 层只依赖 Service 层和 Infrastructure 层，不直接操作数据库�
 
 ### Layer 5: Service — 业务编排
 
-`lib/service/` 包含 16 个子域目录，每个子域是一个独立的业务关注点：
+`lib/service/` 当前包含 17 个子域目录，每个子域是一个独立的业务关注点。这个数量来自目录本身，而不是架构图里的固定常量：远程命令队列在 `lib/http/routes/remote.ts` 与 `lib/repository/remote/RemoteCommandRepository.ts` 中实现，SourceRef 对账则归在 `knowledge/` 子域里。
 
 | 子域 | 目录 | 核心服务 | 职责 |
 |------|------|----------|------|
-| 知识管理 | `knowledge/` | KnowledgeService | CRUD · 相似度检查 · 审计 |
-| 搜索引擎 | `search/` | SearchEngine | 字段加权 · 向量检索 · 语义 rerank |
-| 合规检查 | `guard/` | GuardCheckEngine | 四层检测 · 三态输出 |
-| 信号采集 | `signal/` | HitRecorder | 使用信号批量落盘 |
-| 质量评估 | `quality/` | QualityScorer | 多维评分 · 反馈循环 |
-| 知识进化 | `evolution/` | DecayDetector | 衰退检测 · 进化提案 |
-| 全景分析 | `panorama/` | PanoramaService | 模块图 · 耦合 · 分层 |
-| 冷启动/重扫 | `bootstrap/` + `workflows/` | BootstrapTaskManager · ProjectIntelligenceCapability | task session、ProjectSnapshot、维度执行编排 |
+| 启动任务 | `bootstrap/` | BootstrapTaskManager | task session、UI 启动任务、后台填充状态 |
+| 候选治理 | `candidate/` | CandidateRefinementService | 候选富化、预览与审核辅助 |
+| 清理快照 | `cleanup/` | CleanupService | cold start / rescan 的数据清理、Recipe 快照 |
 | 知识交付 | `delivery/` | CursorDeliveryPipeline | 6 通道 IDE 推送 |
-| Recipe 解析 | `recipe/` | RecipeParser | Markdown ↔ KnowledgeEntry |
-| 向量服务 | `vector/` | VectorService | HNSW 索引 · 上下文增强 |
+| 知识进化 | `evolution/` | EvolutionGateway · ProposalExecutor | 文件变更、衰退检测、进化提案 |
+| 合规检查 | `guard/` | GuardCheckEngine | 四层检测 · 三态输出 |
+| 知识管理 | `knowledge/` | KnowledgeService | CRUD · 相似度检查 · 审计 |
 | 模块管理 | `module/` | ModuleService | 代码模块实体合并 |
+| 全景分析 | `panorama/` | PanoramaService | 模块图 · 耦合 · 分层 |
+| 质量评估 | `quality/` | QualityScorer | 多维评分 · 反馈循环 |
+| Recipe 解析 | `recipe/` | RecipeParser | Markdown ↔ KnowledgeEntry |
+| 搜索引擎 | `search/` | SearchEngine | 字段加权 · 向量检索 · 语义 rerank |
+| 信号采集 | `signal/` | HitRecorder | 使用信号批量落盘 |
 | 技能系统 | `skills/` | SkillHooks | 自定义技能钩子 |
 | 任务系统 | `task/` | PrimeSearchPipeline | 任务上下文预加载 |
-| 源引用 | `sourceref/` | SourceRefReconciler | 证据链健康检查 |
-| 远程执行 | `remote/` | RemoteCommandService | 飞书远程命令 |
+| 向量服务 | `vector/` | VectorService | HNSW 索引 · 上下文增强 |
+| Wiki 生成 | `wiki/` | WikiGenerator | 项目 Wiki 规划、渲染与同步 |
 
 Service 层的每个类都通过构造函数注入依赖，不直接实例化其他服务。这使得每个服务都可以独立测试：mock 掉仓储和信号总线，就能测试 `KnowledgeService` 的业务逻辑。
 
@@ -271,7 +272,7 @@ Service 层的每个类都通过构造函数注入依赖，不直接实例化其
 - `gateway/` — 请求网关管线
 - `permission/` — 3-tuple 权限模型
 - `discovery/` — 项目类型探测
-- `enhancement/` — 17 个框架增强包
+- `enhancement/` — 14 个框架增强包
 
 Domain 层的特点是：**所有方法都是纯函数或状态机转换**。`Lifecycle.canTransit(from, to)` 查表返回布尔值，不查数据库、不调 API、不写日志。这种无副作用设计让领域逻辑可以在毫秒级完成单元测试。
 
@@ -385,7 +386,7 @@ McpServer → MCP Protocol response → IDE Agent
 
 ## 代码组织约定
 
-### 12 条路径别名
+### 15 条路径别名
 
 Alembic 使用 Node.js 的 `package.json` `imports` 字段定义路径别名，替代 TypeScript 的 `paths` 配置（后者在运行时不生效）：
 
@@ -403,7 +404,10 @@ Alembic 使用 Node.js 的 `package.json` `imports` 字段定义路径别名，�
   "#platform/*": { "alembic-dev": "./lib/platform/*",        "default": "./dist/lib/platform/*" },
   "#repo/*":     { "alembic-dev": "./lib/repository/*",      "default": "./dist/lib/repository/*" },
   "#types/*":    { "alembic-dev": "./lib/types/*",           "default": "./dist/lib/types/*" },
-  "#http/*":     { "alembic-dev": "./lib/http/*",            "default": "./dist/lib/http/*" }
+  "#http/*":     { "alembic-dev": "./lib/http/*",            "default": "./dist/lib/http/*" },
+  "#workflows/*":{ "alembic-dev": "./lib/workflows/*",       "default": "./dist/lib/workflows/*" },
+  "#tools/*":    { "alembic-dev": "./lib/tools/*",           "default": "./dist/lib/tools/*" },
+  "#sandbox/*":  { "alembic-dev": "./lib/sandbox/*",         "default": "./dist/lib/sandbox/*" }
 }
 ```
 
@@ -439,26 +443,29 @@ import { KnowledgeService } from '#service/knowledge/KnowledgeService.js';
 
 ## 模块规模概览
 
-`lib/` 下 14 个目录的代码分布：
+`lib/` 当前下有 16 个一级目录。下面的文件数按当前 Alembic 源码中的 `.ts` 文件粗略统计，用来说明规模和职责边界，而不是架构约束本身：
 
 | 目录 | 文件数 | 职责层 |
 |------|--------|--------|
-| `infrastructure/` | ~30 | Layer 7: 数据库 · 向量 · 信号 · 缓存 · 日志 |
-| `repository/` | ~20 | Layer 7: 15 个子域的数据访问 |
-| `service/` | ~70 | Layer 5: 16 个子域的业务逻辑 |
-| `agent/` | ~30 | Layer 4: Runtime · Memory · Context · Tools |
-| `core/` | ~20 | Layer 6: AST · Constitution · Gateway · Discovery |
-| `domain/` | ~15 | Layer 6: 领域实体 · 状态机 · 验证 |
+| `agent/` | ~98 | Layer 4: Runtime · Profile · Strategy · Memory · ToolForge |
+| `service/` | ~98 | Layer 5: 17 个子域的业务编排 |
+| `tools/` | ~79 | Agent V2 工具、平台 adapter、Workflow 工具路由 |
+| `workflows/` | ~66 | Cold Start / Rescan / ProjectIntelligence 工作流 |
+| `core/` | ~65 | Layer 6: AST · Constitution · Gateway · Discovery · Enhancement |
+| `external/` | ~62 | 外部接口: MCP · Lark · AI |
+| `infrastructure/` | ~44 | Layer 7: 数据库 · 向量 · 信号 · 缓存 · 日志 |
+| `http/` | ~39 | HTTP 路由与中间件 |
+| `shared/` | ~30 | 跨层: PathGuard · ProjectMarkers · 工具函数 |
+| `domain/` | ~24 | Layer 6: 领域实体 · 状态机 · 验证 |
+| `repository/` | ~20 | Layer 7: 数据访问与 Drizzle 适配 |
+| `types/` | ~16 | TypeScript 类型定义 |
 | `injection/` | 11 | Layer 3: ServiceContainer + 9 模块 |
-| `shared/` | ~12 | 跨层: PathGuard · 工具函数 |
-| `external/` | ~10 | 外部接口: MCP · Lark · AI |
-| `http/` | ~8 | HTTP 路由与中间件 |
-| `cli/` | 5 | CLI 专用服务: Setup · AiScan · Upgrade |
-| `types/` | ~8 | TypeScript 类型定义 |
-| `platform/` | ~3 | 平台适配: OpenBrowser · ScreenCapture |
+| `sandbox/` | 7 | macOS Seatbelt 沙箱执行 |
+| `cli/` | 7 | CLI 专用服务: Setup · AiScan · Upgrade |
+| `platform/` | 2 | 平台适配: OpenBrowser · ScreenCapture |
 | `bootstrap.ts` | 1 | Layer 2: 启动编排 |
 
-Service 层（~70 文件）是最大的——这符合 DDD 的预期：业务逻辑是系统的核心复杂度所在。Infrastructure（~50 文件）次之，因为 SQLite + 向量索引 + 信号系统 + 缓存的实现细节不可避免地需要大量代码。
+Service 和 Agent 层目前都是接近百个 TypeScript 文件，说明复杂度已经从单纯的业务服务扩展到运行时编排、Profile、策略、记忆和工具执行。紧随其后的是 `tools/` 与 `workflows/`：前者承载 Tool System V2 与平台 adapter，后者承载 Cold Start / Rescan 这类长流程编排。Infrastructure 不再是最大的目录，但它仍然承担数据库、向量、信号、缓存和日志这些系统底座。
 
 ## 递归模式
 

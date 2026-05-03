@@ -794,9 +794,9 @@ getGuardRules() {
 }
 ```
 
-### 全部 17 个增强包
+### 全部 14 个增强包
 
-`EnhancementRegistry` 根据项目的语言和框架筛选适用的增强包：
+`lib/core/enhancement/index.ts` 当前异步加载 14 个增强包，`EnhancementRegistry` 根据项目的语言和框架筛选适用的增强包：
 
 ```typescript
 // EnhancementRegistry.ts
@@ -826,9 +826,6 @@ resolve(primaryLang, detectedFrameworks = []) {
 | Android | Java/Kotlin | Android SDK | Activity/Fragment 生命周期 |
 | ML | Python | TensorFlow/PyTorch | 模型定义、训练循环 |
 | LangChain | Python | LangChain | Agent/Chain/Tool 模式 |
-| SwiftUI | Swift | SwiftUI | View 组件、@State/@Binding |
-| UIKit | Swift | UIKit | ViewController 生命周期 |
-| Flutter | Dart | Flutter | Widget 树、Provider |
 
 ## 从 AST 到 Panorama
 
@@ -1004,7 +1001,7 @@ Alembic 的代码理解是一个从精确到模糊、从局部到全局的渐进
 - **10+ 语言解析器** 各自处理语言特有的语法结构（protocol、decorator、impl、mixin），输出到统一的 `ctx` 对象
 - **5 阶段结构分析链** 从单文件 AST → 继承图 → 调用图 → 模式检测 → 耦合分析，逐层叠加理解
 - **DiscovererRegistry** 用置信度竞争机制自动识别项目类型，支持混合项目
-- **17 个框架增强包** 为特定框架添加分析维度、Guard 规则和模式检测
+- **14 个框架增强包** 为特定框架添加分析维度、Guard 规则和模式检测
 - **Panorama 聚合** 把所有分析结果汇聚为模块角色 + 分层拓扑 + 知识覆盖率的全景视图
 
 系统的设计哲学是：**确定的事情用确定的方法做**。Tree-sitter 提取语法结构、Tarjan 检测循环依赖、Kahn 拓扑分层——这些都是算法可以精确解决的问题。把确定性分析做扎实，才能为上层的 AI 推理提供可靠的输入。

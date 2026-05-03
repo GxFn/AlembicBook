@@ -111,7 +111,7 @@ Alembic 的 SQLite 数据库包含 14 张表，用 Drizzle ORM 定义 schema，�
 | `code_entities` | AST 代码实体 | 组合唯一索引 `(entityId, entityType, projectRoot)` 支持多项目 |
 | `guard_violations` | Guard 检查记录 | violations 以 JSON 数组存储，按 filePath + triggeredAt 索引 |
 | `audit_logs` | 操作审计 | actor · action · resource · result · duration，独立日志通道 |
-| `evolution_proposals` | 进化提案 | 7 天 TTL，状态机流转 |
+| `evolution_proposals` | 进化提案 | `lib/repository/evolution/ProposalRepository.ts` 默认 update 72h、deprecate 7d；`lib/service/evolution/EvolutionGateway.ts` 主路径写 `expiresAt: 0` 交给 SignalBus 观察 |
 
 **会话与记忆（3 张表）**：
 
