@@ -358,7 +358,7 @@ IDE Agent (Cursor / Copilot)
 bin/mcp-server.ts → McpServer.handleRequest()
   │
   ▼
-lib/external/mcp/handlers/searchHandler.ts    ← Layer 1: Entry routing
+lib/external/mcp/handlers/search.ts           ← Layer 1: Entry routing
   │
   ▼
 Gateway.execute({ action: 'search', role: 'external_agent', ... })

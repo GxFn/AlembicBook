@@ -275,7 +275,7 @@ SOUL 的第三项哲学否决了这个方案。原因不是子类"不好"，而�
 Alembic 用 **Capability × Strategy × Policy** 三维正交组合替代继承树：
 
 ```typescript
-// lib/agent/AgentService / AgentRuntimeBuilder.ts
+// lib/agent/service/AgentService.ts / lib/agent/service/AgentRuntimeBuilder.ts
 createRuntime(presetName: string, overrides: RuntimeOverrides = {}) {
   const preset = getPreset(presetName, overrides);
 

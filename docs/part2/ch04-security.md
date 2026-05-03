@@ -354,7 +354,7 @@ enforce(actor, action, resource) {
 ### 命令黑名单与白名单
 
 ```typescript
-// lib/agent/policies.ts
+// lib/agent/policies/SafetyPolicy.ts
 export class SafetyPolicy extends Policy {
   static DANGEROUS_COMMANDS = Object.freeze([
     /\brm\s+-rf\s+[/~]/,           // rm -rf / 或 ~/

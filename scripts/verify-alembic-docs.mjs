@@ -1,0 +1,490 @@
+#!/usr/bin/env node
+
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+const DEFAULT_REPO = 'https://github.com/GxFn/Alembic.git';
+const DOC_PREFIXES = [
+  'docs/part1/',
+  'docs/part2/',
+  'docs/part3/',
+  'docs/part4/',
+  'docs/part5/',
+  'docs/part6/',
+  'docs/part7/',
+  'docs/appendix/',
+  'docs/index.md',
+  'docs/visual-tour.md',
+];
+
+const ALEMBIC_PREFIXES = [
+  'bin/',
+  'config/',
+  'dashboard/',
+  'lib/',
+  'resources/',
+  'skills/',
+  'templates/',
+  'test/',
+  'README.md',
+  'README_CN.md',
+  'SOUL.md',
+  'package.json',
+];
+
+const repoRoot = process.cwd();
+let args = {};
+let docsRoot = '';
+let tempRoot = '';
+let alembicRoot = '';
+let usedClone = false;
+
+try {
+  args = parseArgs(process.argv.slice(2));
+  docsRoot = path.resolve(repoRoot, args.docs ?? 'docs');
+
+  if (args.local) {
+    alembicRoot = path.resolve(repoRoot, args.local);
+    if (!existsSync(alembicRoot)) {
+      fail(`local Alembic path does not exist: ${alembicRoot}`);
+    }
+  } else {
+    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'alembic-doc-verify-'));
+    alembicRoot = path.join(tempRoot, 'Alembic');
+    usedClone = true;
+    cloneRepo(args.repo ?? DEFAULT_REPO, args.ref, alembicRoot);
+  }
+
+  const commit = git(alembicRoot, ['rev-parse', 'HEAD']);
+  const dirty = git(alembicRoot, ['status', '--short']);
+  const chapters = await collectChapterFiles(docsRoot, args.chapter);
+  const report = [];
+
+  for (const chapterAbs of chapters) {
+    const chapterRel = slash(path.relative(repoRoot, chapterAbs));
+    const chapter = await verifyChapter(chapterAbs, chapterRel, alembicRoot);
+    report.push(chapter);
+  }
+
+  const summary = summarize(report);
+  const payload = {
+    alembic: {
+      source: args.local ? slash(path.relative(repoRoot, alembicRoot)) : (args.repo ?? DEFAULT_REPO),
+      commit,
+      dirty: dirty.length > 0,
+      usedClone,
+    },
+    docsRoot: slash(path.relative(repoRoot, docsRoot)) || '.',
+    summary,
+    chapters: report,
+  };
+
+  printReport(payload);
+
+  if (args.json) {
+    await writeFile(path.resolve(repoRoot, args.json), `${JSON.stringify(payload, null, 2)}\n`);
+    console.log(`\nJSON report written: ${args.json}`);
+  }
+
+  if (summary.missing > 0 || summary.outOfRange > 0) {
+    process.exitCode = 1;
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = error?.exitCode ?? 2;
+} finally {
+  if (tempRoot && !args.keep) {
+    await rm(tempRoot, { recursive: true, force: true });
+  } else if (tempRoot) {
+    console.log(`\nKept temp clone: ${tempRoot}`);
+  }
+}
+
+function parseArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    switch (arg) {
+      case '--repo':
+        out.repo = requireValue(argv, ++i, arg);
+        break;
+      case '--ref':
+        out.ref = requireValue(argv, ++i, arg);
+        break;
+      case '--local':
+        out.local = requireValue(argv, ++i, arg);
+        break;
+      case '--docs':
+        out.docs = requireValue(argv, ++i, arg);
+        break;
+      case '--chapter':
+        out.chapter = requireValue(argv, ++i, arg);
+        break;
+      case '--json':
+        out.json = requireValue(argv, ++i, arg);
+        break;
+      case '--keep':
+        out.keep = true;
+        break;
+      case '--help':
+      case '-h':
+        printHelp();
+        process.exit(0);
+        break;
+      default:
+        fail(`unknown argument: ${arg}`);
+    }
+  }
+  return out;
+}
+
+function requireValue(argv, index, flag) {
+  if (!argv[index] || argv[index].startsWith('--')) {
+    fail(`${flag} requires a value`);
+  }
+  return argv[index];
+}
+
+function printHelp() {
+  console.log(`Usage:
+  npm run verify:alembic
+  node scripts/verify-alembic-docs.mjs [options]
+
+Options:
+  --repo <url>       Alembic remote repo. Default: ${DEFAULT_REPO}
+  --ref <ref>        Git ref to verify after clone, such as main or a commit SHA.
+  --local <path>     Use an existing local Alembic checkout instead of cloning.
+  --docs <path>      Docs directory. Default: docs
+  --chapter <path>   Verify a single chapter, for example docs/part3/ch07-lifecycle.md.
+  --json <path>      Write a machine-readable report.
+  --keep             Keep the temporary clone for inspection.
+`);
+}
+
+function cloneRepo(repo, ref, dest) {
+  run('git', ['clone', '--depth=1', repo, dest], process.cwd());
+  if (ref) {
+    run('git', ['fetch', '--depth=1', 'origin', ref], dest);
+    run('git', ['checkout', 'FETCH_HEAD'], dest);
+  }
+}
+
+function git(cwd, argsForGit) {
+  return run('git', argsForGit, cwd).trim();
+}
+
+function run(cmd, cmdArgs, cwd) {
+  const result = spawnSync(cmd, cmdArgs, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0) {
+    const details = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
+    fail(`${cmd} ${cmdArgs.join(' ')} failed${details ? `\n${details}` : ''}`);
+  }
+  return result.stdout;
+}
+
+async function collectChapterFiles(root, chapterArg) {
+  if (chapterArg) {
+    const abs = path.resolve(repoRoot, chapterArg);
+    if (!existsSync(abs)) {
+      fail(`chapter does not exist: ${chapterArg}`);
+    }
+    return [abs];
+  }
+
+  const files = [];
+  await walk(root, async (abs) => {
+    const rel = slash(path.relative(repoRoot, abs));
+      if (DOC_PREFIXES.some((prefix) => rel === prefix || rel.startsWith(prefix))) {
+        files.push(abs);
+      }
+  });
+  return files.sort();
+}
+
+async function walk(absDir, onFile) {
+  for (const entry of await readdir(absDir)) {
+    const abs = path.join(absDir, entry);
+    const st = await stat(abs);
+    if (st.isDirectory()) {
+      if (['.vitepress', '_generated', 'public', 'sync'].includes(entry)) {
+        continue;
+      }
+      await walk(abs, onFile);
+    } else if (entry.endsWith('.md')) {
+      await onFile(abs);
+    }
+  }
+}
+
+async function verifyChapter(chapterAbs, chapterRel, sourceRoot) {
+  const text = await readFile(chapterAbs, 'utf8');
+  const lines = text.split(/\r?\n/);
+  const headings = collectHeadings(lines);
+  const anchors = extractAnchors(text, lines, headings);
+  const checks = [];
+
+  for (const anchor of anchors) {
+    const resolved = await resolveAnchor(sourceRoot, anchor.path);
+    const exists = resolved.exists;
+    let lineCount = 0;
+    let outOfRange = false;
+    if (exists) {
+      if (anchor.targetLine) {
+        if (resolved.kind !== 'file') {
+          checks.push({ ...anchor, status: 'line-target-not-file', resolvedPath: resolved.path });
+          continue;
+        }
+        lineCount = (await readFile(path.join(sourceRoot, resolved.path), 'utf8')).split(/\r?\n/).length;
+        outOfRange = anchor.targetLine > lineCount;
+      }
+    }
+    checks.push({
+      ...anchor,
+      status: !exists ? 'missing' : outOfRange ? 'line-out-of-range' : statusForResolved(resolved),
+      resolvedPath: resolved.path !== anchor.path ? resolved.path : undefined,
+      lineCount: lineCount || undefined,
+    });
+  }
+
+  return {
+    chapter: chapterRel,
+    title: headings[0]?.title ?? chapterRel,
+    anchorCount: checks.length,
+    ok: checks.filter((item) => item.status.startsWith('ok')).length,
+    missing: checks.filter((item) => item.status === 'missing' || item.status === 'line-target-not-file').length,
+    outOfRange: checks.filter((item) => item.status === 'line-out-of-range').length,
+    checks,
+  };
+}
+
+function collectHeadings(lines) {
+  const headings = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = lines[i].match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (match) {
+      headings.push({ line: i + 1, level: match[1].length, title: match[2] });
+    }
+  }
+  return headings;
+}
+
+function extractAnchors(text, lines, headings) {
+  const anchors = new Map();
+  const candidates = [];
+  const inlineCode = /`([^`\n]+)`/g;
+  for (const match of text.matchAll(inlineCode)) {
+    const raw = match[1].trim();
+    candidates.push({ raw, index: match.index ?? 0 });
+  }
+
+  const pathLike =
+    /\b((?:bin|config|dashboard|lib|resources|skills|templates|test)\/[A-Za-z0-9_./@+*{}-]+(?:\.[A-Za-z0-9]+)?\/?(?::\d+)?|README(?:_CN)?\.md|SOUL\.md|package\.json)(?:#L(\d+))?/g;
+  for (const match of text.matchAll(pathLike)) {
+    if (text[(match.index ?? 0) - 1] === '/') {
+      continue;
+    }
+    candidates.push({ raw: match[0], index: match.index ?? 0 });
+  }
+
+  for (const candidate of candidates) {
+    const normalized = normalizeAnchor(candidate.raw);
+    if (!normalized || !ALEMBIC_PREFIXES.some((prefix) => normalized.path === prefix || normalized.path.startsWith(prefix))) {
+      continue;
+    }
+    const line = lineAtOffset(lines, candidate.index);
+    const heading = nearestHeading(headings, line);
+    const key = `${normalized.path}:${normalized.targetLine ?? ''}:${line}`;
+    anchors.set(key, {
+      ...normalized,
+      docLine: line,
+      section: heading?.title ?? '',
+      sectionLine: heading?.line ?? 1,
+    });
+  }
+
+  return [...anchors.values()].sort((a, b) => a.docLine - b.docLine || a.path.localeCompare(b.path));
+}
+
+async function resolveAnchor(sourceRoot, relPath) {
+  const exact = path.join(sourceRoot, relPath);
+  if (existsSync(exact)) {
+    const st = await stat(exact);
+    return { exists: true, path: relPath, kind: st.isDirectory() ? 'directory' : 'file' };
+  }
+
+  if (relPath.includes('*')) {
+    const matched = await globExists(sourceRoot, relPath);
+    return matched
+      ? { exists: true, path: relPath, kind: 'glob' }
+      : { exists: false, path: relPath, kind: 'missing' };
+  }
+
+  if (relPath.endsWith('.js')) {
+    const tsPath = relPath.slice(0, -3) + '.ts';
+    if (existsSync(path.join(sourceRoot, tsPath))) {
+      return { exists: true, path: tsPath, kind: 'file', mappedFrom: relPath };
+    }
+    const tsxPath = relPath.slice(0, -3) + '.tsx';
+    if (existsSync(path.join(sourceRoot, tsxPath))) {
+      return { exists: true, path: tsxPath, kind: 'file', mappedFrom: relPath };
+    }
+  }
+
+  if (!relPath.endsWith('/') && !path.extname(relPath)) {
+    for (const ext of ['.ts', '.tsx', '.js', '.mjs', '.json']) {
+      const candidate = `${relPath}${ext}`;
+      if (existsSync(path.join(sourceRoot, candidate))) {
+        return { exists: true, path: candidate, kind: 'file', mappedFrom: relPath };
+      }
+    }
+  }
+
+  return { exists: false, path: relPath, kind: 'missing' };
+}
+
+async function globExists(sourceRoot, relPattern) {
+  const parts = slash(relPattern).split('/');
+  async function step(absDir, index) {
+    if (index >= parts.length) {
+      return existsSync(absDir);
+    }
+    const part = parts[index];
+    if (part.includes('*')) {
+      const re = new RegExp(`^${part.split('*').map(escapeRegExp).join('.*')}$`);
+      if (!existsSync(absDir)) {
+        return false;
+      }
+      for (const entry of await readdir(absDir)) {
+        if (re.test(entry) && (await step(path.join(absDir, entry), index + 1))) {
+          return true;
+        }
+      }
+      return false;
+    }
+    return step(path.join(absDir, part), index + 1);
+  }
+  return step(sourceRoot, 0);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+}
+
+function statusForResolved(resolved) {
+  if (resolved.mappedFrom) {
+    return 'ok-js-to-ts';
+  }
+  if (resolved.kind === 'directory') {
+    return 'ok-dir';
+  }
+  if (resolved.kind === 'glob') {
+    return 'ok-glob';
+  }
+  return 'ok';
+}
+
+function normalizeAnchor(raw) {
+  let value = raw.trim();
+  if (value.includes('{') || value.includes('}')) {
+    return null;
+  }
+  value = value.replace(/^\/\/\s*/, '');
+  value = value.replace(/^['"]|['"]$/g, '');
+  value = value.replace(/[),.;，。；：:]+$/u, (suffix) => {
+    const lineMatch = suffix.match(/^:(\d+)$/);
+    return lineMatch ? suffix : '';
+  });
+  value = value.replace(/^\.\//, '');
+
+  const hashLine = value.match(/^(.*)#L(\d+)$/);
+  if (hashLine) {
+    return { path: slash(hashLine[1]), targetLine: Number(hashLine[2]) };
+  }
+
+  const colonLine = value.match(/^(.+\.[A-Za-z0-9]+):(\d+)$/);
+  if (colonLine) {
+    return { path: slash(colonLine[1]), targetLine: Number(colonLine[2]) };
+  }
+
+  if (!value.includes('/') && !['README.md', 'README_CN.md', 'SOUL.md', 'package.json'].includes(value)) {
+    return null;
+  }
+  return { path: slash(value) };
+}
+
+function lineAtOffset(lines, offset) {
+  let cursor = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    cursor += lines[i].length + 1;
+    if (cursor > offset) {
+      return i + 1;
+    }
+  }
+  return lines.length;
+}
+
+function nearestHeading(headings, line) {
+  let current = null;
+  for (const heading of headings) {
+    if (heading.line > line) {
+      break;
+    }
+    current = heading;
+  }
+  return current;
+}
+
+function summarize(report) {
+  return report.reduce(
+    (acc, chapter) => {
+      acc.chapters += 1;
+      acc.anchors += chapter.anchorCount;
+      acc.ok += chapter.ok;
+      acc.missing += chapter.missing;
+      acc.outOfRange += chapter.outOfRange;
+      if (chapter.anchorCount === 0) {
+        acc.chaptersWithoutAnchors += 1;
+      }
+      return acc;
+    },
+    { chapters: 0, anchors: 0, ok: 0, missing: 0, outOfRange: 0, chaptersWithoutAnchors: 0 }
+  );
+}
+
+function printReport(payload) {
+  const { alembic, summary, chapters } = payload;
+  console.log(`Alembic source: ${alembic.source}`);
+  console.log(`Alembic commit: ${alembic.commit}${alembic.dirty ? ' (dirty)' : ''}`);
+  console.log(
+    `Docs checked: ${summary.chapters} chapters, ${summary.anchors} anchors, ${summary.ok} ok, ${summary.missing} missing, ${summary.outOfRange} line out of range`
+  );
+
+  for (const chapter of chapters) {
+    const mark = chapter.missing || chapter.outOfRange ? 'FAIL' : 'OK';
+    console.log(`\n[${mark}] ${chapter.chapter}`);
+    console.log(`  anchors: ${chapter.anchorCount}, ok: ${chapter.ok}, missing: ${chapter.missing}, line-out-of-range: ${chapter.outOfRange}`);
+    for (const check of chapter.checks) {
+      const status = check.status.startsWith('ok') ? check.status : `!! ${check.status}`;
+      const target = check.targetLine ? `${check.path}:${check.targetLine}` : check.path;
+      const mapped = check.resolvedPath ? ` => ${check.resolvedPath}` : '';
+      console.log(`  ${status} ${chapter.chapter}:${check.docLine} (${check.section}) -> ${target}${mapped}`);
+    }
+  }
+}
+
+function slash(value) {
+  return value.split(path.sep).join('/');
+}
+
+function fail(message) {
+  const error = new Error(`[verify:alembic] ${message}`);
+  error.exitCode = 2;
+  throw error;
+}
