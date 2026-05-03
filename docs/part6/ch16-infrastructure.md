@@ -4,7 +4,7 @@
 
 ## 问题场景
 
-Alembic 是一个本地化工具，用户 `npm install -g alembic` 后就应该能用。这意味着不能依赖 PostgreSQL、Redis、Elasticsearch 等外部服务。但系统需要：关系型存储（知识条目 · 审计日志 · 16 张运行时表 + 1 张内部迁移表）、向量存储（语义搜索 · HNSW 索引）、缓存（AST 图谱 · 搜索结果 · 跨进程失效）、事件总线（信号分发）、依赖注入（ServiceMap 中 75 个公开服务键 + 5 个内部状态键）。
+Alembic 是一个本地化工具，用户 `npm install -g alembic` 后就应该能用。这意味着不能依赖 PostgreSQL、Redis、Elasticsearch 等外部服务。但系统需要：关系型存储（知识条目 · 审计日志 · 16 张运行时表 + 1 张内部迁移表）、向量存储（语义搜索 · HNSW 索引）、缓存（AST 图谱 · 搜索结果 · 跨进程失效）、事件总线（信号分发）、依赖注入（106 个实际注册 DI 键，其中 ServiceMap 覆盖 75 个公开 typed keys + 5 个内部状态键）。
 
 **核心约束**：所有基础设施必须内嵌，`npm install` 即用——不能要求用户启动 Docker、安装 PostgreSQL 或配置 Redis。
 
@@ -66,7 +66,7 @@ async hybridSearch(queryVector, queryText, options)
 
 ### 自建 DI 容器
 
-Alembic 管理 75 个公开服务键的依赖关系。为什么不用 InversifyJS 或 TSyringe 这些成熟框架？
+Alembic 管理 106 个实际注册 DI 键的依赖关系，其中 75 个公开 typed keys 进入 `ServiceMap`。为什么不用 InversifyJS 或 TSyringe 这些成熟框架？
 
 第一个原因是**装饰器兼容性**。InversifyJS 和 TSyringe 都依赖 TypeScript 装饰器和 `reflect-metadata`——这在 ESM 模块系统中有持续的兼容性问题。Alembic 是纯 ESM 项目（`"type": "module"`），装饰器的转义行为在不同构建工具间不一致。
 
@@ -364,7 +364,7 @@ reloadAiProvider(newProvider) {
 
 ### ServiceMap 类型安全
 
-`lib/injection/ServiceMap.ts` 中当前有 80 个键：75 个公开服务键，外加 `_projectRoot`、`_config`、`_lang`、`_fileCache`、`_embedProvider` 这 5 个由 Bootstrap 或容器内部注入的状态键。它是一个 TypeScript 映射，把字符串键绑定到具体的服务类型：
+`lib/injection/ServiceMap.ts` 中当前有 80 个 typed keys：75 个公开服务键，外加 `_projectRoot`、`_config`、`_lang`、`_fileCache`、`_embedProvider` 这 5 个由 Bootstrap 或容器内部注入的状态键。它是一个 TypeScript 映射，把字符串键绑定到具体的服务类型；实际注册表还包含 31 个未进入 ServiceMap 的运行时键，例如 `capabilityCatalog`、`toolRouter`、`workflowRegistry`、`proposalExecutor`。
 
 ```typescript
 export interface ServiceMap {
@@ -382,7 +382,7 @@ export interface ServiceMap {
   hitRecorder: HitRecorder;
   panoramaService: PanoramaService;
   cacheCoordinator: CacheCoordinator;
-  // ... 60+ 更多公开服务
+  // ... 其余 typed services
   _projectRoot: string; // 内部注入状态
 }
 ```
@@ -569,7 +569,7 @@ Alembic 在"npm 包"的部署约束下构建了一套完整的数据基础设施
 - **SQLite + WAL** 提供关系存储，16 张运行时表 + 1 张内部迁移表覆盖知识、分析、审计、会话、远程通道和进化治理
 - **HNSW + SQ8 量化** 提供高性能向量搜索，BatchEmbedder 50× 加速索引构建
 - **三层缓存**（内存 LRU · 文件持久化 · 跨进程协调）覆盖不同时效需求
-- **自建 DI 容器** 管理 75 个公开服务键的延迟初始化和 AI Provider 热重载
+- **自建 DI 容器** 管理 106 个注册键的延迟初始化和 AI Provider 热重载，ServiceMap 覆盖核心 typed keys
 - **Drizzle + raw SQL 混用** 在类型安全和查询灵活性之间取得平衡
 
 这些选择的共同原则是：**内嵌优先**——每个组件都不依赖外部进程。SQLite 替代 PostgreSQL，HNSW 替代 Elasticsearch，内存 LRU 替代 Redis，自建 DI 替代装饰器框架。代价是每个方向的能力天花板都低于专用方案，但对于知识库规模在万条以内的典型项目，这些天花板远未触及。

@@ -303,12 +303,36 @@ async function collectServiceMapFacts(sourceRoot) {
   const text = await readTextIfExists(file);
   const body = text.match(/export interface ServiceMap\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
   const keys = [...body.matchAll(/^\s{2}([A-Za-z_][A-Za-z0-9_]*):/gm)].map((m) => m[1]);
+  const registeredKeys = await collectDiRegistrationKeys(sourceRoot);
+  const keySet = new Set(keys);
+  const registeredSet = new Set(registeredKeys);
   return {
     count: keys.length,
     publicCount: keys.filter((key) => !key.startsWith('_')).length,
     internalCount: keys.filter((key) => key.startsWith('_')).length,
+    registeredCount: registeredKeys.length,
+    registeredNotTyped: registeredKeys.filter((key) => !keySet.has(key)),
+    typedPublicNotRegistered: keys.filter((key) => !key.startsWith('_') && !registeredSet.has(key)),
     keys,
+    registeredKeys,
   };
+}
+
+async function collectDiRegistrationKeys(sourceRoot) {
+  const dir = path.join(sourceRoot, 'lib/injection');
+  if (!existsSync(dir)) {
+    return [];
+  }
+  const files = [];
+  await walkTs(dir, async (abs) => files.push(abs));
+  const keys = new Set();
+  for (const file of files) {
+    const text = await readTextIfExists(file);
+    for (const match of text.matchAll(/(?:\b\w+|this)\.(?:singleton|register)\(\s*['"]([^'"]+)['"]/g)) {
+      keys.add(match[1]);
+    }
+  }
+  return [...keys].sort();
 }
 
 async function collectIndexingFacts(sourceRoot) {
@@ -372,6 +396,18 @@ async function walk(absDir, onFile) {
       }
       await walk(abs, onFile);
     } else if (entry.endsWith('.md')) {
+      await onFile(abs);
+    }
+  }
+}
+
+async function walkTs(absDir, onFile) {
+  for (const entry of await readdir(absDir)) {
+    const abs = path.join(absDir, entry);
+    const st = await stat(abs);
+    if (st.isDirectory()) {
+      await walkTs(abs, onFile);
+    } else if (entry.endsWith('.ts')) {
       await onFile(abs);
     }
   }
@@ -630,7 +666,9 @@ function printReport(payload) {
     console.log(
       `Code facts: ${codeFacts.database.count} database tables ` +
         `(${codeFacts.database.runtimeCount} runtime + ${codeFacts.database.internalCount} internal), ` +
-        `${codeFacts.serviceMap.publicCount} public DI keys, ` +
+        `${codeFacts.serviceMap.registeredCount} DI registrations ` +
+        `(${codeFacts.serviceMap.publicCount} typed public + ` +
+        `${codeFacts.serviceMap.registeredNotTyped.length} untyped registered), ` +
         `${codeFacts.indexing.extensionCount} indexable extensions`
     );
   }

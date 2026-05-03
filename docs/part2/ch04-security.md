@@ -137,7 +137,7 @@ _checkBatch(req) {
 
 ## Gateway：4 步安全管线
 
-Gateway 是所有操作的**唯一入口**。无论请求来自 MCP、HTTP 还是 CLI，都必须通过 Gateway 的 4 步管线：
+Gateway 是 HTTP 路由和显式 Gateway action 的安全入口。`lib/http/middleware/gatewayMiddleware.ts` 会把 `req.gw(action, resource, data)` 转成 `Gateway.execute()`；MCP 工具则先在 `lib/external/mcp/tools.ts` 通过 `TOOL_GATEWAY_MAP` 投影 action/resource 语义，再走 `LightweightRouter + McpToolAdapter`，不把每个 handler 强行塞进完整 Gateway route。Gateway 自身仍保留 `checkOnly()`，可用于只做权限和宪法门控而不执行业务 handler。
 
 ```text
 请求 → validate → guard → route → audit → 响应
@@ -230,7 +230,7 @@ async routeToHandler(context: GatewayContext) {
 }
 ```
 
-`GatewayActionRegistry` 在系统初始化时将所有 MCP 工具操作注册为 Gateway 动作：
+`GatewayActionRegistry` 在系统初始化时将平台需要的业务动作注册为 Gateway route。它连接的是 `Gateway.execute()` 与 Service 层，不是 MCP handler 清单：
 
 ```typescript
 // lib/core/gateway/GatewayActionRegistry.ts
@@ -250,7 +250,7 @@ export function registerGatewayActions(gateway, container) {
     return service.checkCode(ctx.data.code, ctx.data.options);
   });
 
-  // ... 20+ 个动作
+  // ... 业务动作
 }
 ```
 
@@ -272,8 +272,11 @@ async auditSuccess(context, result) {
     duration: Date.now() - context.startTime,
   });
 
-  // 实时事件推送到 Dashboard
-  this.eventBus.emit('gateway:action:completed', { ... });
+  // 可选事件推送：只有 eventBus 注入时才发送
+  if (this.eventBus) {
+    this.emit('gateway:action:completed', { ...entry, timestamp: Date.now() });
+    this.eventBus.emit('gateway:action:completed', { ...entry, timestamp: Date.now() });
+  }
 }
 
 // 失败审计 — 在 catch 块中调用
@@ -284,7 +287,10 @@ async auditFailure(context, error) {
     error: error.message,
   });
 
-  this.eventBus.emit('gateway:action:failed', { ... });
+  if (this.eventBus) {
+    this.emit('gateway:action:failed', { ...entry, timestamp: Date.now() });
+    this.eventBus.emit('gateway:action:failed', { ...entry, timestamp: Date.now() });
+  }
 }
 ```
 
@@ -371,8 +377,9 @@ export class SafetyPolicy extends Policy {
 
   static SAFE_COMMANDS = Object.freeze([
     'ls', 'cat', 'head', 'tail', 'grep', 'find', 'wc', 'echo', 'pwd',
+    'date', 'which', 'file', 'stat',
     'git log', 'git status', 'git diff', 'git branch',
-    'npm list', 'npm outdated', 'node -v',
+    'npm list', 'npm outdated', 'node -v', 'npm -v',
   ]);
 }
 ```
@@ -514,13 +521,18 @@ assertProjectWriteSafe(targetPath: string) {
   const relative = path.relative(this.#projectRoot!, resolved);
   const firstSegment = relative.split(path.sep)[0];
 
-  // 开发仓库保护
-  if (this.#isDevRepo) {
+  // 排除项目保护：Alembic 源码仓库、alembic-* 生态项目、.asd-skip 项目
+  if (this.#isExcludedProject) {
     if (firstSegment === '.asd') {
       throw new PathGuardError(resolved, this.#projectRoot!,
-        'Dev repo 保护: 禁止在源码仓库内创建 .asd/ 运行时数据');
+        `排除项目保护 (${this.#excludeReason}): 禁止创建 .asd/ 运行时数据`);
     }
-    // ... kbDir 也被阻止
+    const kbDir = this.#resolveKnowledgeBaseDir();
+    if (kbDir && firstSegment === kbDir) {
+      throw new PathGuardError(resolved, this.#projectRoot!,
+        `排除项目保护 (${this.#excludeReason}): 禁止创建 ${kbDir}/ 知识库数据`);
+    }
+    // .cursor/.vscode/.github 与根级 .gitignore/.env 仍可写
   }
 
   // 标准项目：只允许白名单前缀
@@ -551,7 +563,7 @@ assertProjectWriteSafe(targetPath: string) {
 | 写入 `.cursor/rules/api.md` | ✅ 项目内 | ✅ 白名单 | 允许 |
 | 写入 `Alembic/recipes/r1.md` | ✅ 项目内 | ✅ kbDir | 允许 |
 | 写入 `.gitignore` | ✅ 项目内 | ✅ 根级文件 | 允许 |
-| Dev repo 写入 `.asd/` | ✅ 项目内 | ❌ Dev保护 | 拒绝 |
+| 排除项目写入 `.asd/` 或知识库目录 | ✅ 项目内 | ❌ 排除项目保护 | 拒绝 |
 
 关键是第二行：即使文件在项目内，Alembic 也**不能写入 `src/` 等业务代码目录**。知识引擎只操作自己的数据（`.asd/`、知识库目录、IDE 配置），不触碰用户的源代码。
 
@@ -625,18 +637,18 @@ async route(entry: KnowledgeEntry): Promise<RouteResult> {
 
 ![Alembic 6 级决策管线](/images/ch04/01-six-layer-security.png)
 
-六层按请求路径串联，每层解决一个特定维度的安全问题：
+六层不是所有入口共用的同一个函数栈，而是覆盖不同执行表面的安全能力分布：HTTP/Gateway action 会完整经过 `Gateway.execute()`；MCP 写工具先经 `TOOL_GATEWAY_MAP` 投影治理语义，再由 manifest/router/adapter 执行；Agent Runtime 的 V2 工具重点落在工具参数、安全策略、沙箱和路径边界上。
 
 ```text
-MCP/HTTP/CLI 请求
+HTTP Gateway action / MCP tool / Agent V2 tool
   │
   ▼ Layer 1: Constitution
   │ "这个角色被定义了什么权限和约束？"
   │ YAML 加载到内存，O(1) Map 查找
   │
-  ▼ Layer 2: Gateway.guard()
-  │ "这个请求的格式和权限合规吗？"
-  │ validate → guard(Permission + Constitution) → route → audit
+  ▼ Layer 2: Gateway / manifest governance
+  │ "入口把 action/resource/risk 表达清楚了吗？"
+  │ HTTP: validate → guard → route → audit；MCP: TOOL_GATEWAY_MAP → manifest
   │
   ▼ Layer 3: PermissionManager
   │ "actor 有权限对 resource 执行 action 吗？"
@@ -722,12 +734,13 @@ cleanup({ maxAgeDays: 90 })
 ### 场景 1：external_agent 尝试删除 Recipe
 
 ```text
-→ Gateway.execute({ actor: 'external_agent', action: 'recipe:delete', data: { id: 'r-123' } })
+→ Gateway.execute({ actor: 'external_agent', action: 'recipe:delete', resource: 'recipes', data: { recipeId: 'r-123' } })
   → Step 1: validate ✅ (有 actor 和 action)
   → Step 2: guard
-    → PermissionManager.enforce('external_agent', 'recipe:delete', ...)
-    → 角色权限中没有 delete:recipes
-    → ❌ throw PermissionDenied("Missing permission: delete:recipes")
+    → PermissionManager.enforce('external_agent', 'recipe:delete', 'recipes')
+    → 精确检查 recipe:delete，兼容翻转检查 delete:recipes
+    → external_agent 两者都没有
+    → ❌ throw PermissionDenied("Missing permission: recipe:delete")
   → catch → auditFailure(... error: "Permission denied")
   → return { success: false, error: { code: 'PERMISSION_DENIED' } }
 ```
@@ -737,19 +750,20 @@ cleanup({ maxAgeDays: 90 })
 ### 场景 2：chat_agent 提交候选知识
 
 ```text
-→ Gateway.execute({ actor: 'chat_agent', action: 'candidate:create', data: { code: '...', reasoning: {...} } })
+→ Gateway.execute({ actor: 'chat_agent', action: 'candidate:create', resource: 'candidates', data: { title: '...', content: {...}, reasoning: {...} } })
   → Step 1: validate ✅
   → Step 2: guard
     → PermissionManager.enforce('chat_agent', 'candidate:create', ...) ✅ (有 create:candidates 权限)
     → ConstitutionValidator.enforce(...) ✅ (有 content，不是直接操作 recipe)
   → Step 3: route → KnowledgeService.create()
-    → ConfidenceRouter.route(entry) → { action: 'pending', reason: '...' }
-    → 条目进入 pending 状态
+    → KnowledgeEntry.fromJSON({ lifecycle: pending, createdBy: actor })
+    → ConfidenceRouter.route(entry)
+    → 默认保持 pending；高置信度可进入 staging，过低置信度可 deprecated
   → Step 4: auditSuccess(...)
   → return { success: true, data: { id: 'k-456', state: 'pending' } }
 ```
 
-完整管线走通。知识被创建但进入 `pending`——ConfidenceRouter 确保即使权限允许创建，低质量知识也不会自动发布。
+完整管线走通。知识创建时先被强制设为 `pending`，再由 ConfidenceRouter 决定是否保持 pending、标记 staging 或拒绝为 deprecated——即使权限允许创建，低质量知识也不会自动发布。
 
 ### 场景 3：Agent 尝试写入项目外文件
 
@@ -800,20 +814,20 @@ Constitution 的角色标识直接通过 MCP 请求的 `actor` 字段传递—�
 | ConfidenceRouter | < 1ms | 数值比较 + 可选质量评分 |
 | **Audit（SQLite 写入）** | **~1-5ms** | 磁盘 IO |
 
-六层安全检查的总开销 < 1ms（不含审计写入）。审计是唯一有真实 IO 的环节（~1-5ms），但它是异步的且不阻断业务响应。 对比 MCP 请求的端到端延迟（通常 50-500ms，取决于 Service 层逻辑），安全开销可以忽略。
+六层安全检查的总开销 < 1ms（不含审计写入）。审计是唯一有真实 IO 的环节（~1-5ms）；Gateway 会等待审计写入完成，但 `AuditLogger.log()` 内部吞掉写入异常，所以审计失败不会改变业务结果。对比 MCP/HTTP 请求的端到端延迟（通常 50-500ms，取决于 Service 层逻辑），安全开销可以忽略。
 
 ## 小结
 
 Alembic 的安全不是一扇门，而是一条层层设卡的通道：
 
 - **Constitution** 用 YAML 定义规则，跟随 Git 版本控制，启动时加载到内存
-- **Gateway** 是唯一入口，4 步管线确保每次操作都被验证、守护、路由和审计
+- **Gateway / manifest governance** 分别守住 HTTP action 与 MCP 工具表面，保留同一套 action/resource 语义
 - **PermissionManager** 用 8 级递进匹配实现灵活的 3-tuple 权限检查
 - **SafetyPolicy** 用命令黑名单和文件范围限制 Agent 的执行能力
 - **PathGuard** 用双层边界检查确保文件写入不越界
 - **ConfidenceRouter** 用质量门控确保低质量知识不会自动进入知识库
 
-六层的共同特征：**每层独立记录日志，每层有自己的错误类型，每层的失败不依赖其他层的成功**。这不是过度设计——当你的系统消费者是不可控的 AI Agent 时，任何单点信任都是脆弱的。
+六层的共同特征：**每层都有自己的拒绝条件和错误/诊断出口，每层的失败不依赖其他层的成功**。这不是过度设计——当你的系统消费者是不可控的 AI Agent 时，任何单点信任都是脆弱的。
 
 ::: tip 下一章
 [代码理解 — 多语言 AST · Discovery · 增强](./ch05-ast)

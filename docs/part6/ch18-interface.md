@@ -190,7 +190,7 @@ Lark Transport 是最"非常规"的接入端——它把飞书群聊变成 Alemb
 ```bash
 alembic ui 启动序列：
   ① Bootstrap.initialize()     → 数据库 · 配置 · Gateway
-  ② ServiceContainer.initialize() → 75 个公开服务键注册
+  ② ServiceContainer.initialize() → 106 个实际 DI 键注册
   ③ HttpServer.initialize()
       → Express 应用 + 中间件栈
       → API 路由注册（/api/v1/*）
@@ -525,7 +525,7 @@ Lark Transport 是一个实验性功能——它展示了知识系统可以接�
 
 ## 小结
 
-Alembic 的四端接入共享一个核心——ServiceContainer 中的 75 个公开服务键通过不同的界面层暴露给不同的用户群体：
+Alembic 的四端接入共享一个核心——ServiceContainer 中的 106 个实际注册 DI 键通过不同的界面层暴露给不同的用户群体，其中 75 个公开 typed keys 由 ServiceMap 提供类型安全覆盖：
 
 - **CLI** 提供 18+ 命令覆盖全部管理功能，`guard:ci` 集成 CI/CD 管道，`--json` 支持脚本消费
 - **Dashboard** 用 React 19 + Socket.IO 实现 10 个页面的实时管理界面，Bootstrap 进度条和知识审核流是核心体验

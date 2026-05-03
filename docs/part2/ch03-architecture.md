@@ -118,7 +118,7 @@ Bootstrap 产出的组件集合（`BootstrapComponents`）会被注入到 Layer 
 
 ### Layer 3: Injection — 依赖注入容器
 
-`ServiceContainer` 是整个系统的组装工厂。它管理 60+ 个服务的创建、缓存和生命周期，通过 9 个模块分批注册。
+`ServiceContainer` 是整个系统的组装工厂。当前 `lib/injection/` 中可静态识别出 106 个注册键；其中 `lib/injection/ServiceMap.ts` 提供 75 个公开类型安全键和 5 个内部注入状态键，其余是 Agent、Signal、Evolution 等模块里的运行时注册键。容器通过 9 个模块分批注册这些依赖。
 
 ```typescript
 // lib/injection/ServiceContainer.ts
@@ -187,7 +187,7 @@ get(name) {
 }
 ```
 
-`singleton()` 注册一个惰性工厂，`get()` 首次调用时执行工厂并缓存结果。没有反射、没有装饰器、没有 token——就是一个 `Map<string, () => unknown>` 加上缓存逻辑。类型安全通过 `ServiceMap` 接口实现：
+`singleton()` 注册一个惰性工厂，`get()` 首次调用时执行工厂并缓存结果。没有反射、没有装饰器、没有 token——就是一个 `Map<string, () => unknown>` 加上缓存逻辑。`ServiceMap` 是类型安全覆盖层，不是完整运行时注册表：
 
 ```typescript
 // lib/injection/ServiceMap.ts
@@ -205,8 +205,6 @@ export interface ServiceMap {
   guardService: GuardService;
   guardCheckEngine: GuardCheckEngine;
   // ═══ AgentModule ═══
-  capabilityCatalog: V2CapabilityCatalog;
-  toolRouter: V2ToolRouterAdapter;
   toolRegistry: UnifiedToolCatalog;
   agentService: AgentService;
   agentRuntimeBuilder: AgentRuntimeBuilder;
@@ -216,11 +214,11 @@ export interface ServiceMap {
   hitRecorder: HitRecorder;
   // ═══ PanoramaModule ═══
   panoramaService: PanoramaService;
-  // ... 60+ services total
+  // ... 75 个公开 typed keys + 5 个内部状态键
 }
 ```
 
-`container.get('searchEngine')` 在编译期就能推导出返回类型是 `SearchEngine`，不需要泛型参数或类型断言。
+`container.get('searchEngine')` 在编译期就能推导出返回类型是 `SearchEngine`，不需要泛型参数或类型断言。但 `lib/injection/modules/AgentModule.ts` 还会注册 `capabilityCatalog`、`v2ToolContextFactory`、`toolRouter`、`mcpToolDeclarations`、`toolForge`、`workflowRegistry` 等键；这些键走 `get(name: string): unknown` 的兼容重载，所以文档里必须区分“ServiceMap typed keys”和“ServiceContainer 实际注册键”。
 
 ### Layer 4: Agent — 智能中枢
 
@@ -228,7 +226,7 @@ Agent 层是系统的"大脑"——`AgentRuntime` 驱动 ReAct 推理循环，`A
 
 Agent 层只依赖 Service 层和 Infrastructure 层，不直接操作数据库或文件系统。所有副作用通过工具调用间接执行——Agent 调用 `knowledge.submit` action，工具内部委托 `RecipeProductionGateway` / `KnowledgeRepository`，仓储写入 SQLite。
 
-这种间接性是设计约束，不是偶然：Agent 的每个操作都经过工具层的权限检查和参数验证，不可能绕过 Gateway 直接修改数据。
+这种间接性是设计约束，不是偶然：Agent Runtime 的操作经过 V2 工具层的参数校验、并发策略和输出预算；MCP / HTTP 等外部表面再通过 manifest、Gateway 映射和 adapter 表达权限、审计与信任边界。Agent 不直接越过工具层和仓储边界修改数据。
 
 ### Layer 5: Service — 业务编排
 
@@ -356,17 +354,22 @@ if (newRoot && existingRoot && newRoot !== existingRoot) {
 IDE Agent (Cursor / Copilot)
   │ stdio / MCP Protocol
   ▼
-bin/mcp-server.ts → McpServer.handleRequest()
+bin/mcp-server.ts → startMcpServer()
   │
   ▼
-lib/external/mcp/handlers/search.ts           ← Layer 1: Entry routing
+lib/external/mcp/McpServer.ts
+  │ _handleToolCall()
+  │ _resolveMcpGatewayMapping()               ← 写工具解析 TOOL_GATEWAY_MAP；search 无映射
   │
   ▼
-Gateway.execute({ action: 'search', role: 'external_agent', ... })
-  │ 1. validate — 请求格式检查               ← Layer 6: Core
-  │ 2. guard   — 权限验证（Constitution + Permission）
-  │ 3. route   — 分发到注册的处理器
-  │ 4. audit   — 记录审计日志
+lib/tools/core/LightweightRouter.ts           ← manifest 查找 + adapter 分发
+  ▼
+lib/external/mcp/McpToolAdapter.ts
+  │ externalTrust 检查
+  │ _executeMcpHandler()
+  ▼
+lib/external/mcp/handlers/search.ts            ← Layer 1: MCP handler
+  │ ctx.container.get('searchEngine')
   ▼
 SearchEngine.search(query, options)            ← Layer 5: Service
   │ 1. FieldWeighted scoring
@@ -382,7 +385,7 @@ SearchEngine → formatted results
 McpServer → MCP Protocol response → IDE Agent
 ```
 
-请求穿越了所有 7 层，但每层只做分内之事：入口层解析协议，Gateway 做权限检查，Service 做业务编排，Repository 做数据访问。层间通过 DI 容器的 `container.get()` 获取依赖，不存在跨层直接 import。
+这条路径没有把只读 search 强行塞进完整 `Gateway.execute()` 四阶段。`lib/external/mcp/tools.ts` 的 `TOOL_GATEWAY_MAP` 只给写操作和高风险操作提供 action/resource 语义；`alembic_search` 没有映射，走 `LightweightRouter + McpToolAdapter + search handler`。HTTP 路由则通过 `lib/http/middleware/gatewayMiddleware.ts` 的 `req.gw()` 调用 `Gateway.execute()`。两条入口共享下层 Service/Repository，但入口治理边界不同。
 
 ## 代码组织约定
 
@@ -473,36 +476,43 @@ Alembic 有一个独特的特性：**它用自己来开发自己**。
 
 项目的 `.github/copilot-instructions.md` 和 `AGENTS.md` 由 Alembic 的 Delivery 通道生成——也就是说，开发者在用 Copilot 写 Alembic 代码时，Copilot 读取的编码规范是 Alembic 自己从代码中提取的。这是一个完美的反馈回路：写代码 → 提取规范 → 规范指导写代码 → 提取更好的规范。
 
-但这个递归引入了一个危险：如果 MCP 服务器把 Alembic 源码仓库当作用户项目，它会在源码目录里创建 `.asd/` 数据库、`Alembic/candidates/` 候选知识——运行时垃圾污染源码树。
+但这个递归引入了一个危险：如果 MCP 服务器把 Alembic 源码仓库或 AlembicBook 这类生态项目当作普通用户项目，它会在源码目录里创建 `.asd/` 数据库、`Alembic/candidates/` 候选知识——运行时垃圾污染源码树。
 
-### isOwnDevRepo() 保护机制
+### isExcludedProject() 保护机制
 
-`isOwnDevRepo` 通过三个同时成立的条件检测当前目录是否是 Alembic 自己的开发仓库：
+`lib/shared/isOwnDevRepo.ts` 现在提供的是三层排除判断：`isAlembicDevRepo()` 检测 Alembic 自身源码仓库，`isAlembicEcosystemRepo()` 检测 `alembic-*` 生态项目，`isExcludedProject()` 再把它们和 `.asd-skip` 标记统一成一个结果。
 
 ```typescript
 // lib/shared/isOwnDevRepo.ts
 export function isAlembicDevRepo(dir: string): boolean {
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
-  if (pkg.name === 'alembic') {
+  if (pkg.name === 'alembic-ai') {
     const hasBootstrap = fs.existsSync(path.join(dir, 'lib', 'bootstrap.ts'));
     const hasSoul = fs.existsSync(path.join(dir, 'SOUL.md'));
     return hasBootstrap && hasSoul;  // 三条件同时满足
   }
   return false;
 }
+
+export function isExcludedProject(dir: string) {
+  if (isAlembicDevRepo(dir)) return { excluded: true, reason: 'Alembic 源码开发仓库' };
+  if (isAlembicEcosystemRepo(dir)) return { excluded: true, reason: 'Alembic 生态项目' };
+  if (fs.existsSync(path.join(dir, '.asd-skip'))) return { excluded: true, reason: '项目包含 .asd-skip 标记' };
+  return { excluded: false, reason: '' };
+}
 ```
 
-为什么需要三个条件？只检查 `package.json` 的 `name` 字段不够——用户可能 fork 了项目但没改名。加上 `lib/bootstrap.ts`（源码标记）和 `SOUL.md`（灵魂文档）的存在性检查，基本排除了误判。
+为什么源码仓库需要三个条件？只检查 `package.json` 的 `name` 字段不够——用户可能 fork 了项目但没改名。加上 `lib/bootstrap.ts`（源码标记）和 `SOUL.md`（灵魂文档）的存在性检查，基本排除了误判。生态项目则用 `package.json.name.startsWith('alembic-')` 覆盖，例如 AlembicBook。
 
 检测结果在多个层面产生效果：
 
 | 组件 | 行为变化 |
 |------|----------|
-| `DatabaseConnection` | DB 路径重定向到 `$TMPDIR/alembic-dev/` |
-| `PathGuard` | 阻止创建 `.asd/` 和知识库目录 |
-| `SetupService` | 拒绝执行 `alembic setup` |
+| `DatabaseConnection` | DB 路径重定向到 `$TMPDIR/alembic-dev/alembic.db` |
+| `PathGuard` | 对排除项目阻止写入 `.asd/` 和知识库目录 |
+| `SetupService` | 非 Ghost 模式下拒绝执行 `alembic setup` |
 
-这样，开发者可以在 Alembic 源码仓库内正常运行 MCP 服务器（IDE 的 Agent 需要它），但所有运行时数据被隔离到临时目录，不会污染 git 工作树。
+这样，开发者可以在 Alembic 源码仓库或 AlembicBook 内正常运行 MCP 服务器（IDE 的 Agent 需要它），但运行时数据被隔离到临时目录，setup 写入被阻断，不会污染 git 工作树。
 
 ## 权衡与替代方案
 
@@ -528,7 +538,7 @@ Alembic 的 7 层架构不是为了"看起来专业"而设计的分层，它解�
 
 - **极薄入口**确保三个入口点（CLI / MCP / HTTP）行为一致
 - **两阶段初始化**将不可变的安全组件和可替换的业务服务分离
-- **惰性 DI 容器**用 60 行代码管理 60+ 个服务，无框架依赖
+- **惰性 DI 容器**用显式注册表管理 106 个 DI 键，并用 ServiceMap 覆盖核心 typed keys
 - **单向依赖规则**通过路径别名在文件名级别强制执行
 - **递归保护**让系统能安全地用自己开发自己
 
