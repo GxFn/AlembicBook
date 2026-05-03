@@ -351,6 +351,112 @@ MCP/HTTP 对 Gateway 的使用方式不同：
 
 这种设计让 MCP 和 HTTP 共享同一套 action/resource 语义，但 MCP 的处理函数可以独立于 Gateway 的 Action Handler——因为 MCP 工具的参数格式和 HTTP 路由不同，处理逻辑需要各自适配。
 
+### 写入工具的尾追溯协议
+
+MCP 写入工具不是“一次调用就结束”的 RPC。Alembic 会把下一步动作写回工具响应，让外部 IDE Agent 沿着响应继续追溯未完成的治理工作。当前最重要的是三条链路：提交候选、进化旧 Recipe、语义合并。
+
+**`alembic_submit_knowledge` — 外部候选统一入口**
+
+当前 `McpServer` 把 `alembic_submit_knowledge` 路由到 `enhancedSubmitKnowledge()`。它的同步流程是：
+
+```text
+rate limit
+  → 注入 source / dimensionId
+  → 读取 bootstrap session 的已提交标题
+  → new RecipeProductionGateway({
+      knowledgeService,
+      consolidationAdvisor,
+      proposalRepository,
+      evolutionGateway
+    })
+  → gateway.create({
+      source: 'mcp-external',
+      options: {
+        skipSimilarityCheck: true,
+        skipConsolidation?,
+        supersedes?,
+        existingTitles,
+        userId: developerIdentity
+      }
+    })
+  → 返回 created / rejected / blocked / proposals / pendingSemanticReview
+```
+
+这里显式跳过 fast similarity check，但没有跳过融合：`ConsolidationAdvisor` 会处理碎片化、批内重叠、与已有 Recipe 的 merge/reorganize/insufficient。能用工程规则处理的情况会直接转为 `EvolutionGateway` update/deprecate 提案；无法可靠判断的中度重叠会返回 `pendingSemanticReview`。
+
+当存在 `pendingSemanticReview` 时，响应会携带尾部指令：
+
+```json
+{
+  "pendingSemanticReview": [
+    { "index": 0, "title": "Candidate", "reason": "字段分析不明确..." }
+  ],
+  "nextAction": {
+    "tool": "alembic_consolidate",
+    "args": {
+      "decisions": [
+        { "newRecipeId": "", "action": "keep", "reasoning": "字段分析不明确..." }
+      ]
+    },
+    "required": false,
+    "reason": "建议阅读源代码后调用 alembic_consolidate 判断是否需要合并。"
+  }
+}
+```
+
+注意这里 `required: false`。这不是像 task close 后强制 guard 那样的硬门禁，而是“外部 Agent 最好继续处理”的追溯提示：服务端已经把候选持久化，语义裁决交给当前正在读代码的 IDE Agent。
+
+**`alembic_evolve` — 外部进化决策入口**
+
+`alembic_evolve` 只接受批量 decisions，最终全部进入 `EvolutionGateway`：
+
+```text
+propose_evolution
+  → gateway.submit({
+      action: 'update',
+      source: 'ide-agent',
+      confidence: 0.8,
+      evidence: [{ currentCode, filePath, suggestedChanges, verifiedBy }]
+    })
+
+confirm_deprecation
+  → gateway.submit({
+      action: 'deprecate',
+      source: 'ide-agent',
+      confidence: 0.9
+    })
+
+skip(still_valid)
+  → gateway.submit({
+      action: 'valid',
+      source: 'ide-agent',
+      confidence: 0.5
+    })
+
+skip(insufficient_info)
+  → 只计入 skipped，不刷新 lastVerifiedAt
+```
+
+这条路径同时服务两种场景：VSCode 弹窗 Review 后的手动验证，以及 `alembic_rescan` Mission Briefing 要求的“每个维度先 evolve 再 gap-fill”。
+
+**`alembic_consolidate` — 语义合并回调**
+
+`alembic_consolidate` 处理 `pendingSemanticReview` 的最终判断：
+
+```text
+keep
+  → no-op，保留新 Recipe
+
+merge
+  → gateway.submit(update, target=mergeTargetId, source='consolidation')
+  → gateway.submit(deprecate, target=newRecipeId, replacedByRecipeId=mergeTargetId)
+
+reject
+  → gateway.submit(deprecate, target=newRecipeId, source='consolidation')
+```
+
+因此外部 IDE Agent 的完整 rescan 链路是：`alembic_rescan` 返回 evidenceHints 和 evolutionPrescreen；Agent 对旧 Recipe 调 `alembic_evolve`；补新知识时调 `alembic_submit_knowledge`；如果响应尾部出现 `pendingSemanticReview`，再调 `alembic_consolidate` 收尾；最后用 `alembic_dimension_complete` 标记维度完成。
+
 ### Task 生命周期——意图驱动的 Agent 工作流
 
 19 个 MCP 工具中，`alembic_task` 是最特殊的一个——它不操作知识库，不检查代码，而是**管理 Agent 自身的行为**。当用户说"帮我实现网络缓存中间件"时，Agent 不应该直接开始写代码——它应该先加载相关的项目知识（这个项目怎么写中间件？有没有已有的模式？）、锚定一个任务追踪锚点、编码完成后检查合规性。

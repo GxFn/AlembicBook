@@ -90,11 +90,15 @@ Dashboard 是面向人类的知识管理界面——审核 AI 产出的候选知
 
 VSCode Extension 是 Alembic 在 IDE 中的存在形式——不是一个独立的面板，而是**编辑器内嵌的辅助能力**。
 
-核心设计思想：**最小侵入**。Extension 不弹窗、不强制面板、不修改编辑器布局——它通过三种轻量机制与开发者交互：
+核心设计思想：**默认最小侵入，只有高置信事件才打断用户**。Extension 不常驻侧边栏、不强制打开面板，日常能力主要通过命令、状态栏、诊断和 Copilot 工具暴露；只有当源码变化明确影响已有 Recipe 时，才走受控的 Reactive Evolution 弹窗。
 
-1. **指令注释（Directive）**——开发者在代码中写 `// as:s cookie management`，Extension 识别后在该行上方生成 CodeLens 按钮，点击即可搜索知识库
-2. **Guard 诊断（Diagnostics）**——当文件违反 Guard 规则时，违规行显示波浪下划线，鼠标悬停显示具体规则
-3. **状态栏指示器（StatusBar）**——底部状态栏显示连接状态（🟢 / 🔴），健康检查轮询
+当前实现的五个触点：
+
+1. **命令面板**——`alembic.search`、`alembic.create`、`alembic.audit`、`alembic.auditProject`、`alembic.status`
+2. **Guard 诊断（Diagnostics）**——手动触发 Guard API 后，把 violations 写入 `DiagnosticCollection`
+3. **状态栏指示器（StatusBar）**——只在 Alembic 项目中显示连接状态并轮询健康检查
+4. **Reactive Evolution**——`FileChangeCollector` 监听文件变化，后台上报 `/api/v1/file-changes`
+5. **Copilot 工具代理**——`vscode.lm.registerTool('alembic')` 暴露任务/决策记忆入口
 
 ```typescript
 // 指令正则模式
@@ -103,9 +107,61 @@ const CREATE_RE = /\/\/\s*(?:alembic|as):(?:create|c)\b(.*)?/
 const AUDIT_RE  = /\/\/\s*(?:alembic|as):(?:audit|a)\b(.*)?/
 ```
 
-三种指令对应三种操作：`as:s` 搜索知识、`as:c` 创建知识候选、`as:a` 审计当前文件。指令语法简短（`as:s` 而非 `alembic:search`），减少输入负担。
+指令检测和 CodeLens Provider 仍保留在代码中，但当前入口以命令面板和 Copilot 工具为主：`onDidSaveTextDocument` 自动执行指令的路径是关闭的。这一点很重要——Guard 波浪线不是每次保存都自动检查，而是由 `alembic.audit` / `alembic.auditProject` 调用 `GuardDiagnostics.checkFile()`。
 
 **RemoteCommandPoller** 是 Extension 的秘密武器——它轮询 HTTP Server 的 `/api/v1/remote/pending` 端点，获取来自飞书或 Dashboard 的远程命令。当飞书用户说"帮我生成 NetworkKit 的单元测试"，LarkTransport 把这条命令加入队列，Extension 在下一次轮询时取到命令，通过 Copilot Chat API 执行，再把结果回传。这实现了**飞书 → 服务端 → IDE** 的跨端指令链路。
+
+**FileChangeCollector：从监听到上报**
+
+文件变化监听不是一个单独 watcher，而是一个统一采集器。`activate()` 创建 `FileChangeCollector(apiClient, context, handleReactiveReport)`；Collector 构造时先检查工作区是否是 Alembic 项目，判断标准是工作区根目录存在 `Alembic/`、`.asd/`，或 `~/.asd/projects.json` 中有 ghost 注册。没有项目标记时，整个文件变化采集链路不会启动。
+
+Collector 启动后三类来源并行进入同一个 `EventBuffer`：
+
+| 来源 | VSCode / Git 入口 | 上报事件 | eventSource | 作用 |
+|:---|:---|:---|:---|:---|
+| IDE 重命名 | `workspace.onDidRenameFiles` | `renamed` + `oldPath` + `path` | `ide-edit` | 后端可自动重写 Recipe 路径 |
+| IDE 删除 | `workspace.onDidDeleteFiles` | `deleted` | `ide-edit` | 后端可判断是否直接弃用 Recipe |
+| IDE 创建 | `workspace.onDidCreateFiles` | `created` | `ide-edit` | 后端跳过，留给 rescan 补齐新知识 |
+| IDE 保存 | `workspace.onDidSaveTextDocument` | `modified` | `ide-edit` | 进入 diff-based 影响分析，允许弹窗 |
+| Git HEAD 变化 | watch `.git/HEAD`，2 秒防抖后 `git diff --name-only old..new` | `modified` | `git-head` | 捕捉批量切换/拉取后的变更路径，不弹窗 |
+| Working Tree 扫描 | 窗口重新聚焦 3 秒后 + 5 分钟定时 | `created` 或 `modified` | `git-worktree` | 覆盖外部工具或 AI 在 IDE 外产生的未提交变更，不弹窗 |
+
+这里有两个实现边界需要注意。第一，Git HEAD 路径只 watch `.git/HEAD`，因此它可靠覆盖分支切换、detached HEAD 等 HEAD 文件变化；普通分支内 commit/pull 是否触发，取决于 VS Code 对 `.git/HEAD` 的事件表现，当前实现没有直接 watch `.git/refs/heads/*`。第二，Working Tree 扫描只比较“当前 dirty/untracked 集合中新出现的路径”，因此它用于发现进入 dirty set 的文件，不负责把外部删除精确上报为 `deleted`；外部删除在这条路径上通常以 `modified` 进入，真正的删除分类会在 rescan 的增量 diff 中补上。
+
+**EventBuffer：合并、限流和降噪**
+
+`EventBuffer` 的目标是把 IDE 噪声压成少量领域事件，而不是逐次保存都打到服务端：
+
+```typescript
+push(event):
+  if modified && same path within 30s:
+    skip
+
+  if pending has created:path:
+    deleted  -> cancel created
+    modified -> keep created
+
+  if same key already has eventSource='ide-edit':
+    ignore git-head / git-worktree duplicate
+
+  pending[key] = event
+  schedule flush in 3s
+```
+
+Flush 时再做最后一层过滤：`.asd/`、`.git/`、`node_modules/` 不上报。之后通过 `ApiClient.reportFileChanges()` POST 到 `/api/v1/file-changes`。API 不可用、HTTP 失败或响应结构不符合 `{ needsReview, details }` 时，客户端返回 `null` 并静默跳过弹窗；文件监听链路不因为服务端离线而影响编辑器。
+
+**从响应到弹窗**
+
+服务端返回的是 `ReactiveEvolutionReport`，Extension 只在非常窄的条件下弹窗：
+
+1. `alembic.enableReactivePopup = true`，并且用户没有在本 session 点过 "Don't Show Again"
+2. `report.eventSource === 'ide-edit'`，Git 批量来源一律不弹
+3. `report.suggestReview === true`
+4. 明细中存在 `impactLevel = direct | pattern`，且 action 是 `needs-review` 或 `deprecate`
+5. 全局弹窗冷却已超过 2 分钟
+6. 对应 Recipe 没有处在递增退避期内
+
+多条 Recipe 会折叠成一条通知，最多预览 3 个标题。按钮行为也对应真实代码：`Review` 打开 IDE Chat 并预填 evolve prompt；`Auto Check` 新建终端执行 `asd evolve-check --recipes <ids>`；`Don't Show Again` 只关闭当前 VS Code session 的弹窗；直接关闭通知会让这些 Recipe 的退避计数加 1，下一次至少延后 1 天，再忽略则延后 2 天，最多 7 天。
 
 ### 飞书 Lark Transport
 
@@ -412,24 +468,35 @@ VSCode Extension（每 3 秒轮询）
 ### 场景 3：VSCode 中的无感交互
 
 ```yaml
-① 开发者在 VS Code 中编写代码：
-   // as:s cookie management pattern
+① 开发者打开一个 Alembic 项目
+   → Extension onStartupFinished 激活
+   → hasAnyProject() 命中 Alembic/ 或 .asd/
+   → StatusBar 开始健康检查轮询
+   → FileChangeCollector 注册 IDE 文件事件 + Git/Working Tree 采集
 
-② Extension 的 DirectiveCodeLensProvider 识别指令
-   → 行上方显示 CodeLens 按钮 "🔍 Search Alembic"
+② 开发者需要查询知识时
+   → Command Palette 执行 "Alembic: Search Knowledge Base"
+   → ApiClient.search(query)
+   → HTTP GET /api/v1/search?q=...
+   → QuickPick 展示 Recipe 代码预览
+   → 选择后 editor.edit() 插入代码片段
 
-③ 开发者点击按钮
-   → ApiClient.search("cookie management pattern")
-   → HTTP GET /api/v1/search?q=cookie+management+pattern
-   → 返回 Top-5 Recipe
+③ 开发者需要 Guard 检查时
+   → 执行 "Alembic: Audit Current File"
+   → GuardDiagnostics.checkFile(document)
+   → POST /api/v1/guard/file
+   → violations 写入 DiagnosticCollection
+   → Problems 面板和编辑器波浪线显示违规
 
-④ VS Code 弹出快速面板
-   → 选择一条 Recipe → 代码片段插入到光标位置
+④ 开发者保存 PaginationController.swift
+   → onDidSaveTextDocument 命中 file + in-scope
+   → EventBuffer.push({ type: modified, eventSource: ide-edit })
+   → 3 秒后批量 POST /api/v1/file-changes
 
-（同时，在后台）
-⑤ Extension 的 GuardDiagnostics 监听文件保存事件
-   → 当前文件发送到 /api/v1/guard/file
-   → 返回违规列表 → 波浪下划线标记违规行
+⑤ 服务端返回 ReactiveEvolutionReport
+   → 若 suggestReview=true 且存在 pattern/direct 影响
+   → handleReactiveReport 通过冷却、退避、来源过滤
+   → VS Code 弹窗提示 Review / Auto Check / Don't Show Again
 ```
 
 ## 权衡与替代方案
@@ -462,7 +529,7 @@ Alembic 的四端接入共享一个核心——ServiceContainer 中的 70+ 服�
 
 - **CLI** 提供 18+ 命令覆盖全部管理功能，`guard:ci` 集成 CI/CD 管道，`--json` 支持脚本消费
 - **Dashboard** 用 React 19 + Socket.IO 实现 10 个页面的实时管理界面，Bootstrap 进度条和知识审核流是核心体验
-- **VSCode Extension** 通过指令注释、CodeLens 和 Guard 诊断实现最小侵入的 IDE 集成，RemoteCommand 桥接飞书指令
+- **VSCode Extension** 通过命令面板、Guard 诊断、Reactive Evolution 文件变化采集和 Copilot 工具代理实现最小侵入的 IDE 集成，RemoteCommand 桥接飞书指令
 - **Lark Transport** 把飞书群聊变成知识入口，意图分类路由到 bot_agent（知识操作）和 ide_agent（编程任务）
 
 四种界面形态的共同点是：它们都不包含业务逻辑——业务逻辑在 Service 层和 Domain 层。CLI 是 ServiceContainer 的命令行外壳，Dashboard 是 HTTP API 的可视化外壳，Extension 是 API 的 IDE 嵌入，Lark 是 AgentRuntime 的自然语言外壳。四个外壳，一个内核。

@@ -166,13 +166,13 @@ stages:
   analyze → quality_gate → produce → rejection_gate
 ```
 
-如果是重扫且存在旧 Recipe，还可能在前面插入：
+如果存在旧 Recipe 且还没有完成 prescreen，StageFactory 仍保留插入进化阶段的能力：
 
 ```text
 evolve → evolution_gate
 ```
 
-这说明冷启动和重扫共用同一套单维度 Agent pipeline，只是输入上下文和阶段组合不同。
+但当前 internal rescan 的实装会先构建 `evolutionPrescreen`，再把它传入 `dispatchInternalDimensionExecution()`。因此 rescan 的维度填充通常不会再插入 per-dimension evolve stage，而是运行 `analyze → quality_gate → produce → rejection_gate`；旧 Recipe 的进化判断已经被前置的 `RecipeImpactPlanner + runEvolutionAudit()` 接走。冷启动和重扫仍共用同一套单维度 Agent pipeline，只是输入上下文和阶段组合不同。
 
 ## 外部维度完成
 
@@ -240,12 +240,18 @@ Mission Briefing 会包含：
 
 - preserved recipes。
 - audit summary。
-- evidencePlan。
+- evidencePlan：`allRecipes`、`dimensionGaps`、`executionReasons`、`occupiedTriggers`。
 - dimension gaps。
 - evolution prescreen。
 - execution reasons。
 
-外部 IDE Agent 收到后执行：先处理需要验证的旧 Recipe，再补齐 gap 维度，最后调用 `alembic_dimension_complete`。
+外部 IDE Agent 收到后执行三步：
+
+1. **Evolve**：过滤本维度 `evolutionPrescreen.needsVerification` 中的 Recipe，读取 sourceRefs 源码后调用 `alembic_evolve`。
+2. **Gap-Fill**：参考 `dimensionGaps[].gap` 和 `occupiedTriggers`，调用 `alembic_submit_knowledge` 提交未覆盖的新模式，避免重复已有 trigger。
+3. **Complete**：调用 `alembic_dimension_complete`，带上 referencedFiles、keyFindings 和 analysisText。
+
+外部路径不会启动内部 Agent。服务端只把证据、gap 和约束放入 Mission Briefing，让 IDE Agent 用自己的上下文窗口和代码阅读能力完成进化判断。
 
 ## Rescan 内部路径
 
@@ -273,11 +279,18 @@ runRescanCleanPolicy() / runForceRescanCleanPolicy() / snapshotRecipes()
 
 ![Rescan 内部治理链路](/images/ch09/02-rescan-internal-governance.png)
 
+内部路径里有两个容易混淆的“进化”：
+
+- **批量进化审计**：`RecipeImpactPlanner.plan()` 生成候选后，`runEvolutionAudit()` 启动 `evolution-audit` profile。Agent 读取真实代码后调用 `knowledge.manage(operation: "evolve" | "deprecate" | "skip_evolution")`，提案来源标记为 `rescan-evolution`。
+- **维度 gap-fill**：后续 internal dimension execution 只补齐 gap。`BootstrapRescanState` 会把有效旧 Recipe 写入去重集合，把 decaying Recipe 和 occupied triggers 注入 prompt，Producer 被限制为最多提交本维度 gap 数量的候选。
+
+因此 internal rescan 不是“每个维度全量重跑并顺便检查旧知识”。它先用工程 diff 和 SourceRef 找出受影响 Recipe，把复杂判断交给 Evolution Agent；然后维度 pipeline 只在有 coverage-gap、recipe-decay 或 file-change reason 的维度里补新知识。
+
 ## Recipe 审计与 Gap Plan
 
 重扫的关键逻辑在 `KnowledgeRescanPlanner` 和 `KnowledgeRescanPlanBuilder`。
 
-`auditRecipesForRescan()` 使用 `RelevanceAuditor`，输入：
+`auditRecipesForRescan()` 当前是 `KnowledgeRescanPlanner` 中的覆盖分类函数，输入：
 
 - 旧 Recipe 快照。
 - 当前文件列表。
@@ -285,6 +298,8 @@ runRescanCleanPolicy() / runForceRescanCleanPolicy() / snapshotRecipes()
 - 内部路径还会结合 `RecipeImpactPlanner` 对增量 diff、source refs 和 lifecycle 状态做覆盖分类。
 
 输出 audit verdict：`healthy`、`watch`、`decay`、`severe`、`dead` 等。
+
+分类优先级是 `RecipeImpactPlanner` 候选 → SourceRef 桥接表健康度 → lifecycle 兜底。也就是说，internal rescan 如果拿到了 diff，会优先相信“这次变更具体影响了哪条 Recipe”；外部 rescan 没有 candidatePlan，则主要依赖 SourceRef 和 lifecycle 做覆盖分类。
 
 `buildKnowledgeRescanPlan()` 按维度计算：
 

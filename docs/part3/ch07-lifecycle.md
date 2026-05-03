@@ -295,11 +295,19 @@ interface CreateRecipeResult {
 
 **Step 2 — Similarity Check**
 
-对每个候选调用 `findSimilarRecipes()`，阈值 0.5 召回候选、0.7 判定重复。重复项记入 `duplicates[]` 但不阻塞（信息性警告）。`batch-import` 来源可通过 `skipSimilarityCheck` 跳过此步骤。
+这是可插拔的快速去重层。只有调用方注入 `findSimilarRecipes()` 且没有设置 `skipSimilarityCheck` 时才执行：召回阈值固定用 `0.5`，判重阈值默认 `0.7`。命中的候选会进入 `duplicates[]`，并从后续创建列表中移除；这不是提示性 warning，而是阻断创建。
+
+当前各入口的配置不同：
+
+- 外部 MCP `alembic_submit_knowledge` 会设置 `skipSimilarityCheck: true`，主要依赖后续 `ConsolidationAdvisor` 做提交前融合。
+- 内部 V2 `knowledge.submit` 当前设置 `skipSimilarityCheck: true` 且 `skipConsolidation: true`，但仍走 `RecipeProductionGateway` 的 schema validation、create 和 quality scoring。
+- `RecipeProductionGateway` 本身保留了相似度层，供 batch/import 或未来开启该层的入口复用。
 
 **Step 3 — Consolidation Scan**
 
-`ConsolidationAdvisor.analyze()` 对通过相似度检查的候选做融合分析——如果发现某个候选与已有 Recipe 高度重叠，建议 merge、reorganize 或 supersede。建议被转换为 Evolution Proposal 写入 `evolution_proposals` 表，候选本身不创建。ConsolidationAdvisor 失败时静默降级——直接进入 Step 4。
+`ConsolidationAdvisor.analyzeBatch()` 是外部 MCP 提交路径的关键防碎片化层。它先逐条分析候选与现有 Recipe 的关系，再检查同一批候选之间的内部重叠：批内相似度 `>= 0.65` 时，后面的候选会被当作较弱项移除并记入 `duplicates[]`。
+
+对候选与既有 Recipe 的关系，Advisor 会给出 `create / merge / reorganize / insufficient` 四类建议。`merge` 会通过 `EvolutionGateway.submit({ action: 'update', source: 'consolidation' })` 为目标 Recipe 创建更新提案；`reorganize` 会对多个目标 Recipe 分别创建低置信度 update 提案；`insufficient` 如果能找到覆盖它的 Recipe，会转成“补充到已有 Recipe”的 update 提案，否则进入 `blocked[]`。Advisor 异常时才会降级为直接提交。
 
 **Step 4 — Create**
 
@@ -313,7 +321,7 @@ interface CreateRecipeResult {
 
 如果调用方指定了 `options.supersedes`（被替代的旧 Recipe ID），在新 Recipe 创建成功后自动创建 `deprecate` 类型的进化提案，关联新旧 Recipe。
 
-这个设计的核心价值是**入口统一**——内部 Agent 通过 V2 的 `knowledge.submit` action，外部 IDE Agent 通过 MCP `alembic_submit_knowledge`，最终走同一条校验管线。没有"捷径"可以绕过 Schema Validation 或 Similarity Check 直接创建 Recipe。
+这个设计的核心价值是**对象模型统一，但入口策略可分层**：内部 Agent 通过 V2 `knowledge.submit`，外部 IDE Agent 通过 MCP `alembic_submit_knowledge`，最终都进入 `RecipeProductionGateway`，但是否开启 similarity / consolidation 由入口显式决定。书里讨论“提交时融合”时，必须区分外部 MCP 的强融合路径和内部 v2 tool 的轻提交路径。
 
 ### LifecycleStateMachine — 唯一权威
 
@@ -435,20 +443,75 @@ type DecayStrategy =
 
 ### FileChangeHandler：文件变更驱动的实时进化
 
-代码在持续变化，如果知识库不能感知这些变化，就会从资产变成负债。`FileChangeHandler` 是连接 IDE 文件事件和知识进化的桥梁——它处理四种文件变更事件，每种有不同的策略：
+代码在持续变化，如果知识库不能感知这些变化，就会从资产变成负债。实时进化链路并不是让 VSCode Extension 直接调用知识服务，而是分成四层：
+
+```text
+VSCode FileChangeCollector
+  → EventBuffer 合并/限流
+  → POST /api/v1/file-changes
+  → FileChangeDispatcher
+  → FileChangeHandler
+```
+
+HTTP 路由只做领域无关的 schema 校验：事件类型必须是 `created | modified | renamed | deleted`，路径必须是字符串，`eventSource` 只能是 `ide-edit | git-head | git-worktree`。非法事件被过滤，整个批次没有有效事件时返回空 report。真正的知识判断都在 `FileChangeHandler`。
+
+`FileChangeHandler` 处理四种文件变更事件，每种事件对应不同的确定性策略：
 
 | 事件类型 | 处理策略 | 是否涉及 Agent |
 |:---|:---|:---|
-| `renamed` | ContentPatcher 自动修复路径，更新 sourceRefs/reasoning/markdown | 否 — 纯代码逻辑 |
-| `deleted` | 全部 sourceRef 失效时 → Gateway.submit(deprecate, conf=0.9) | 否 — 纯代码逻辑 |
-| `modified` | diff-based 影响评估 + quality signal + pattern 级持久化提案 | 否 — 纯代码分析 |
-| `created` | 跳过（新文件不影响已有 Recipe） | — |
+| `renamed` | 查 `recipe_source_refs`，自动替换旧路径为新路径，并重写 Recipe 文本字段和 `.md` 文件 | 否 — 纯代码逻辑 |
+| `deleted` | 将该 sourceRef 标记为 `stale`；若 Recipe 没有其他 active ref，则 `Gateway.submit(deprecate, conf=0.9)` | 否 — 纯代码逻辑 |
+| `modified` | 只处理 active Recipe；用 `git diff HEAD -U0 -- <path>` 做 diff-based 影响评估；`pattern` 级创建 update 提案，`reference` 级只发 signal | 否 — 纯代码分析 |
+| `created` | 计入 skipped；新文件的知识空位留给 rescan / bootstrap 流程处理 | — |
 
-其中 `renamed` 和 `deleted` 是确信路径——系统有足够信息做出自动决策。`modified` 是最复杂的事件类型，需要分析改动文件对每条关联 Recipe 的影响程度。
+其中 `renamed` 和 `deleted` 是确信路径——系统有足够信息做自动修复或自动弃用。`modified` 是最复杂的事件类型：它只说明“某个源码文件变了”，还需要判断这次 diff 是否真的动到了 Recipe 所描述的 API 或模式。
+
+**rename：自动修复可信路径**
+
+VSCode 内部重命名文件时，Extension 上报 `{ type: 'renamed', oldPath, path: newPath, eventSource: 'ide-edit' }`。后端先用旧路径查询 `recipe_source_refs`：
+
+```typescript
+const affected = sourceRefRepo.findBySourcePath(oldPath);
+```
+
+没有关联 Recipe 就跳过。有命中时，每条 Recipe 走三步修复：
+
+1. `ContentPatcher.applyProposal()` 生成一次 `sourceRefs` 的 `replace-item` 修复，把旧路径替换成新路径
+2. `recipeSourceRefRepository.replaceSourcePath(recipeId, oldPath, newPath, now)` 更新桥接表，状态恢复为 `active`
+3. `rewriteRecipePaths()` 同步重写 `reasoning.sources`、`content.markdown`、`coreCode` 和磁盘上的 Recipe `.md` 文件
+
+如果 patch 或重写失败，系统不会贸然弃用 Recipe，只会把旧 sourceRef upsert 为 `stale`，等待后续 reconcile/rescan 兜底。这体现了 rename 路径的判断原则：路径变化可以自动修，修不了也只是证据链变弱，不等价于知识失效。
+
+**delete：区分“单源死亡”和“多源残缺”**
+
+删除路径先被写入 `recipe_source_refs(status='stale')`。然后系统查询同一 Recipe 的所有 sourceRef，排除当前删除路径后，只保留仍然 `active` 的引用：
+
+```typescript
+const allRefs = sourceRefRepo.findByRecipeId(recipeId);
+const activeRefs = allRefs.filter(
+  r => r.sourcePath !== deletedPath && r.status === 'active'
+);
+```
+
+如果 `activeRefs.length > 0`，说明这条 Recipe 还有其他代码证据，只记录 `skip` 明细并增加 skipped 计数；它会在后续质量评估中因为 stale ratio 上升而降权，但不会立即退役。
+
+如果 `activeRefs.length === 0`，说明这条 Recipe 的来源证据全部断裂，`FileChangeHandler` 提交高置信 deprecate 决策：
+
+```typescript
+await gateway.submit({
+  recipeId,
+  action: 'deprecate',
+  source: 'file-change',
+  confidence: 0.9,
+  evidence: [{ deletedPath, remainingActiveRefs: 0 }],
+});
+```
+
+`EvolutionPolicy.shouldImmediateExecute()` 对 `deprecate + confidence >= 0.8 + source !== 'metabolism'` 返回 true，因此这类文件删除通常会直接进入 `LifecycleStateMachine.transition(→ deprecated)`。如果状态机或 Guard 拒绝，`EvolutionGateway` 会降级创建 Proposal，让人类或后续信号继续判断。
 
 **v3 Diff-Based 影响分析**
 
-当文件被修改时，`FileChangeHandler` 通过 `SourceRefRepository.findBySourcePath(path)` 找到所有引用该文件的 Recipe，然后用 **diff-based 内容影响评估**计算影响级别——分析「这次改了什么」（diff），而非「文件整体和 Recipe 有多像」。
+当文件被修改时，`FileChangeHandler` 先通过 `SourceRefRepository.findBySourcePath(path)` 找到所有引用该文件的 Recipe，再过滤掉非 `active` 的条目。只有 active Recipe 才进入 **diff-based 内容影响评估**——分析「这次改了什么」（diff），而非「文件整体和 Recipe 有多像」。
 
 核心流程分四步：
 
@@ -459,9 +522,9 @@ export function assessFileImpact(
   relativePath: string,
   recipeTokens: RecipeTokens
 ): DiffImpactResult | null {
-  // 1. git diff -U0 获取文件行级变更
+  // 1. git diff HEAD -U0 -- <file> 获取 staged + unstaged 行级变更
   const diffText = getFileDiff(projectRoot, relativePath);
-  if (!diffText) { return null; }  // 无 git / untracked → 跳过
+  if (!diffText) { return null; }  // 无 git / untracked / 无变更 → 跳过
 
   // 2. 解析 diff hunks
   const hunks = parseDiffHunks(diffText);
@@ -474,10 +537,10 @@ export function assessFileImpact(
 }
 ```
 
-Recipe tokens 从全字段提取——`coreCode`、`content.markdown` 中的代码块、`content.pattern`、`content.steps[].code`，覆盖知识实体的全部代码语义：
+Recipe tokens 由 `shared/recipe-tokens.ts` 从全字段提取——`coreCode`、`content.markdown` 中的代码块、`content.pattern`、`content.steps[].code`，覆盖知识实体的全部代码语义：
 
 ```typescript
-// lib/service/evolution/ContentImpactAnalyzer.ts
+// lib/shared/recipe-tokens.ts
 export function extractRecipeTokens(entry: {
   coreCode?: string;
   content?: { markdown?: string; pattern?: string; steps?: Array<{ code?: string }> };
@@ -487,16 +550,16 @@ export function extractRecipeTokens(entry: {
 影响评分公式：`score = |T_R ∩ T_Δ| / |T_R|`，其中 `T_R` 是 Recipe 特征标识符集合，`T_Δ` 是 diff 变更行标识符集合。分级：
 
 - `score ≥ 0.3` → `pattern`（diff 动到了 30%+ 的 Recipe 关键标识符）
-- `score > 0` → `reference`（diff 动到了少量 Recipe 标识符）
+- `score < 0.3` → `reference`（diff 影响较弱；即使 score=0，也因为存在 sourceRef 关联而保留低权重信号）
 - 无法获取 diff → 跳过（不做降级）
 
-三个影响级别对应不同的 signal 权重：
+实时 `modified` 分析当前只会返回 `pattern` 或 `reference`，这两类会发射 `source_modified` signal。`direct` 来自删除路径：文件被删除且 Recipe 没有其他 active sourceRef 时，report 中标记为 `impactLevel='direct'`，并走 deprecate 链路。三类影响在策略层的权重如下：
 
-| impactLevel | signal weight | 含义 |
+| impactLevel | 权重/强度 | 含义 |
 |:---|:---|:---|
-| `direct` | 0.8 | 文件删除且无其他引用 → 最高权重 |
+| `direct` | 0.8 | 文件删除且无其他 active sourceRef → 最高权重 |
 | `pattern` | 0.6 | diff 动到了 30%+ 的 Recipe 关键标识符 → 高权重 |
-| `reference` | 0.3 | diff 有少量 Recipe 标识符命中 → 低权重 |
+| `reference` | 0.3 | diff 未达到 pattern 阈值，但文件仍是 Recipe 的来源引用 → 低权重 |
 
 `pattern` 级别除了发射 signal，还会通过 `EvolutionGateway` 持久化为 update 提案——确保即使弹窗被用户忽略，后续增量扫描仍然能处理：
 
@@ -512,7 +575,7 @@ await this.#gateway.submit({
 });
 ```
 
-所有级别都发射 quality signal（`ProposalExecutor` 消费）：
+对 `modified` 事件，只要 diff 能成功评估，`pattern` 和 `reference` 都会发射 `source_modified` quality signal（`ProposalExecutor` 消费）：
 
 ![v3 Diff-Based 文件变更影响分析](/images/ch07/04-diff-based-impact-analysis.png)
 
@@ -522,16 +585,16 @@ signalBus.send('quality', 'FileChangeHandler', IMPACT_WEIGHTS[impactLevel], {
   metadata: {
     reason: 'source_modified',
     modifiedPath,
-    impactLevel,  // 'direct' | 'pattern' | 'reference'
+    impactLevel,  // 当前 modified 路径为 'pattern' | 'reference'
   }
 })
 ```
 
-这些 signal 有三个消费方：`ProposalExecutor` 在评估提案时将其作为证据（§9.1：`direct`/`pattern` signal 阻止 deprecate 提案执行）、增量扫描的进化前置用它过滤需要 Agent 验证的 Recipe、VSCode 扩展根据影响摘要展示弹窗引导开发者审视。
+这些 signal 的主要消费方是 `ProposalExecutor`：在评估 observing Proposal 时，高影响 `source_modified` signal 会阻止 deprecate 提案执行。增量 rescan 当前不直接读取这条 SignalBus 事件，而是从 ProjectIntelligence 的 diff、SourceRef 桥接表和 lifecycle 重新计算受影响 Recipe。VSCode 弹窗也不订阅 SignalBus，它消费的是 `/file-changes` HTTP 响应里的 `ReactiveEvolutionReport`。
 
 **VSCode 弹窗进化建议**
 
-当文件修改导致 `impactLevel` 为 `'direct'` 或 `'pattern'` 时，HTTP 响应将影响摘要返回给 VSCode 扩展，扩展展示三按钮弹窗：
+当文件变化导致 report 中出现 `impactLevel='direct'` 或 `impactLevel='pattern'`，并且这批事件来自 `ide-edit` 时，HTTP 响应将影响摘要返回给 VSCode 扩展，扩展展示三按钮弹窗：
 
 ```
 ┌───────────────────────────────────────────────────────────┐
@@ -555,30 +618,50 @@ signalBus.send('quality', 'FileChangeHandler', IMPACT_WEIGHTS[impactLevel], {
 
 按钮行为：
 - **Review** → 打开 IDE Chat，预填包含受影响 Recipe 的 evolve prompt；重置该 Recipe 的退避计数
-- **Auto Check** → 开启终端执行 `alembic evolve-check --recipes <ids>`；重置退避计数
+- **Auto Check** → 开启终端执行 `asd evolve-check --recipes <ids>`；重置退避计数
 - **Don't Show Again** → session 级静默，提示用户如需永久关闭可在设置中禁用 `alembic.enableReactivePopup`
 - **关闭/忽略** → 该 Recipe 退避计数 +1，未处理的 Recipe 由增量扫描统一处理
 
+**未处理弹窗如何进入增量扫描**
+
+弹窗关闭并不会向后端提交“用户拒绝”决策。VSCode 扩展只在本地增加 `dismissCount`，用于后续退避；真正的系统证据在弹窗出现前已经由后端落地：
+
+1. `FileChangeHandler` 对 `pattern` 级 modified 事件已经调用 `EvolutionGateway.submit({ action: 'update', source: 'file-change' })`，创建或升级 update Proposal。
+2. 同一事件还会发射 `quality` signal，metadata 中带 `reason: 'source_modified'`、`modifiedPath`、`impactLevel`。
+3. 如果用户没有处理，下一次 internal rescan 会从 `RecipeImpactPlanner.plan(_incrementalPlan?.diff)` 重新计算候选：deleted 文件变成 `source-deleted / source-deleted-partial`，modified 文件只有达到 `pattern` 级才进入 `source-modified-pattern`，stale SourceRef 则进入 `source-missing`。
+4. `auditRecipesForRescan()` 优先使用这些 diff 候选，其次才看 SourceRef 健康度和 lifecycle 兜底；因此弹窗不是唯一入口，未处理事项会回到统一的 rescan 审计和 Evolution Agent 验证链路。
+
+这条兜底链路解释了为什么弹窗可以“轻”：它只是把实时建议呈现给人，系统内部已经保留了足够的证据，后续 rescan 仍能以批处理方式继续推进。
+
 ### RecipeSimilarity：统一相似度算法
 
-知识库需要在多个场景下比较两条 Recipe 的相似度——融合分析判断是否需要合并、冗余检测识别重复、批内互重叠阻止。为了避免不同模块各自实现导致同一对 Recipe 得到不同分数，`RecipeSimilarity` 提供统一的 4 维加权 Jaccard 相似度：
+知识库需要在多个场景下比较两条 Recipe 的相似度——融合分析判断是否需要合并、冗余检测识别重复、批内互重叠阻止。为了避免不同模块各自实现导致同一对 Recipe 得到不同分数，`RecipeSimilarity` 提供统一的 5 维加权相似度：
 
 ```typescript
 // lib/domain/evolution/RecipeSimilarity.ts
-export const WEIGHTS = { title: 0.2, clause: 0.3, code: 0.3, guard: 0.2 } as const;
+export const WEIGHTS = {
+  title: 0.15,
+  clause: 0.25,
+  code: 0.15,
+  content: 0.30,
+  guard: 0.15,
+} as const;
 
 class RecipeSimilarity {
   static compute(a: RecipeLike, b: RecipeLike): number {
-    const d1 = titleJaccard(a.title, b.title);        // 标题词集交并比
-    const d2 = clauseJaccard(a, b);                    // do/dontClause 词集交并比
-    const d3 = codeSimilarity(a.coreCode, b.coreCode); // 3-gram Jaccard
-    const d4 = guardMatch(a, b);                       // trigger/guard 精确匹配
-    return 0.2 * d1 + 0.3 * d2 + 0.3 * d3 + 0.2 * d4;
+    const dims = computeDimensions(a, b);
+    return (
+      0.15 * dims.title +    // 标题关键词 Jaccard
+      0.25 * dims.clause +   // do/dontClause 关键词 Jaccard
+      0.15 * dims.code +     // coreCode 3-gram Jaccard
+      0.30 * dims.content +  // coreCode + markdown code + pattern + steps 的标识符 token
+      0.15 * dims.guard      // guardPattern 精确匹配
+    );
   }
 }
 ```
 
-`ConsolidationAdvisor` 和 `RedundancyAnalyzer` 都调用此共享实现，确保相似度判断的一致性。相似度阈值 ≥ 0.65 判定为高冗余，0.40-0.65 为中等重叠需要进一步分析。
+`ConsolidationAdvisor`、`RedundancyAnalyzer` 和 bootstrap session 级去重都复用这套语义。相似度阈值 `>= 0.65` 判定为高重叠，`0.40-0.65` 为中等重叠，需要进入字段级分析或 Agent 语义复核。
 
 除了综合分数，`RecipeSimilarity.analyzeFields()` 还提供字段级分析（Layer 1.5），供融合决策使用：
 
@@ -589,7 +672,7 @@ class RecipeSimilarity {
 
 ### EvolutionGateway — 统一决策入口
 
-`EvolutionGateway` 是所有进化决策的统一入口。无论来源是 Agent 工具、RelevanceAuditor、FileChangeHandler 还是 DecayDetector，所有进化意图都通过 `submit()` 提交：
+`EvolutionGateway` 是所有进化决策的统一入口。无论来源是 Agent 工具、rescan evolution audit、FileChangeHandler 还是 DecayDetector，所有进化意图都通过 `submit()` 提交：
 
 ```typescript
 // lib/service/evolution/EvolutionGateway.ts
@@ -631,7 +714,7 @@ EvolutionDecision 到达
 
 `valid` action 是一个轻量操作——Agent 在增量扫描的 Phase A 中对健康的 Recipe 调用 `submit({ action: 'valid' })`，只刷新时间戳证明"我验证过了"，不创建任何提案。这是 Phase A 过滤效率的关键：80% 的健康 Recipe 走 `valid` 路径，只消耗一次时间戳写入。
 
-高置信度废弃（`confidence ≥ 0.8`）的立即执行路径是一个重要的优化。当 `RelevanceAuditor` 判定某条 Recipe 为 `dead`（所有证据消失，分数 < 20，置信度 0.95），没有必要等观察期——直接废弃。但即使在这条快速路径上，废弃操作仍然必须通过 `LifecycleStateMachine` 的守卫检查——如果 Guard 拒绝了这次转换（比如该 Recipe 处于不允许直接废弃的状态），系统会自动降级为创建提案。
+高置信度废弃（`confidence ≥ 0.8`）的立即执行路径是一个重要的优化。当文件删除、外部 IDE Agent 或 rescan evolution audit 以高置信度确认某条 Recipe 已无代码依据时，没有必要先创建长期等待的提案——可以直接尝试废弃。但即使在这条快速路径上，废弃操作仍然必须通过 `LifecycleStateMachine` 的守卫检查；如果状态机拒绝这次转换，系统会自动降级为创建提案。
 
 **Evidence 升级机制（Dedup 后追加证据）**
 
@@ -744,92 +827,148 @@ static evaluateDeprecate(currentDecay: number, snapshotDecay: number): Deprecate
 
 ## 增量扫描中的进化前置
 
-增量扫描（rescan）是知识进化的主战场。当项目代码发生变化后，系统需要判断哪些现有 Recipe 需要更新、废弃或合并，同时补齐新增的知识空位。传统的做法是让 Agent 逐条审视维度内所有 Recipe，包括那些完全健康的——这带来了大量无效的 token 消耗。
+增量扫描（rescan）是实时文件监听的批处理兜底。当用户没有处理 VSCode 弹窗，或者文件变化来自 Git / Working Tree 扫描而不会弹窗时，rescan 会重新构建项目结构，并把旧 Recipe 的真实性、SourceRef 健康度和维度 gap 放到同一张计划里处理。
 
-### 两阶段分离：Phase A + Phase B
+### Internal Rescan：工程预筛 + Evolution Agent
 
-新设计将增量扫描拆为两个阶段：
+内部路径的进化前置发生在维度填充之前：
 
-```
-Phase A: 进化前置（维度循环前执行）
-  ├── 输入: RelevanceAuditor 审计结果 + 文件修改影响 signal
-  ├── 过滤: 只对 decay/severe/impacted 的 Recipe 做进化判断
-  ├── 执行: Agent 验证（内部 Agent 或外部 Agent）
-  ├── 输出: 进化决策已确定（skip/propose/deprecate），gap 位明确
-  └── 效果: 腾出的 gap 位 = 需要新增的位数
-
-Phase B: 纯新增（维度 pipeline，简化版）
-  ├── 输入: 明确的 gap 数量
-  ├── 不再有 Evolve Stage
-  ├── 只有: Analyze → QualityGate → Produce → RejectionGate
-  └── 效果: 每个维度的 pipeline 更简单、更快
+```text
+ProjectIntelligenceCapability.run()
+  → RecipeImpactPlanner.plan(_incrementalPlan?.diff)
+  → runEvolutionAudit(candidates, proposalSource='rescan-evolution')  // fire-and-forget
+  → auditRecipesForRescan(candidatePlan)
+  → buildKnowledgeRescanPlan(fileDiff?)
+  → buildRescanPrescreen()
+  → dispatchInternalDimensionExecution(existingRecipes, evolutionPrescreen)
 ```
 
-Phase A 的核心思想是**只让 Agent 处理有问题的 Recipe**。具体的过滤策略：
+`RecipeImpactPlanner` 使用的是 ProjectIntelligence 的 hash diff，而不是实时监听里的 `git diff HEAD`。它把变更文件映射成四类候选原因：
 
-| 条件 | 来源 | 处理方式 |
+| 原因 | 触发条件 | 初始影响 |
 |:---|:---|:---|
-| `verdict = healthy` 且无修改 signal | RelevanceAuditor | 自动 skip（刷新 lastVerifiedAt） |
-| `verdict = dead`（score < 20） | RelevanceAuditor | 已被直接 deprecated |
-| `verdict = decay`（score 40-59） | RelevanceAuditor | Agent 读代码验证 |
-| `verdict = severe`（score 20-39） | RelevanceAuditor | Agent 读代码确认 |
-| `verdict = watch` + 近期有 `source_modified` signal | 交叉信号 | Agent 验证是否仍然准确 |
-| 近期有 `source_modified`（impactLevel=direct） | 文件变更 signal | Agent 读代码验证变化 |
+| `source-deleted` | 被删文件是某 Recipe 的最后 active SourceRef | `impactScore = 1.0` |
+| `source-deleted-partial` | 被删文件仍有其他 active SourceRef 兜底 | `impactScore = 0.7` |
+| `source-modified-pattern` | modified 文件的 diff 与 Recipe tokens 达到 pattern 级 | 使用 `assessImpactUnified()` 得分 |
+| `source-missing` | SourceRef 桥接表已有 stale 记录 | `impactScore = 0.5` |
 
-预期收益是显著的：如果 80% 的 Recipe 健康且无修改，Agent 只需验证剩余的 20%，token 消耗大幅降低。
+同一 Recipe 被多个文件影响时，planner 会按优先级合并：`source-deleted` 高于 partial，高于 modified-pattern，高于 missing；同时合并 affectedFiles 和 matchedTokens。这保证 Agent 看到的是“一个 Recipe 的综合影响证据”，而不是一堆碎片事件。
 
-### RelevanceAuditor：四维证据评分
+真正转交给内部 Agent 的是 `runEvolutionAudit()`。它启动 `evolution-audit` profile，把候选 Recipe、sourceRefs、impactEvidence 和项目概览交给 Evolution Agent。Agent 只能做三类事：`knowledge.manage(operation: "evolve")` 创建更新提案，`deprecate` 确认废弃，或 `skip_evolution` 说明仍有效/信息不足。这个调用是 fire-and-forget，不阻塞本次 rescan 的 HTTP 响应；后续提案会通过 `EvolutionGateway` 和 `ProposalExecutor` 继续走信号驱动评估。
 
-`RelevanceAuditor` 在 Phase A 中提供每条 Recipe 的健康评估。它通过四个维度的证据加权计算相关性分数：
+### Coverage Classification：三层评分
 
-```typescript
-// lib/service/evolution/RelevanceAuditor.ts
-const DEFAULT_WEIGHTS: EvidenceWeights = {
-  triggerStillMatches: 0.2,  // trigger 关键词仍在代码中出现
-  symbolsAlive: 0.3,         // coreCode 中的符号仍在项目中存活
-  depsIntact: 0.15,          // 依赖文件仍存在
-  codeFilesExist: 0.35,      // sourceRefs 引用的文件仍存在
-};
+`auditRecipesForRescan()` 当前不是一个独立的 `RelevanceAuditor` 类；实际实现是 `KnowledgeRescanPlanner` 中的覆盖分类函数。它按优先级使用三层数据：
+
+1. **RecipeImpactPlanner 候选**：最精确。`source-deleted` 直接给 10 分，`source-deleted-partial` 给 30 分，`source-modified-pattern` 用 `60 - impactScore * 40` 计算，`source-missing` 给 50 分。
+2. **SourceRef 桥接表健康度**：如果某 Recipe 的 SourceRef 全部 stale，给 15 分；部分 active 时按 active/total 比例落在 30-80 分之间。
+3. **Lifecycle 兜底**：active/evolving 默认 90 分，staging 默认 70 分，decaying 默认 35 分；如果 sourceRefs 全部缺失则下调。
+
+分数再交给 `EvolutionPolicy.classifyRelevance()`：
+
+- `healthy`：`score >= 80`
+- `watch`：`60 <= score < 80`
+- `decay`：`40 <= score < 60`
+- `severe`：`20 <= score < 40`
+- `dead`：`score < 20`
+
+`buildRescanPrescreen()` 用这个结果把 Recipe 分成两组：`healthy` 自动归入 autoResolved；`watch / decay / severe` 进入 needsVerification；`dead` 进入自动废弃计划。注意这里的“自动废弃计划”是 rescan evidence/prescreen 层的计划语义，真正状态变更仍要通过 Evolution Agent、`EvolutionGateway` 或生命周期执行链路完成，不能把它理解成 planner 直接改库。
+
+### Phase B：带约束的 Gap-Fill
+
+内部 rescan 会把 `existingRecipes` 和 `evolutionPrescreen` 传给维度填充。由于 prescreen 已完成，`bootstrapDimensionPipeline` 当前不会再为每个维度插入 `evolve → evolution_gate` stage，而是运行：
+
+```text
+analyze → quality_gate → produce → rejection_gate
 ```
 
-加权分数映射到决策等级（来自 `EvolutionPolicy.classifyRelevance()`）：
+“进化”已经被前面的 `runEvolutionAudit()` 接走；维度 pipeline 的职责变成补齐 gap。`BootstrapRescanState` 会把非 decaying 的旧 Recipe 写入去重集合，把 occupied triggers 注入 Producer prompt，并为每个维度计算 `gap = max(0, 5 - existingCount)`。Producer prompt 明确要求：
 
-- **healthy**（≥ 80）：Recipe 仍然有效，自动 skip
-- **watch**（60-79，需结合修改 signal 判断）：有轻微退化迹象
-- **decay**（40-59，置信度 0.4）：明显退化，需要 Agent 验证
-- **severe**（20-39，置信度 0.6）：严重退化，Agent 确认后决定废弃或更新
-- **dead**（< 20，置信度 0.95）：所有证据消失，直接 deprecated
+- 提交上限等于该维度的 gap。
+- 禁止使用 `occupiedTriggers` 中已有 trigger。
+- 已有知识标题不能重复。
+- decaying Recipe 可以通过 `supersedes` 提交替代版本，但替代内容必须基于当前代码。
 
-不同 category 的 Recipe 有不同的权重配置——`architecture` 和 `conventions` 类的知识对 `symbolsAlive` 的依赖更低（架构规范不一定在代码中有具体符号），所以系统维护了 `CATEGORY_WEIGHT_OVERRIDES` 来调整各类知识的评估策略。
+这就是“未处理弹窗统一交给增量扫描”的实际落点：实时监听负责捕获证据和提醒人，rescan 负责批量审计、把复杂判断交给 Agent，并把新增候选限制在明确的 gap 内。
 
 ## 候选提交与分层融合
 
-当 Agent（无论内部还是外部）产出新的候选 Recipe 并提交时，系统需要判断候选与现有知识库是否重叠。这个判断分三层，由浅入深：
+当 Agent 产出新的候选 Recipe 并提交时，系统需要判断候选是否太碎、是否与现有知识库重叠、是否应该更新旧 Recipe 而不是新建。当前代码里要区分两类入口：
+
+- **外部 IDE Agent / MCP**：`alembic_submit_knowledge` 走 `RecipeProductionGateway + ConsolidationAdvisor + EvolutionGateway`，是完整的提交前融合路径。
+- **内部 V2 Agent tool**：`knowledge.submit` 目前调用同一个 Gateway，但显式跳过 similarity 和 consolidation，主要依赖 rescan prompt 的 `existingRecipes / occupiedTriggers / gap` 约束、Producer 的 rejection gate，以及后续提案/信号治理。
+
+### Layer 0：字段与会话去重
+
+所有入口都会先过 `UnifiedValidator`。它检查 title、trigger、description、content、reasoning 等结构字段，并在批量提交中记录已提交 title / fingerprint，阻止同批重复。冷启动和 rescan 的内部会话还可以注入 `BootstrapDedup`，用会话内缓存阻止跨维度重复提交。
 
 ### Layer 1：结构化快速过滤
 
-纯代码逻辑，无需 Agent 参与：
+这一层纯代码逻辑，无需 Agent 参与，但只有在调用方没有跳过 similarity check 且注入了 `findSimilarRecipes()` 时才运行：
 
-1. **Fingerprint 精确去重** — 对 title/trigger/coreCode 做 hash 比对，完全重复的直接拒绝
-2. **批内互重叠阻止** — 同一批提交的多条候选之间，如果 `RecipeSimilarity.compute() ≥ 0.65`，保留更强的一条，移除较弱的
-3. **统一相似度筛查** — 候选与现有 Recipe 的 4 维加权 Jaccard 相似度，≥ 0.65 的直接标记为重复
+1. `findSimilarRecipes(projectRoot, candidate, { threshold: 0.5, topK: 5 })` 召回相似 Recipe。
+2. 任一相似项达到 `options.similarityThreshold ?? 0.7` 时，候选进入 `duplicates[]`。
+3. 进入 `duplicates[]` 的候选不再进入 `submittableItems`，因此不会创建 Recipe。
+
+外部 MCP 当前把这一层关掉，是因为它下一步会调用更强的 `ConsolidationAdvisor`。这不是“少做检查”，而是把判断集中到能处理 merge/reorganize/insufficient 的融合层。
+
+### Layer 2：ConsolidationAdvisor
 
 ```typescript
-// RecipeProductionGateway — 批内互重叠阻止
-for (const overlap of batchResult.internalOverlaps) {
-  if (overlap.similarity >= 0.65) {
-    const weaker = pickWeaker(overlap.candidateA, overlap.candidateB);
-    submittableItems.delete(weaker);
-    result.duplicates.push({
-      item: weaker,
-      similarTo: [{ title: stronger.title, similarity: overlap.similarity }],
-      reason: 'batch-internal-overlap',
-    });
-  }
+// lib/service/evolution/ConsolidationAdvisor.ts
+const MIN_SUBSTANCE_SCORE = 0.3;
+const ENHANCE_THRESHOLD = 0.4;
+const HIGH_OVERLAP_THRESHOLD = 0.65;
+
+type ConsolidationAction =
+  | 'create'
+  | 'merge'
+  | 'reorganize'
+  | 'insufficient';
+```
+
+Advisor 的判断树是当前防碎片化的核心：
+
+```text
+候选实质性 score < 0.3
+  → insufficient
+  → 如果 coveredBy 存在: 创建 update 提案，建议补到已有 Recipe
+  → 否则: blocked，交给 Agent/开发者补充信息或放弃
+
+highOverlaps.length >= 2 (similarity >= 0.65)
+  → reorganize
+  → 对多个目标 Recipe 创建 update 提案，confidence = min(0.5, advice.confidence)
+
+highOverlaps.length === 1
+  → merge
+  → 对目标 Recipe 创建 update 提案，候选本身不创建
+
+0.40 <= similarity < 0.65
+  → RecipeSimilarity.analyzeFields()
+  → 如果没有 addedDimensions: merge
+  → 如果字段分析不明确: create + pendingSemanticReview
+  → 如果提供了明确新维度: create
+
+无显著重叠
+  → create
+```
+
+`analyzeBatch()` 还会检查批次内部的候选重叠。任意两条候选相似度 `>= 0.40` 会被记录为 `internalOverlaps`；Gateway 只在 `>= 0.65` 时移除后面的候选，把它加入 `duplicates[]`：
+
+```typescript
+// RecipeProductionGateway.ts — Step 3.1
+if (overlap.similarity >= 0.65) {
+  const weaker = overlap.indexB;
+  removedByOverlap.add(weaker);
+  result.duplicates.push({
+    index: weakerEntry.index,
+    title: weakerEntry.item.title || '(untitled)',
+    similarTo: [{ title: strongerEntry.item.title, similarity: overlap.similarity }],
+  });
 }
 ```
 
-### Layer 1.5：字段级分析
+### Layer 2.5：字段级分析与 pendingSemanticReview
 
 当结构相似度在 0.40-0.65 的灰色地带时，系统进一步分析具体字段的重叠情况，而不是简单地用总分做二元判定：
 
@@ -838,41 +977,56 @@ for (const overlap of batchResult.internalOverlaps) {
 - **coreCodeOverlap** — 共享代码模式的比例
 - **categoryMatch** — 同 category 下的重叠更可能是真正的重复
 
-字段级分析使得很多"总分模糊"的情况可以在不借助 Agent 的情况下做出判断。比如，两条 Recipe 总分 0.52，但 `doClauseSubset = true` + `categoryMatch = true` → 高概率是重复的。
+字段级分析使得很多“总分模糊”的情况可以在不借助 Agent 的情况下做出判断。比如，两条 Recipe 总分 0.52，但 `doClauseSubset = true` 或 `coreCodeOverlap >= 0.6`，Advisor 可以直接选择 merge。
 
-### Layer 2：语义融合分析
+真正无法确定的情况，是候选提供了新维度，但字段信号又不够确定：
 
-当 Layer 1.5 仍然无法确定时，需要 Agent 的语义理解能力介入。这里有两条路径，取决于调用方：
+```typescript
+const isFieldDefinitive =
+  fields.triggerConflict || fields.doClauseSubset || fields.coreCodeOverlap >= 0.6;
 
-**内部 Agent 路径**（增量扫描 pipeline 内）：在 Produce Stage 之后增加 ConsolidationGate，Agent 读取候选和相关现有 Recipe，做语义比对并输出 `create / merge / reject` 决策。
+if (!isFieldDefinitive) {
+  return {
+    action: 'create',
+    confidence: 0.6,
+    pendingSemanticReview: true,
+    reason: '字段分析不明确，需要语义复核确认是否为独立知识',
+  };
+}
+```
 
-**外部 Agent 路径**（MCP 调用 `alembic_submit_knowledge`）：服务端完成 Layer 1 + 1.5 后，将无法确定的候选标记为 `pendingSemanticReview`，通过 MCP 响应中的 `nextAction` 尾部指令引导外部 Agent 调用 `alembic_consolidate` 工具完成语义融合。
+这种情况下 Gateway 会先允许候选创建，同时把条目加入 `pendingSemanticReview[]`。原因是工程逻辑已经无法可靠区分“独立知识”与“旧 Recipe 的补充维度”，而外部 IDE Agent 此刻拥有源码阅读上下文，适合做语义裁决。
 
 ```typescript
 // alembic_submit_knowledge 响应（含尾部指令）
 {
   data: {
-    created: [{ id: 'r1', title: 'Recipe A' }, ...],
+    count: 1,
+    ids: ['recipe-new'],
     pendingSemanticReview: [{
-      newRecipeId: 'r2',
-      overlaps: [{
-        existingId: 'existing-42',
-        similarity: 0.52,
-        fieldAnalysis: { doClauseSubset: true, categoryMatch: true },
-        hint: 'doClause 可能是现有 Recipe 的子集',
-      }]
-    }]
-  },
-  nextAction: {
-    tool: 'alembic_consolidate',
-    args: { reviewItems: [...] },
-    required: false,
-    reason: '发现疑似重叠，建议阅读代码后判断是否需要合并',
+      index: 0,
+      title: 'Candidate title',
+      reason: '候选处于相似度模糊区间，字段分析不明确'
+    }],
+    nextAction: {
+      tool: 'alembic_consolidate',
+      args: {
+        decisions: [{
+          newRecipeId: '',
+          action: 'keep',
+          reasoning: '候选处于相似度模糊区间...'
+        }]
+      },
+      required: false,
+      reason: '建议阅读源代码后调用 alembic_consolidate 判断是否需要合并。'
+    }
   }
 }
 ```
 
-外部 Agent 路径的设计理由：外部 Agent（如 Copilot/Cursor）**已经在运行**，具备完整的代码阅读和项目上下文理解能力，比服务端内部启动 Agent Runtime 更高效。服务端保持轻量，复杂的语义分析由调用方完成。
+`alembic_consolidate` 的处理逻辑很直接：`keep` 无操作；`merge` 先对 `mergeTargetId` 创建 update 提案，再对 `newRecipeId` 创建 deprecate 提案；`reject` 直接对 `newRecipeId` 创建 deprecate 提案。也就是说，MCP 的 `nextAction` 是一条“尾追溯”协议：服务端先记录可追踪的候选，再把无法确定的语义判断交回正在读代码的 Agent 完成。
+
+内部 Agent 路径也有 `agent/domain/consolidation-gate.ts` 这组领域函数，定义了 `approve_create / merge_into_existing / reject_candidate` 三个工具和 Consolidation Gate prompt，用于在 Producer 之后进行语义融合判断。但从当前 `bootstrapDimensionPipeline` 的实装看，rescan 已经先做 `evolutionPrescreen`，维度填充阶段不会插入该 gate；内部路径主要靠 rescanContext 的 `existingRecipes / occupiedTriggers / gap` 约束避免重复，再由后续提案治理兜底。这个边界很重要：书里不能把尚未接入主 pipeline 的 gate 写成每次提交都会执行。
 
 ## 运行时行为
 
@@ -898,7 +1052,7 @@ Agent 在项目冷启动时提取了一条关于 `CookieProviding` 的 Recipe，
 3. **T+0**：对每条 Recipe 调用 `EvolutionGateway.submit({ action: 'deprecate', confidence: 0.9, source: 'file-change' })`
 4. **T+0**：`EvolutionPolicy.shouldImmediateExecute(0.9)` → true，直接通过 `LifecycleStateMachine.transition(→ deprecated)` 执行
 5. **T+N（下次扫描）**：`SourceRefReconciler.reconcile()` 补充发现其他间接引用了 `NetworkManager` 的 Recipe，标记为 `stale`
-6. **T+N**：`RelevanceAuditor` 在 Phase A 审计中发现这些 Recipe 的 `codeFilesExist` 和 `symbolsAlive` 严重下降 → `decay` 或 `severe` 等级
+6. **T+N**：`auditRecipesForRescan()` 结合 SourceRef 健康度和 lifecycle 兜底分类，发现这些 Recipe 的 sourceRefs 严重缺失 → `decay` 或 `severe` 等级
 7. **T+N**：Agent 验证确认 → `EvolutionGateway.submit({ action: 'deprecate' })` → 创建 Proposal（信号驱动评估）
 8. **T+N+信号评估**：`ProposalExecutor` 在信号评估中确认 decay score 无回升 → `decaying → deprecated`
 
@@ -910,24 +1064,24 @@ Agent 在一次代码分析中发现某条 Recipe 的 `coreCode` 缺少了错误
 
 1. **T+0**：Agent 通过 `alembic_evolve` MCP 工具调用 `EvolutionGateway.submit({ action: 'update', confidence: 0.8, evidence: [{ suggestedChanges: '...' }] })`
 2. **T+0**：`EvolutionPolicy.resolveInitialStatus('update', 0.8)` → `'observing'`（≥ 0.7 自动进入观察）
-3. **T+0**：`EvolutionPolicy.assessRisk('update', 0.8)` → `'low'`（观察窗口 24h）
-4. **T+数小时**：Guard 检查命中该 Recipe，发射 `guard` signal → `ProposalExecutor.#onSignal()` 触发评估
-5. **T+数小时**：`EvolutionPolicy.evaluateUpdate(metrics)` → FP 率正常、有使用记录 → pass
-6. **T+数小时**：`LifecycleStateMachine`: `active → evolving`，`ContentPatcher.applyProposal()` 写入新的 coreCode，`evolving → staging`
-7. **T+72h**：`StagingManager` 暂存期满，无负面反馈 → `staging → active`
+3. **T+0**：Gateway 创建 signal-driven Proposal，`expiresAt` 写为 `0`；主路径不依赖固定观察时间到期
+4. **T+后续信号**：Guard/search/usage/quality/lifecycle 任一相关 signal 到达 → `ProposalExecutor.#onSignal()` 触发评估
+5. **T+后续信号**：`EvolutionPolicy.evaluateUpdate(metrics)` → FP 率正常、有使用记录 → pass
+6. **T+后续信号**：`LifecycleStateMachine`: `active → evolving`，`ContentPatcher.applyProposal()` 消费 `suggestedChanges` 写入新的 coreCode，`evolving → staging`
+7. **T+staging 到期**：`StagingManager` 暂存期满，无负面反馈 → `staging → active`
 
 ### 场景 4：提交时的重复拦截
 
 ![提交时的重复拦截](/images/ch07/09-scenario-duplicate-intercept.png)
 
-Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高度相似。
+外部 IDE Agent 在增量扫描中提取了一条新 Recipe。它与 Recipe A 中度相似，但又包含一些新维度，工程规则无法判断它应该独立存在还是合并回旧 Recipe。
 
-1. **T+0**：候选通过 `RecipeProductionGateway` 提交
-2. **T+0**：Layer 1 — `RecipeSimilarity.compute()` 得分 0.52（灰色地带，不足以判定重复）
-3. **T+0**：Layer 1.5 — `RecipeSimilarity.analyzeFields()` 发现 `doClauseSubset = true` + `categoryMatch = true`
-4. **T+0**：`ConsolidationAdvisor.analyze()` → action: `'insufficient'`，标记为 `pendingSemanticReview`
+1. **T+0**：候选通过 MCP `alembic_submit_knowledge` 提交
+2. **T+0**：`ConsolidationAdvisor` 计算与 Recipe A 的相似度为 0.52，落入 `0.40-0.65` 模糊区间
+3. **T+0**：`RecipeSimilarity.analyzeFields()` 发现 `triggerConflict=false`、`doClauseSubset=false`、`coreCodeOverlap=0.2`，字段信号不够确定
+4. **T+0**：Advisor 返回 `action: 'create'` + `pendingSemanticReview: true`，Gateway 先创建候选并在响应中记录待复核项
 5. **T+0**：MCP 响应中附带 `nextAction: { tool: 'alembic_consolidate' }`
-6. **T+0**：外部 Agent 读取候选和 Recipe A 的代码上下文，判断候选确实是子集 → `reject`
+6. **T+0**：外部 Agent 读取候选和 Recipe A 的代码上下文，调用 `alembic_consolidate` 决定 `keep / merge / reject`
 
 ### 场景 5：文件修改触发的实时进化审视
 
@@ -936,17 +1090,18 @@ Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高
 开发者正在 VSCode 中重构 `PaginationController.swift`，改变了核心 API。
 
 1. **T+0**：开发者保存文件，VSCode 扩展收集 `modified` 事件（`eventSource: 'ide-edit'`）
-2. **T+2s**：事件缓冲区 flush，POST 到 `/api/v1/file-changes`
-3. **T+2s**：`FileChangeHandler` 查找引用该文件的 Recipe，发现两条：Recipe A（sourceRef 直接引用）和 Recipe B（仅在 reasoning.sources 中引用）
-4. **T+2s**：`ContentImpactAnalyzer.assessFileImpact()` 对每条 Recipe 执行 diff-based 影响评估——获取 `git diff -U0`，解析变更行 tokens，与 Recipe tokens（`coreCode` + `content.markdown` 代码块）做加权交集。Recipe A 得分 0.45 → `impactLevel = pattern`；Recipe B 得分 0.08 → `impactLevel = reference`
-5. **T+2s**：对 Recipe A 发射 `quality` signal（weight=0.6），对 Recipe B 发射 signal（weight=0.3）
-6. **T+2s**：Recipe A 的 `pattern` 级影响触发 `EvolutionGateway.submit({ action: 'update', source: 'file-change' })`，持久化为 update 提案
-7. **T+2s**：HTTP 响应返回影响摘要给 VSCode 扩展
-8. **T+2s**：扩展检测到 `eventSource = 'ide-edit'` + 存在 `pattern` 级影响 → 展示弹窗："⚡ Alembic: 检测到 PaginationController 受近期编辑影响，建议进化评估。"
-9. **T+选择**：开发者点击 "Review" → IDE Chat 打开，预填 prompt 包含受影响 Recipe 的标题和变更路径；退避计数重置
-10. **T+下次 rescan**：Phase A 中，这两条 Recipe 因为有近期 `source_modified` signal 被选入 Agent 验证队列，Agent 读取新代码后决定 Recipe A 需要更新 → `propose_evolution`（Gateway 发现已有 Proposal → evidence 升级，追加 suggestedChanges）
+2. **T+3s**：事件缓冲区 flush，POST 到 `/api/v1/file-changes`
+3. **T+3s**：HTTP 路由过滤事件 schema，`FileChangeDispatcher` 推断本批主要来源为 `ide-edit`，并分发给 `FileChangeHandler`
+4. **T+3s**：`FileChangeHandler` 查找引用该文件的 active Recipe，发现两条：Recipe A 和 Recipe B
+5. **T+3s**：`ContentImpactAnalyzer.assessFileImpact()` 对每条 Recipe 执行 diff-based 影响评估——获取 `git diff HEAD -U0 -- PaginationController.swift`，解析变更行 tokens，与 Recipe tokens（`coreCode` + `content.markdown` 代码块 + `content.pattern` + `steps[].code`）做加权交集。Recipe A 得分 0.45 → `impactLevel = pattern`；Recipe B 得分 0.08 → `impactLevel = reference`
+6. **T+3s**：对 Recipe A 发射 `quality` signal（weight=0.6），对 Recipe B 发射 signal（weight=0.3）
+7. **T+3s**：Recipe A 的 `pattern` 级影响触发 `EvolutionGateway.submit({ action: 'update', source: 'file-change' })`，持久化为 update 提案
+8. **T+3s**：HTTP 响应返回影响摘要给 VSCode 扩展
+9. **T+3s**：扩展检测到 `eventSource = 'ide-edit'` + `suggestReview = true` + 存在 `pattern` 级影响，再通过全局冷却和 per-Recipe 退避 → 展示弹窗："⚡ Alembic: 检测到 PaginationController 受近期编辑影响，建议进化评估。"
+10. **T+选择**：开发者点击 "Review" → IDE Chat 打开，预填 prompt 包含受影响 Recipe 的标题和变更路径；退避计数重置
+11. **T+下次 rescan**：如果用户没有处理弹窗，`RecipeImpactPlanner` 会从增量 diff + SourceRef 重新识别 Recipe A 的 `source-modified-pattern` 候选，`runEvolutionAudit()` 让内部 Agent 读新代码并提交 `evolve`。Gateway 发现已有 file-change Proposal 时会尝试 evidence 升级，追加带 `suggestedChanges` 的更丰富证据
 
-这个场景展示了文件变更如何从 IDE 端事件一路触发到知识进化——signal 既是实时弹窗的触发器，也是下次增量扫描中进化前置的输入。
+这个场景展示了文件变更如何从 IDE 端事件一路触发到知识进化：HTTP report 负责实时弹窗，SignalBus 负责系统内部的提案评估，增量 rescan 负责把未处理或批量变化重新归并为可验证的 Evolution candidates。
 
 ## 全链路数据流
 
@@ -956,9 +1111,9 @@ Agent 在增量扫描中提取了一条新 Recipe，但与已有的 Recipe A 高
 
 整个流程分为四个层次：
 
-- **触发层**：IDE 文件事件通过 HTTP 到达 `FileChangeHandler`，按事件类型分流——rename/delete 走确信路径，modified 走 diff-based 影响分析
-- **信号层**：`FileChangeHandler` 产出的 quality signal 被四个消费方并行接收——Signal 沉淀、增量扫描前置、ProposalExecutor 信号评估、VSCode 弹窗
-- **决策层**：`RelevanceAuditor` 在 Phase A 中过滤候选 Recipe，`EvolutionGateway` 统一接收进化决策（含 evidence 升级），Phase B 新增候选经过 `RecipeProductionGateway` 三层过滤
+- **触发层**：VSCode `FileChangeCollector` 将 IDE/Git/Working Tree 事件经 `EventBuffer` 合并后 POST 到 `/api/v1/file-changes`，再由 `FileChangeDispatcher` 分发给 `FileChangeHandler`
+- **信号层**：`FileChangeHandler` 产出的 quality signal 被系统内部消费——Signal 沉淀、增量扫描前置、ProposalExecutor 信号评估；VSCode 弹窗消费的是 HTTP report，不直接订阅 SignalBus
+- **决策层**：`RecipeImpactPlanner` 和 `auditRecipesForRescan()` 在 Phase A 中过滤候选 Recipe，`EvolutionGateway` 统一接收进化决策（含 evidence 升级），Phase B 新增候选经过 `RecipeProductionGateway` 与外部 MCP 融合层过滤
 - **落地层**：最终产出三种结果——新 Recipe 通过 `ConfidenceRouter` 进入 staging/pending、merge/update 通过 `EvolutionGateway` 创建提案、灰色地带交由外部 Agent 通过 `alembic_consolidate` 决策
 
 ## 权衡与替代方案

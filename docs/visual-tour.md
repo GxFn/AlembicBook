@@ -80,7 +80,7 @@ Alembic 的所有知识、记忆、行为信号都存储在项目本地——四
 
 ### 进化提案流程
 
-当系统检测到知识需要更新时（衰退、文件变更、冗余），通过 `EvolutionGateway` 统一入口创建 EvolutionProposal（update / deprecate 两种类型）。`ProposalExecutor` 信号驱动评估提案，`EvolutionPolicy` 纯函数判定风险等级和观察窗口。
+当系统检测到知识需要更新时（衰退、文件变更、冗余），通过 `EvolutionGateway` 统一入口创建 EvolutionProposal（update / deprecate 两种类型）。`ProposalExecutor` 订阅 guard/search/decay/quality/usage/lifecycle 信号评估提案，`EvolutionPolicy` 用纯函数判断 update/deprecate 是否通过。
 
 ![进化提案流程](/images/ch07/02-evolution-proposal-flow.png)
 
@@ -92,13 +92,13 @@ Alembic 的所有知识、记忆、行为信号都存储在项目本地——四
 
 ### Diff-Based 文件变更影响分析
 
-文件修改时，ContentImpactAnalyzer 通过 `git diff -U0` 获取变更行 tokens，与 Recipe tokens（coreCode + markdown 代码块）做加权交集，分为三个影响级别：direct（0.8）、pattern（0.6）、reference（0.3）。pattern 级别持久化为 update 提案，所有级别发射 quality signal 供 ProposalExecutor、增量扫描和 VSCode 弹窗消费。
+文件修改时，ContentImpactAnalyzer 通过 `git diff HEAD -U0 -- <file>` 获取变更行 tokens，与 Recipe tokens（coreCode + markdown 代码块 + pattern + steps）做加权交集。modified 路径分为 pattern（0.6）和 reference（0.3）；文件删除且无其他 active sourceRef 时标记 direct（0.8）。pattern 级别持久化为 update 提案，quality signal 供 ProposalExecutor 和增量扫描消费，VSCode 弹窗消费 HTTP report。
 
 ![Diff-Based 影响分析](/images/ch07/04-diff-based-impact-analysis.png)
 
 ### 全链路数据流
 
-从 IDE 文件事件到知识进化的完整链路，分为四层：触发层（FileChangeHandler 按事件分流）→ 信号层（quality signal 四消费方并行）→ 决策层（RelevanceAuditor + EvolutionGateway + RecipeProductionGateway）→ 落地层（staging/pending、提案创建、外部 Agent 融合决策）。
+从 IDE 文件事件到知识进化的完整链路，分为四层：触发层（VSCode FileChangeCollector + EventBuffer → HTTP → FileChangeDispatcher → FileChangeHandler）→ 信号层（quality signal 供内部治理消费，HTTP report 供 VSCode 弹窗消费）→ 决策层（RecipeImpactPlanner + auditRecipesForRescan + EvolutionGateway + RecipeProductionGateway）→ 落地层（staging/pending、提案创建、外部 Agent 融合决策）。
 
 ![全链路数据流](/images/ch07/05-full-dataflow-pipeline.png)
 
