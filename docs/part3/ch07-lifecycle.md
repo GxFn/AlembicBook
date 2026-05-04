@@ -140,6 +140,63 @@ static shouldImmediateExecute(action: string, confidence: number, source: string
 
 手动 `observe` 仍会调用 `ProposalRepository.startObserving()`，这时仓储会把 `expiresAt` 重置为按类型计算的窗口（update 72h、deprecate 7d）。但主执行链不靠“时间到了就执行”，而是“相关信号到了就评估”；启动兜底和 CLI 才会批量检查 observing 提案。
 
+### 统一入口：EvolutionGateway
+
+当前实现进一步收敛了进化入口：无论信号来自 IDE 文件变更、rescan diff、衰退扫描，还是 Evolution Agent，最终都进入 `EvolutionGateway.submit()`。
+
+统一入口解决了三个早期问题：
+
+| 旧问题 | 统一后的处理 |
+|:---|:---|
+| 不同渠道各自创建 proposal，去重和置信度规则分散 | `EvolutionGateway` 统一处理 `valid` / `update` / `deprecate` 三类 action |
+| Agent 使用 `recipeId`、工具层使用 `id`，统计和 Gate 容易错位 | `knowledge.manage` 的主字段统一为 `id`，工具层兼容旧字段但 prompt 和 gate 都要求 `id` |
+| 同一 Recipe 已有 active proposal 时，Agent 的“验证有效”可能掩盖待处理提案 | `valid` 决策会检查 active automated proposal；存在未决提案时不直接吞掉问题 |
+
+`knowledge.manage` 是 Agent 面向 Gateway 的规范入口：
+
+```typescript
+knowledge({
+  action: "manage",
+  params: {
+    operation: "evolve" | "deprecate" | "skip_evolution",
+    id: "recipe-id",
+    reason: "...",
+    data: {
+      description: "...",
+      evidence: { currentCode: "..." },
+      confidence: 0.85
+    }
+  }
+})
+```
+
+这不是普通 CRUD 的 `manage(update)`。`evolve` 会转成 Gateway 的 `update`，`deprecate` 会转成 Gateway 的 `deprecate`，`skip_evolution` 会转成 Gateway 的 `valid`。工具返回的 `outcome` 才是报表统计的依据：`proposal-created`、`proposal-upgraded`、`immediately-executed`、`verified`、`skipped` 分别表达真实落点。
+
+### Rescan 中的进化决策
+
+增量重扫会在 gap-fill 之前先处理旧 Recipe：
+
+```text
+FileDiffSnapshotStore.computeDiff()
+  → RecipeImpactPlanner.plan()
+  → submitRescanImpactDecisions()
+  → runEvolutionAudit()
+  → auditRecipesForRescan()
+  → gap-fill
+```
+
+确定性强的场景不需要 LLM：
+
+- `source-modified-pattern`：变更文件命中 Recipe 关键 token，直接创建 `update` proposal。
+- `source-deleted`：所有 source refs 丢失，直接提交 `deprecate` 决策。
+
+需要理解代码迁移的场景才交给 Evolution Agent：
+
+- `source-deleted-partial`：部分证据文件消失，可能已经迁移。
+- `source-missing`：SourceRef stale，但 diff 不足以判断是否过时。
+
+Evolution Agent 的 Gate 不看自然语言报告，而看是否为每个目标 Recipe 提交了 `knowledge.manage` 决策。retry 阶段启用 decision-only 模式，只允许补齐缺失的 `knowledge.manage` 调用；Gate 按 Recipe ID 累计多轮工具调用，避免“第一轮已处理的决策在第二轮被忘掉”。
+
 为什么不让 Agent 直接修改知识？根本原因是 SOUL 原则中的两条硬约束：**永不删除**（所有变更都是新增操作，旧版本保留在审计日志中）和**无 AI 不伪装**（AI 的判断必须标记为 AI 产出，不能假装是人工确认的）。进化提案机制天然满足这两条约束：旧内容不变、提案来源明确（`source: 'ide-agent' | 'relevance-audit' | 'decay-scan' | 'file-change'`）。
 
 ![进化提案机制](/images/ch07/02-evolution-proposal-flow.png)

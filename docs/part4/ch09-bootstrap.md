@@ -270,7 +270,8 @@ runRescanCleanPolicy() / runForceRescanCleanPolicy() / snapshotRecipes()
   → repairRenames() + applyRepairs()
   → ProjectIntelligenceCapability.run()
   → RecipeImpactPlanner.plan(incrementalDiff?)
-  → runEvolutionAudit() fire-and-forget
+  → submitRescanImpactDecisions()
+  → runEvolutionAudit()
   → auditRecipesForRescan()
   → buildKnowledgeRescanPlan(fileDiff?)
   → buildRescanPrescreen()
@@ -281,16 +282,55 @@ runRescanCleanPolicy() / runForceRescanCleanPolicy() / snapshotRecipes()
   → presentInternalKnowledgeRescanResponse()
 ```
 
-它先返回骨架和 gap plan，再后台填充需要执行的维度。SourceRef 修复和 impact planning 都在同步响应前完成；Evolution Agent 审计是 fire-and-forget，不阻塞本次 rescan 响应。
+它先完成确定性清理、SourceRef 修复、项目结构分析、Recipe impact planning 和 Evolution Agent 审计，再返回骨架和 gap plan。维度填充仍可以异步执行；如果 CLI 传入 `--wait`，会继续等待 internal dimension execution 完成并保存新的 workflow snapshot。
 
 ![Rescan 内部治理链路](/images/ch09/02-rescan-internal-governance.png)
 
 内部路径里有两个容易混淆的“进化”：
 
-- **批量进化审计**：`RecipeImpactPlanner.plan()` 生成候选后，`runEvolutionAudit()` 启动 `evolution-audit` profile。Agent 读取真实代码后调用 `knowledge.manage(operation: "evolve" | "deprecate" | "skip_evolution")`，提案来源标记为 `rescan-evolution`。
+- **批量进化审计**：`RecipeImpactPlanner.plan()` 生成候选后，先把确定性高的候选交给 `submitRescanImpactDecisions()`，再把剩余候选交给 `runEvolutionAudit()`。Agent 读取真实代码后调用 `knowledge.manage(operation: "evolve" | "deprecate" | "skip_evolution", id)`，提案来源标记为 `rescan-evolution`。
 - **维度 gap-fill**：后续 internal dimension execution 只补齐 gap。`BootstrapRescanState` 会把有效旧 Recipe 写入去重集合，把 decaying Recipe 和 occupied triggers 注入 prompt，Producer 被限制为最多提交本维度 gap 数量的候选。
 
 因此 internal rescan 不是“每个维度全量重跑并顺便检查旧知识”。它先用工程 diff 和 SourceRef 找出受影响 Recipe，把复杂判断交给 Evolution Agent；然后维度 pipeline 只在有 coverage-gap、recipe-decay 或 file-change reason 的维度里补新知识，并把 Producer 提交上限收敛到该维度的 gap。
+
+### 增量 diff → Recipe 影响规划
+
+当前 rescan 的增量能力已经不只是“有 diff 就提示一下”。`FileDiffSnapshotStore` 保存每次 workflow 的文件 hash、维度文件映射和 episodic data；`FileDiffPlanner` 计算 added / modified / deleted / unchanged 后，`RecipeImpactPlanner` 会把 changed files 映射回 `recipe_source_refs`。
+
+这里有两个工程细节：
+
+1. **历史路径兼容**：旧 snapshot 可能只保存短路径，例如 `Middleware/AuthMiddleware.swift`；新扫描保存完整项目相对路径，例如 `Sources/Infrastructure/Networking/Middleware/AuthMiddleware.swift`。`FileDiffSnapshotStore` 会按唯一后缀做路径 reconciliation，避免一次目录规则升级把全项目误判为删除/新增。
+2. **重扫清理保留增量证据**：`rescanClean()` 不再删除 `bootstrap_snapshots`、`bootstrap_dim_files` 和 `recipe_source_refs`。这些表是下一次增量判断的证据，不是可以随手清掉的缓存。
+
+`RecipeImpactPlanner` 把候选分成四类：
+
+| reason | 触发条件 | 处理方式 |
+|:---|:---|:---|
+| `source-modified-pattern` | 修改文件命中 Recipe 的关键 token / pattern | 确定性提交 `update` proposal |
+| `source-deleted` | Recipe 的所有 source refs 都丢失 | 确定性提交 `deprecate` 决策 |
+| `source-deleted-partial` | 部分 source refs 丢失 | 交给 Evolution Agent 判断是否迁移 |
+| `source-missing` | SourceRef 已 stale，但 diff 不能直接解释 | 交给 Evolution Agent 读代码验证 |
+
+确定性决策通过 `EvolutionGateway` 进入同一条 proposal / lifecycle 管线；已经由确定性路径处理过的 recipeId 会从 Agent 候选里过滤掉，避免同一个 Recipe 在同一次 rescan 中被重复决策。
+
+### Evolution Agent 的硬门控
+
+`evolution-audit` profile 的职责是为每个候选 Recipe 做出一个明确决策。当前实现把这个约束压到三层：
+
+- Prompt 层：明确要求只使用 `knowledge.manage`，Recipe 标识字段统一为 `id`，不再接受 `recipeId` 作为主字段。
+- Runtime 层：Evolution Gate retry 阶段启用 decision-only guard，只允许 `knowledge.manage(evolve | deprecate | skip_evolution, id)`，禁止继续 `knowledge.search`、`code`、`graph` 等探索工具。
+- Gate 层：`evolutionGateEvaluator` 按目标 Recipe ID 去重，并使用累计 tool calls 评估重试结果；如果 Agent 第一轮只处理了一部分 Recipe，retry 阶段补齐后仍能通过，而不是遗忘上一轮已经完成的决策。
+
+最终 `projectEvolutionAuditResult()` 统计的是 Gateway 的真实 outcome，而不是简单数 Agent 调了几次 `evolve`。例如 `proposal-created` / `proposal-upgraded` 才计入 `proposed`，重复或被跳过的 `evolve` 调用不会制造虚假的 proposal 数字。
+
+### Snapshot 保存语义
+
+rescan 的 snapshot 保存也有两条路径：
+
+- **no-fill rescan**：如果所有维度 fully-covered 且 healthy，系统仍会保存 snapshot，把“本次没有需要填充”也变成下一轮 diff 的基线。
+- **wait fill rescan**：如果有维度进入 internal dimension execution，`--wait` 会在填充完成后保存 snapshot，记录 changed files、affected dims 和 candidate count。
+
+这让增量链路可以稳定推进：一次真实文件变化被识别和治理后，下一次无变化扫描会以新 snapshot 为基线，不会反复处理同一个 diff。
 
 ## Recipe 审计与 Gap Plan
 
@@ -374,12 +414,14 @@ skeleton → filling → completed
 3. **项目分析统一**：冷启动和重扫都复用 ProjectIntelligenceCapability，避免两套 AST/图谱/Panorama/Guard 管线漂移。
 4. **AI 执行分流**：内部路径自动跑 AgentService；外部路径返回 Mission Briefing，让 IDE Agent 使用自己的代码阅读能力。
 5. **增量层级明确**：当前默认不是局部 AST incremental scan，而是 knowledge-level rescan；有 diff 时用于影响评估和执行计划，不直接替代项目结构分析。
+6. **进化先于补齐**：受影响旧 Recipe 先通过确定性决策或 Evolution Agent 处理，再进入 gap-fill；新候选产出不能掩盖旧知识的证据链问题。
+7. **Agent 决策必须可计数**：只要维度需要产候选，QualityGate 会把 `memory({ action: "note_finding" })` 当作硬质量依据；只要 Recipe 需要进化审计，Evolution Gate 会要求每个目标 Recipe 都有 `knowledge.manage` 决策。
 
 ## 小结
 
 当前实现应这样理解：
 
-> **Cold Start = full reset + full project intelligence + dimension execution。Knowledge Rescan = preserve recipes + rescan clean / snapshot-only + source-ref reconcile + project intelligence + impact / relevance audit + gap/evolution execution。**
+> **Cold Start = full reset + full project intelligence + dimension execution。Knowledge Rescan = preserve recipes + source-ref reconcile + project intelligence + diff impact planning + deterministic / Agent evolution decisions + relevance audit + gap-fill execution + snapshot baseline。**
 
 冷启动和重扫不再是一个 handler 里的两个分支，而是 `lib/workflows/` 下两套显式工作流，共用 capability、planning、execution、persistence 和 completion 能力。
 
