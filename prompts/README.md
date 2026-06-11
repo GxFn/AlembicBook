@@ -8,7 +8,7 @@
 - 主脚本: `scripts/illustrations-codex.mjs`
 - 兼容入口: `scripts/illustrations.sh`
 
-当前流程不使用 API key，不调用 OpenAI Images API，不读取外部参考图，也不使用 `style-anchor.png`。生成必须由 Codex 先出第一版，再根据第一版调整生成第二版，最后挑选最佳版本替换书内 PNG。
+当前流程不使用 API key，不调用 OpenAI Images API，不读取外部参考图，也不使用旧的 `style-anchor` 工作流。生成必须由 Codex 先出第一版，再根据第一版调整生成第二版，最后挑选最佳版本替换书内 PNG。
 
 ## 目录结构
 
@@ -16,23 +16,25 @@
 alembic-book/
 ├── prompts/
 │   ├── style-prompt-suffix.md       # 全局风格约束（每次生成都会附加）
-│   └── ch06/
-│       ├── 01-v3-field-overview.md
-│       ├── 02-inheritance-vs-unified.md
-│       └── 03-candidate-to-recipe.md
+│   ├── ch01/
+│   │   ├── 01-multi-repo-system-context.md
+│   │   └── 02-three-primary-flows.md
+│   └── appendix/
+│       └── 01-config-source-matrix.md
 ├── tmp/
 │   ├── illustration-prompts/         # 脚本导出的完整 prompt 包
 │   └── illustration-candidates/      # 建议保存 v1/v2 候选图
 └── docs/public/images/
     ├── ch01/
-    │   └── 01-core-workflow.png      # 当前期望成图系列示例
-    ├── ch06/
+    │   └── 01-multi-repo-system-context.png
+    ├── ch21/
+    ├── appendix/
     └── ...
 ```
 
 ## 视觉标准
 
-当前全书插图以 `prompts/style-prompt-suffix.md` 为准。`docs/public/images/ch01/01-core-workflow.png` 是当前期望输出的系列示例，用来判断生成结果是否像同一本技术笔记。
+当前全书插图以 `prompts/style-prompt-suffix.md` 为准。`docs/public/images/ch01/01-multi-repo-system-context.png` 是当前期望输出的系列示例之一，用来判断生成结果是否像同一本技术笔记。
 
 核心风格是“手写系统设计白板图”:
 
@@ -47,17 +49,15 @@ alembic-book/
 
 ### Step 1: 编写章节 prompt
 
-每张图创建一个 prompt 文件到 `prompts/chXX/`。章节 prompt 只写内容结构，不写重复风格约束；脚本会自动拼接全局 `style-prompt-suffix.md`。
+每张图创建一个 prompt 文件到 `prompts/chXX/` 或 `prompts/appendix/`。章节 prompt 只写内容结构，不写重复风格约束；脚本会自动拼接全局 `style-prompt-suffix.md`。
 
 示例:
 
 ```text
-Title at top in bold Chinese: "KnowledgeEntry V3 字段全景"
+Title at top in concise Chinese: "Alembic 多仓库系统上下文"
 
-A large rounded rectangle divided into 6 horizontal layers:
-Layer 1 "核心身份": 4 boxes — id, title(≤20字), description(≤80字), trigger(@前缀).
-Layer 2 "内容体": content.markdown(≥200字符) + coreCode(3-8行)
-...
+Draw a local-first multi-repository system map. Put "用户项目" on the far left,
+"Alembic 本地运行时" in the center, and supporting repositories around it.
 ```
 
 ### Step 2: 准备 Codex prompt 包
@@ -72,8 +72,11 @@ bash scripts/illustrations.sh
 # 为某章导出 prompt 包
 bash scripts/illustrations.sh --export-prompts ch06
 
+# 为附录导出 prompt 包
+bash scripts/illustrations.sh --export-prompts appendix
+
 # 为已有图片准备替换重生成 prompt
-bash scripts/illustrations.sh --force ch07/06
+bash scripts/illustrations.sh --force ch07/01
 
 # 只预览两轮生图计划
 bash scripts/illustrations.sh --dry-run --force ch07/06
@@ -83,7 +86,7 @@ bash scripts/illustrations.sh --dry-run --force ch07/06
 
 ```bash
 npm run illustrations -- --force ch15
-npm run illustrations:prompts -- ch15
+npm run illustrations:prompts -- appendix
 ```
 
 导出文件默认位于 `tmp/illustration-prompts/`。每个 prompt 包都会写清楚:
@@ -92,14 +95,14 @@ npm run illustrations:prompts -- ch15
 - 第一版候选图: `tmp/illustration-candidates/chXX/NN-slug.v1.png`
 - 第二版候选图: `tmp/illustration-candidates/chXX/NN-slug.v2.png`
 - 使用的全局风格: `prompts/style-prompt-suffix.md`
-- 当前系列示例: `docs/public/images/ch01/01-core-workflow.png`
+- 当前系列示例: `docs/public/images/ch01/01-multi-repo-system-context.png`
 
 ### Step 3: Codex 两轮生图
 
 必须执行两轮，不允许一次生成后直接替换:
 
 1. 使用导出的 initial prompt 生成 v1。
-2. 检查 v1 的中文可读性、构图、事实标签、颜色纪律、是否像 `01-core-workflow.png` 系列。
+2. 检查 v1 的中文可读性、构图、事实标签、颜色纪律、是否像当前系统白板系列。
 3. 写一段 v2 adjustment note，只修正 v1 最弱的点，保留成功结构。
 4. 用 initial prompt + adjustment note 生成 v2。
 5. 比较 v1 和 v2，挑选最佳版本替换最终 PNG。
@@ -109,8 +112,8 @@ npm run illustrations:prompts -- ch15
 替换后检查 Markdown 引用、图片尺寸和站点构建。章节图片文件名必须和 prompt 文件名保持一致，例如:
 
 ```text
-prompts/ch07/06-scenario-promotion-path.md
-docs/public/images/ch07/06-scenario-promotion-path.png
+prompts/ch17/01-knowledge-evolution-governance.md
+docs/public/images/ch17/01-knowledge-evolution-governance.png
 ```
 
 ## 参数速查
@@ -132,7 +135,7 @@ docs/public/images/ch07/06-scenario-promotion-path.png
 | 文字 | 中文清晰、少错字 | 减少文字量后重生成 v2 |
 | 颜色 | 只使用红/蓝/绿/橙/紫点缀 | v2 中约束颜色用途 |
 | 信息密度 | 密但有秩序，箭头少交叉 | 调整布局描述 |
-| 统一性 | 和 `ch01/01-core-workflow.png` 像同一本技术笔记 | 重新生成 v2 |
+| 统一性 | 和 `ch01/01-multi-repo-system-context.png` 像同一本技术笔记 | 重新生成 v2 |
 
 ## 命名规范
 
@@ -141,11 +144,11 @@ docs/public/images/ch07/06-scenario-promotion-path.png
 - v1 候选: `tmp/illustration-candidates/chXX/NN-slug.v1.png`
 - v2 候选: `tmp/illustration-candidates/chXX/NN-slug.v2.png`
 - 全局风格约束: `prompts/style-prompt-suffix.md`
-- 当前系列示例: `docs/public/images/ch01/01-core-workflow.png`
+- 当前系列示例: `docs/public/images/ch01/01-multi-repo-system-context.png`
 
 ## 注意事项
 
 1. 风格调整优先改 `style-prompt-suffix.md`，内容调整才改章节 prompt。
-2. 所有章节图都通过文字 prompt 直接生成，不附加 `style-anchor.png` 或外部参考图。
+2. 所有章节图都通过文字 prompt 直接生成，不附加 `style-anchor` 或外部参考图。
 3. 替换已有图片前，必须保留 v1/v2 两个候选版本的判断过程。
-4. `prompts/style-anchor.md` 和 `docs/public/images/style-anchor.png` 是旧流程遗留文件，不参与当前生成流程。
+4. 旧 `style-anchor` 文件已从当前清单移除；后续不要重新引入为生成依赖。

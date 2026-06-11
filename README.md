@@ -1,149 +1,53 @@
-# Alembic 技术解构
+# Alembic 当前实现架构书
 
-> 从 150 行 Shell 脚本到 12 万行 AI 知识引擎 — 每一个设计决策的深度解读。
+> 这是 Alembic 配套技术书的新版结构。它不再沿用旧的单仓库章节和旧插图，而是按当前多仓库实现重新解释 Alembic。
 
-🔗 **在线阅读**: [docs.gaoxuefeng.com](https://docs.gaoxuefeng.com)
+在线阅读：[docs.gaoxuefeng.com](https://docs.gaoxuefeng.com)
 
-## 这本书讲什么
+## 当前定位
 
-[Alembic](https://github.com/GxFn/Alembic) 是一个 AI 代码知识引擎，为 Cursor / Copilot 等 AI 助手构建本地项目知识层。本书 7 个篇章、19 章正文 + 4 篇附录，从架构到实现逐模块解构其技术细节。
+本书解释的是当前 Alembic 系统：
 
-### Part 1 — 起点与哲学
+- `Alembic`：本地 CLI、daemon、HTTP/API、Dashboard server、项目 runtime 和发布安装体验。
+- `AlembicCore`：`@alembic/core`，共享 headless deterministic kernel。
+- `AlembicPlugin`：Codex MCP、skills、channel/marketplace、plugin runtime 和 Codex host adaptation。
+- `AlembicAgent`：`@alembic/agent`，AgentRuntime、AI providers、tool system、memory/context。
+- `AlembicDashboard`：独立 React/Vite Dashboard 前端。
 
-| 章 | 标题 |
-|---|------|
-| Ch01 | Alembic 介绍 |
-| Ch02 | SOUL 原则 — 知识引擎的身份约束 |
+## 新章节结构
 
-### Part 2 — 核心引擎
+- Part I：系统地图
+- Part II：Core 内核
+- Part III：本地运行时
+- Part IV：Codex 插件
+- Part V：Agent 与 Dashboard
+- Part VI：知识生命周期
+- Part VII：发布与证据
+- Appendix：配置、public API、MCP tools、术语表
 
-| 章 | 标题 |
-|---|------|
-| Ch03 | 架构全景 — DDD 分层与模块拓扑 |
-| Ch04 | 安全管线 — Constitution · Gateway · 纵深防御 |
-| Ch05 | 代码理解 — 多语言 AST · Discovery · 增强 |
+## 插图策略
 
-### Part 3 — 领域模型
-
-| 章 | 标题 |
-|---|------|
-| Ch06 | KnowledgeEntry — 一个实体表达所有知识 |
-| Ch07 | 生命周期与进化 — 知识的生老病死 |
-| Ch08 | 质量评分与维度框架 |
-
-### Part 4 — 服务层
-
-| 章 | 标题 |
-|---|------|
-| Ch09 | Bootstrap — 冷启动的多阶段编排 |
-| Ch10 | Guard — 四层合规检测引擎 |
-| Ch11 | Search — 混合检索与智能排序 |
-| Ch12 | Panorama · Signal · 知识代谢 |
-
-### Part 5 — Agent 智能层
-
-| 章 | 标题 |
-|---|------|
-| Ch13 | AgentRuntime — ReAct 推理循环 |
-| Ch14 | 正交组合 — Capability × Strategy × Policy |
-| Ch15 | 工具体系与记忆系统 |
-
-### Part 6 — 基础设施与接入
-
-| 章 | 标题 |
-|---|------|
-| Ch16 | 数据基础设施 |
-| Ch17 | MCP 协议与六通道交付 |
-| Ch18 | 界面层 — Dashboard · CLI · 多端接入 |
-
-### Part 7 — 真实数据
-
-| 章 | 标题 |
-|---|------|
-| Ch19 | BiliDili 冷启动全记录 |
-
-### 附录
-
-| 附录 | 标题 |
-|------|------|
-| A | 配置参考 |
-| B | Guard 规则清单 |
-| C | MCP 工具清单 |
-| D | 信号类型清单 |
+当前正文使用重新生成的 prompt-managed 插图。每张图都有对应的 `prompts/chXX/NN-slug.md` 或 `prompts/appendix/NN-slug.md`，最终图片放在 `docs/public/images/` 下的同名路径。旧版章节图不作为正文插图来源。
 
 ## 本地开发
 
-```bash
-# 安装依赖
+~~~bash
 npm install
-
-# 启动本地预览（热更新）
 npm run dev
-
-# 构建静态站点
 npm run build
-
-# 预览构建结果
 npm run preview
-```
+~~~
 
-## 插图生成
+## 验证建议
 
-每章配有手绘风格架构插图，通过章节 prompt 和全局 `prompts/style-prompt-suffix.md` 驱动生成。当前不使用 API key，不使用 `style-anchor.png` 作为参考图，而是用当前 Codex / ChatGPT Plus 账号能力执行“两轮生图”：先生成 v1，再由 Codex 根据 v1 调整生成 v2，最后挑选最佳版本替换书内 PNG。`docs/public/images/ch01/01-core-workflow.png` 是期望成图系列示例：
+~~~bash
+npm run build
+npm run illustrations -- --list
+rg -n "diagram-placeholder|插图占位" docs
+~~~
 
-```bash
-# 查看所有插图状态
-bash scripts/illustrations.sh --list
-
-# 为缺失插图准备 Codex prompt 包
-bash scripts/illustrations.sh
-
-# 为指定章节准备替换重生成 prompt 包
-bash scripts/illustrations.sh --force ch06
-
-# 预览两轮生图计划
-bash scripts/illustrations.sh --dry-run --force ch06
-```
-
-Prompt 文件存放在 `prompts/chXX/` 目录，脚本导出的完整 prompt 包位于 `tmp/illustration-prompts/`，v1/v2 候选图建议放在 `tmp/illustration-candidates/`，最终图片输出到 `docs/public/images/chXX/`。
-
-## 目录结构
-
-```
-docs/
-├── index.md              # 首页
-├── part1/                # 起点与哲学 (Ch01-02)
-├── part2/                # 核心引擎 (Ch03-05)
-├── part3/                # 领域模型 (Ch06-08)
-├── part4/                # 服务层 (Ch09-12)
-├── part5/                # Agent 智能层 (Ch13-15)
-├── part6/                # 基础设施与接入 (Ch16-18)
-├── part7/                # 真实数据 (Ch19)
-├── appendix/             # 附录 (A-D)
-├── public/images/        # 章节插图
-└── .vitepress/
-    └── config.mts        # VitePress 配置
-prompts/
-├── style-prompt-suffix.md  # 统一风格约束
-└── chXX/                   # 各章插图 prompt
-scripts/
-├── illustrations.sh        # 插图工作流入口
-└── illustrations-codex.mjs # Codex 两轮 prompt 工作流
-```
-
-## 技术栈
-
-- 静态生成: [VitePress](https://vitepress.dev/)
-- 插图生成: Codex / ChatGPT Plus 两轮生图工作流
-- 托管平台: GitHub Pages
-- 自定义域名: `docs.gaoxuefeng.com`
-- CI/CD: GitHub Actions（push 自动构建部署）
-
-## 相关链接
-
-- [Alembic 源码](https://github.com/GxFn/Alembic)
-- [博客](https://gaoxuefeng.com)
+第二条命令用于确认 prompt 清单里的目标图全部存在；第三条命令用于确认正文不再残留占位块。
 
 ## License
 
-MIT © [GaoXuefeng](https://github.com/GxFn)
+MIT © GaoXuefeng

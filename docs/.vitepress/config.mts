@@ -1,8 +1,8 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  title: 'Alembic 技术解构',
-  description: '从架构到实现 — AI 知识引擎的深度技术文档',
+  title: 'Alembic 当前实现架构书',
+  description: '从用户项目、Core 内核、Codex 插件、Agent Runtime 到 Dashboard 的分层读本',
   lang: 'zh-CN',
   base: '/',
 
@@ -21,93 +21,172 @@ export default defineConfig({
 
     nav: [
       { text: '首页', link: '/' },
-      { text: '图解速览', link: '/visual-tour' },
-      { text: '开始阅读', link: '/part1/ch01-introduction' },
+      { text: '架构速览', link: '/visual-tour' },
+      { text: '开始阅读', link: '/part1/ch01-system-map' },
       {
         text: '相关链接',
         items: [
           { text: 'Alembic GitHub', link: 'https://github.com/GxFn/Alembic' },
+          { text: 'AlembicBook GitHub', link: 'https://github.com/GxFn/AlembicBook' },
           { text: '博客', link: 'https://gaoxuefeng.com' },
         ],
       },
     ],
 
     sidebar: [
-      { text: '图解速览', link: '/visual-tour' },
       {
-        text: '起点与哲学',
-        collapsed: false,
-        items: [
-          { text: 'Alembic 介绍', link: '/part1/ch01-introduction' },
-          { text: '本地记忆主权', link: '/part1/ch02b-privacy-memory' },
-          { text: 'SOUL 原则', link: '/part1/ch02-soul' },
-        ],
+            "text": "架构速览",
+            "link": "/visual-tour"
       },
       {
-        text: '工程基石',
-        collapsed: true,
-        items: [
-          { text: '架构全景', link: '/part2/ch03-architecture' },
-          { text: '安全管线', link: '/part2/ch04-security' },
-          { text: '代码理解', link: '/part2/ch05-ast' },
-        ],
+            "text": "Part I · 系统地图",
+            "collapsed": false,
+            "items": [
+                  {
+                        "text": "当前系统地图",
+                        "link": "/part1/ch01-system-map"
+                  },
+                  {
+                        "text": "用户项目到知识层",
+                        "link": "/part1/ch02-user-journey"
+                  },
+                  {
+                        "text": "仓库边界与依赖方向",
+                        "link": "/part1/ch03-repository-boundaries"
+                  }
+            ]
       },
       {
-        text: '知识领域',
-        collapsed: true,
-        items: [
-          { text: 'KnowledgeEntry', link: '/part3/ch06-knowledge-entry' },
-          { text: '生命周期与进化', link: '/part3/ch07-lifecycle' },
-          { text: '质量评分与维度', link: '/part3/ch08-quality' },
-        ],
+            "text": "Part II · Core 内核",
+            "collapsed": false,
+            "items": [
+                  {
+                        "text": "Core Contract Spine",
+                        "link": "/part2/ch04-core-contract-spine"
+                  },
+                  {
+                        "text": "项目模型和存储",
+                        "link": "/part2/ch05-project-model-storage"
+                  },
+                  {
+                        "text": "分析、检索与 Guard",
+                        "link": "/part2/ch06-analysis-search-guard"
+                  }
+            ]
       },
       {
-        text: '核心服务',
-        collapsed: true,
-        items: [
-          { text: 'Bootstrap 冷启动', link: '/part4/ch09-bootstrap' },
-          { text: 'Guard 合规引擎', link: '/part4/ch10-guard' },
-          { text: 'Search 混合检索', link: '/part4/ch11-search' },
-          { text: '向量引擎深度解析', link: '/part4/ch11b-vector' },
-          { text: 'Panorama · Signal · 代谢', link: '/part4/ch12-metabolism' },
-        ],
+            "text": "Part III · 本地运行时",
+            "collapsed": false,
+            "items": [
+                  {
+                        "text": "主运行时",
+                        "link": "/part3/ch07-local-runtime"
+                  },
+                  {
+                        "text": "Daemon / HTTP / Jobs",
+                        "link": "/part3/ch08-daemon-http-jobs"
+                  },
+                  {
+                        "text": "Cold Start / Rescan",
+                        "link": "/part3/ch09-cold-start-rescan"
+                  }
+            ]
       },
       {
-        text: 'Agent 智能层',
-        collapsed: true,
-        items: [
-          { text: 'AgentRuntime', link: '/part5/ch13-agent-runtime' },
-          { text: '正交组合', link: '/part5/ch14-orthogonal' },
-          { text: '工具与记忆', link: '/part5/ch15-tools-memory' },
-        ],
+            "text": "Part IV · Codex 插件",
+            "collapsed": false,
+            "items": [
+                  {
+                        "text": "Codex 插件表面",
+                        "link": "/part4/ch10-codex-plugin-surface"
+                  },
+                  {
+                        "text": "Host Agent Workflow",
+                        "link": "/part4/ch11-host-agent-workflows"
+                  },
+                  {
+                        "text": "Skills 与交付",
+                        "link": "/part4/ch12-skills-delivery"
+                  }
+            ]
       },
       {
-        text: '平台与交付',
-        collapsed: true,
-        items: [
-          { text: '数据基础设施', link: '/part6/ch16-infrastructure' },
-          { text: 'MCP 与六通道交付', link: '/part6/ch17-mcp-delivery' },
-          { text: '界面层', link: '/part6/ch18-interface' },
-        ],
+            "text": "Part V · Agent 与 Dashboard",
+            "collapsed": false,
+            "items": [
+                  {
+                        "text": "Agent Runtime 与工具",
+                        "link": "/part5/ch13-agent-runtime-tools"
+                  },
+                  {
+                        "text": "Dashboard 前端体验",
+                        "link": "/part5/ch14-dashboard-ui"
+                  },
+                  {
+                        "text": "AI 配置边界",
+                        "link": "/part5/ch15-ai-configuration"
+                  }
+            ]
       },
       {
-        text: '真实数据',
-        collapsed: true,
-        items: [
-          { text: 'BiliDili 冷启动全记录', link: '/part7/ch19-bilidili-coldstart' },
-        ],
+            "text": "Part VI · 知识生命周期",
+            "collapsed": false,
+            "items": [
+                  {
+                        "text": "Knowledge / Candidate / Recipe",
+                        "link": "/part6/ch16-knowledge-model"
+                  },
+                  {
+                        "text": "Evolution 与 Governance",
+                        "link": "/part6/ch17-evolution-governance"
+                  },
+                  {
+                        "text": "Guard 与决策记录",
+                        "link": "/part6/ch18-guard-decision-records"
+                  }
+            ]
       },
       {
-        text: '附录',
-        collapsed: true,
-        items: [
-          { text: '配置参考', link: '/appendix/config-reference' },
-          { text: 'MCP 工具清单', link: '/appendix/mcp-tools' },
-          { text: 'Guard 规则清单', link: '/appendix/guard-rules' },
-          { text: '信号类型清单', link: '/appendix/signal-types' },
-        ],
+            "text": "Part VII · 发布与证据",
+            "collapsed": false,
+            "items": [
+                  {
+                        "text": "发布与验证",
+                        "link": "/part7/ch19-release-validation"
+                  },
+                  {
+                        "text": "测试、证据与验收",
+                        "link": "/part7/ch20-testing-evidence"
+                  },
+                  {
+                        "text": "阅读路径与维护",
+                        "link": "/part7/ch21-reading-maintenance"
+                  }
+            ]
       },
-    ],
+      {
+            "text": "附录",
+            "collapsed": true,
+            "items": [
+                  {
+                        "text": "配置和运行目录",
+                        "link": "/appendix/config-reference"
+                  },
+                  {
+                        "text": "Public API Map",
+                        "link": "/appendix/public-api-map"
+                  },
+                  {
+                        "text": "MCP Tool Surface",
+                        "link": "/appendix/mcp-tools"
+                  },
+                  {
+                        "text": "术语表",
+                        "link": "/appendix/glossary"
+                  }
+            ]
+      }
+],
 
     outline: {
       level: [2, 3],
@@ -115,7 +194,7 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: 'https://github.com/GxFn/alembic-book/edit/main/docs/:path',
+      pattern: 'https://github.com/GxFn/AlembicBook/edit/main/docs/:path',
       text: '在 GitHub 上编辑此页',
     },
 

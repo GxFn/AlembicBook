@@ -35,3 +35,19 @@
   display: block;
   margin: 1.5rem auto;
 }
+
+
+/* 新版 Book 插图占位：当前不引用旧图，也不生成新图。 */
+.diagram-placeholder {
+  margin: 1.5rem 0;
+  padding: 1rem 1.125rem;
+  border: 1px dashed var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-2);
+  line-height: 1.75;
+}
+
+.diagram-placeholder strong {
+  color: var(--vp-c-text-1);
+}

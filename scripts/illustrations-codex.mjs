@@ -28,8 +28,10 @@ function usage() {
 常用:
   bash scripts/illustrations.sh --list                   列出插图状态
   bash scripts/illustrations.sh --export-prompts ch15    导出给 Codex 生图的完整 prompt
+  bash scripts/illustrations.sh --export-prompts appendix 导出附录插图 prompt
   bash scripts/illustrations.sh --force ch07/06          为已有图片准备重生成 prompt
   bash scripts/illustrations.sh ch06                     为缺失的 ch06 插图准备 prompt
+  bash scripts/illustrations.sh appendix/01-config       为附录指定图准备 prompt
   bash scripts/illustrations.sh ch07/06                  为 ch07 下 06- 开头的图准备 prompt
   bash scripts/illustrations.sh --dry-run --force ch07/06 预览两轮生图计划
 
@@ -99,9 +101,9 @@ function parseArgs(argv) {
       opts.candidateDir = readValue('--candidate-dir');
     } else if (isDeprecatedApiOption(arg)) {
       throw new Error(`${arg.split('=')[0]} 已废弃：当前流程使用 Codex / ChatGPT Plus 两轮生图，不使用 API key 或 API 参数。`);
-    } else if (/^ch\d\d\/.+/.test(arg)) {
+    } else if (/^(ch\d\d|appendix)\/.+/.test(arg)) {
       opts.slugs.push(normalizeSlugTarget(arg));
-    } else if (/^ch\d\d$/.test(arg)) {
+    } else if (/^(ch\d\d|appendix)$/.test(arg)) {
       opts.chapters.push(arg);
     } else {
       throw new Error(`未知参数: ${arg}`);
@@ -165,7 +167,7 @@ function formatBytes(bytes) {
 
 async function collectPromptFiles() {
   const chapters = (await fs.readdir(PROMPTS_DIR, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory() && /^ch\d\d$/.test(entry.name))
+    .filter((entry) => entry.isDirectory() && (/^ch\d\d$/.test(entry.name) || entry.name === 'appendix'))
     .map((entry) => entry.name)
     .sort();
 
@@ -234,7 +236,7 @@ async function buildPrompt(task, opts) {
     'Create an original AlembicBook chapter illustration with the current Codex / ChatGPT Plus image generation capability.',
     'Do not use API keys, OpenAI Images API calls, external reference images, or style-anchor.png.',
     `Canvas: ${opts.size}, landscape. Output should be suitable for a PNG replacement in the book.`,
-    'Use prompts/style-prompt-suffix.md as the canonical visual standard. Match the existing AlembicBook notebook family; docs/public/images/ch01/01-core-workflow.png is the current target example.',
+    'Use prompts/style-prompt-suffix.md as the canonical visual standard. Match the current AlembicBook notebook family; docs/public/images/ch01/01-multi-repo-system-context.png is the current target example.',
     'CHAPTER CONTENT BRIEF:',
     content,
     'GLOBAL STYLE CONSTRAINTS:',
@@ -255,7 +257,7 @@ async function buildManualPrompt(task, opts) {
     `Canvas: ${opts.size}, landscape`,
     'Reference image: none',
     `Style source: ${rel(STYLE_SUFFIX)}`,
-    'Target family example: docs/public/images/ch01/01-core-workflow.png',
+    'Target family example: docs/public/images/ch01/01-multi-repo-system-context.png',
     '',
     'Mandatory Codex / ChatGPT Plus workflow:',
     '1. Generate v1 directly from the initial prompt below.',
@@ -274,7 +276,7 @@ async function buildManualPrompt(task, opts) {
     '',
     'Second-pass adjustment template:',
     '',
-    'Generate v2 of the same AlembicBook illustration. Preserve the successful layout from v1, but improve: [composition / label clarity / factual labels / color balance / visual hierarchy]. Keep all visible text concise Chinese and keep the same technical notebook family as docs/public/images/ch01/01-core-workflow.png.',
+    'Generate v2 of the same AlembicBook illustration. Preserve the successful layout from v1, but improve: [composition / label clarity / factual labels / color balance / visual hierarchy]. Keep all visible text concise Chinese and keep the same technical notebook family as docs/public/images/ch01/01-multi-repo-system-context.png.',
     '',
   ].join('\n');
 }

@@ -17,8 +17,7 @@ echo "Image directory: $IMAGE_DIR"
 echo "Target width: ${TARGET_WIDTH}px"
 echo "---"
 
-# Legacy style-anchor.png is no longer used for generation; leave it untouched if present.
-SKIP_FILES="style-anchor.png"
+SKIP_FILES=""
 
 count=0
 saved_total=0
