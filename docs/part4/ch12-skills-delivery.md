@@ -6,6 +6,8 @@ AlembicPlugin 不只暴露 MCP 工具，还要把项目知识以 Codex 可以长
 
 ![Project Skill delivery 与 plugin artifact 图](/images/ch12/01-project-skill-delivery-artifacts.png)
 
+源码锚点：`AlembicPlugin/lib/runtime/ProjectSkillDelivery.ts`、`AlembicPlugin/lib/service/skills/ProjectSkillService.ts`、`AlembicPlugin/scripts/prepare-codex-plugin-runtime.mjs`。
+
 ## 本章回答
 
 - Project Skill 源和 Codex runtime 投影有什么区别。

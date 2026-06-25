@@ -17,15 +17,17 @@ Alembic resident service 的外观是一个本地 Dashboard URL，内部则是�
 
 daemon 的职责是守住当前项目的 resident boundary。它知道项目 dataRoot、runtimeDir、databasePath、API base URL、Dashboard URL、file monitor 状态、jobs capability、api-ai 配置、runtime source of truth。
 
-这些状态会出现在 `alembic status`、Codex `alembic_codex_status`、Dashboard handoff 和 ProjectRuntimeControl snapshot 中。它们是诊断证据，但也有明确限制：selected/active runtime state 是诊断和控制数据，不能随意覆盖当前 host project 的 identity。
+这些状态会出现在 `alembic status`、Plugin `alembic_status`、Dashboard handoff 和 ProjectRuntimeControl snapshot 中。它们是诊断证据，但也有明确限制：selected/active runtime state 是诊断和控制数据，不能随意覆盖当前 host project 的 identity。
 
 ## HTTP routes 是 Dashboard 和工具的共同后端
 
-主仓库 `lib/http/routes` 下有大量 routes：`ai`、`auth`、`candidates`、`decision-register`、`evolution`、`file-changes`、`guard`、`guardRules`、`health`、`intent-episodes`、`jobs`、`knowledge`、`logs`、`monitoring`、`panorama`、`project-scope`、`projects`、`recipes`、`search`、`signals`、`skills`、`task`、`wiki` 等。
+主仓库 `lib/http/routes` 当前有这些 route families：`ai`、`audit`、`candidates`、`commands`、`daemon`、`evolution`、`extract`、`file-changes`、`governance`、`guard`、`guardRules`、`health`、`jobs`、`knowledge`、`logs`、`modules`、`project-scope`、`projects`、`recipes`、`search`、`signals`、`skills`、`violations`、`wiki`。
+
+另外，`Alembic/lib/generated/dashboard-api-types.ts` 由 provider contract 生成，当前记录 28 个 HTTP route contracts。Dashboard 侧提交了同名 generated copy 和 sha256 pin，用来检查前后端 API 漂移。
 
 这说明 Dashboard 不是直接读文件，也不是自己决定知识生命周期。它通过 API client 调 `/api/v1`。Codex Plugin 的 status/dashboard/job 能力也会读取这些 resident capability。CLI 的一部分命令同样可以走本地服务或共享底层 service。
 
-API route 的价值是把“本地知识层”变成可交互系统，而不是把所有东西藏在命令行输出里。
+API route 的价值是把“本地知识层”变成可交互系统，而不是把所有东西藏在命令行输出里。过期 route 名不应继续写进书里；例如 decision-register HTTP entry 已在 DRR-2 后退出当前 provider contract。
 
 ## Jobs 让长任务可恢复
 

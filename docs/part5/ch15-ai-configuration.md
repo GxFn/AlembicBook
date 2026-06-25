@@ -6,6 +6,8 @@ Alembic 可以使用 AI，但 AI 配置不是所有仓库都拥有的能力。�
 
 ![AI 配置边界图](/images/ch15/01-ai-configuration-boundary.png)
 
+源码锚点：`Alembic/lib/cli/AiScanService.ts`、`Alembic/lib/injection/modules/AiModule.ts`、`AlembicAgent/src/ai/AiFactory.ts`、`AlembicPlugin/lib/runtime/mcp/public-tools/contract.ts`。
+
 ## 本章回答
 
 - Alembic 的 AI provider 在哪里创建。

@@ -1,6 +1,6 @@
 # Ch14 Dashboard 前端体验
 
-AlembicDashboard 是面向人的审阅和操作界面。它不拥有后端业务事实，也不直接实现 Core 内核；它通过 `/api/v1` API 读取主 Alembic resident service，把 Recipes、Candidates、Knowledge、Guard、Panorama、Skills、Jobs、Wiki 和 Signals 组织成可理解的工作台。
+AlembicDashboard 是面向人的审阅和操作界面。它不拥有后端业务事实，也不直接实现 Core 内核；它通过 `/api/v1` API 读取主 Alembic resident service，把 Recipes、Candidates、Knowledge、Guard、Project Pyramid、Skills 和 Jobs 组织成可理解的工作台。
 
 本章讲 Dashboard 的产品边界和页面结构。读者需要分清：Dashboard 是审阅体验，不是数据库，不是 Agent runtime，也不是 MCP server。
 
@@ -15,9 +15,9 @@ AlembicDashboard 是面向人的审阅和操作界面。它不拥有后端业务
 
 ## 前端入口与页面结构
 
-`AlembicDashboard/src/App.tsx` 组织了主要视图：RecipesView、CandidatesView、ModuleExplorerView、GuardView、PanoramaView、AiChatView、KnowledgeView、SkillsView、BootstrapProgressView、JobsView、WikiView、SignalReportView，以及 RecipeEditor、CreateModal、SearchModal、LlmConfigModal 等交互组件。
+`AlembicDashboard/src/App.tsx` 组织了主要视图：RecipesView、CandidatesView、ModuleExplorerView、GuardView、DepGraphView、KnowledgeView、SkillsView、BootstrapProgressView、JobsView、HelpView，以及 RecipeEditor、CreateModal、SearchModal、LlmConfigModal 等交互组件。
 
-`src/constants/index.ts` 定义 valid tabs：recipes、ai、spm、candidates、knowledge、guard、panorama、skills、jobs、wiki、signals、help。用户 URL path 会映射到这些 tab，默认进入 help。
+`src/constants/index.ts` 定义 valid tabs：recipes、spm、candidates、knowledge、guard、project-pyramid、skills、jobs、help。用户 URL path 会映射到这些 tab，默认进入 help。
 
 这说明 Dashboard 的主体验不是 landing page，而是工作台。它围绕知识审阅、任务观察和项目理解组织，而不是围绕营销介绍组织。
 
@@ -39,15 +39,11 @@ KnowledgeView 展示统一 KnowledgeEntry。
 
 GuardView 和 Guard report 展示规则检查与违规信息。
 
-PanoramaView 和 ModuleExplorerView 展示项目结构、模块、扫描和 project intelligence 投影。
+Project Pyramid 的 `DepGraphView` 和 `ModuleExplorerView` 展示项目结构、模块、扫描和 ProjectContext 投影。
 
 SkillsView 展示 Project Skill 与 runtime 可见性。
 
 JobsView 与 BootstrapProgressView 展示 long-running job、process events、display snapshot 和 artifacts。
-
-WikiView 展示文档投影。
-
-SignalReportView 展示信号、演化和采用情况。
 
 这些页面共同构成一个“审阅面”。它们让人看到 Alembic 正在做什么、做到了哪里、哪些结果需要批准或复核。
 
@@ -63,6 +59,12 @@ Dashboard 可以发起操作，例如创建 candidate、保存 Recipe、启动 j
 
 如果 job failed，也应读 events 和 artifact，区分 provider 问题、维度中断、预算耗尽、数据写入失败或 UI 映射错误。
 
+## Generated API 类型是漂移门禁
+
+Dashboard 提交了 `src/generated/api-types.ts` 和 `api-types.sha256`。它们来自主 `Alembic/lib/generated/dashboard-api-types.ts`，由主仓库 `npm run build && npm run generate:dashboard-types` 生成，再同步到 Dashboard。`scripts/check-generated-api-types.mjs` 会校验哈希，并在 sibling 主仓库存在时做字节级比较。
+
+这条门禁的意义是：前端不能手写一套“看起来差不多”的 API 类型。如果 live API、provider contract、failure taxonomy 或 Knowledge wire type 改了，应回到主 Alembic 生成 canonical artifact，再同步 Dashboard copy。
+
 ## UI 与多语言/维度显示
 
 Dashboard 常量中定义了 bootstrap dimension labels、category configs、language options、language normalization、代码高亮语言、import placeholder 等。这些是展示层的语义辅助。它们帮助用户看懂不同语言和维度，但不应改变 Core 中的 dimensionId、knowledgeType 或 lifecycle。
@@ -71,6 +73,6 @@ Dashboard 常量中定义了 bootstrap dimension labels、category configs、lan
 
 ## 本章小结
 
-AlembicDashboard 是本地知识层的人类审阅和观察界面。它通过 `/api/v1` 消费主 Alembic resident service，展示 Recipes、Candidates、Knowledge、Guard、Panorama、Skills、Jobs、Wiki 和 Signals。
+AlembicDashboard 是本地知识层的人类审阅和观察界面。它通过 `/api/v1` 消费主 Alembic resident service，展示 Recipes、Candidates、Knowledge、Guard、Project Pyramid、Skills 和 Jobs。
 
 它的边界同样清楚：前端负责体验和投影，后端/Core 负责事实和 contract，Agent 负责非确定性执行，Plugin 负责 Codex host adaptation。下一章会讲 AI provider、配置和密钥边界。

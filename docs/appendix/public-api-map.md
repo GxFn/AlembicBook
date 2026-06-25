@@ -13,8 +13,11 @@
 - `@alembic/core/knowledge`
 - `@alembic/core/search`
 - `@alembic/core/guard`
-- `@alembic/core/project-intelligence`
+- `@alembic/core/project-context`
+- `@alembic/core/project-context-capabilities`
+- `@alembic/core/recipe-context-capabilities`
 - `@alembic/core/host-agent-workflows`
+- `@alembic/core/plans`
 - `@alembic/core/daemon`
 - `@alembic/core/database`
 - `@alembic/core/repositories`
@@ -24,8 +27,12 @@
 - `@alembic/core/dimensions`
 - `@alembic/core/evolution`
 - `@alembic/core/vector`
+- `@alembic/core/report`
+- `@alembic/core/core/analysis`
+- `@alembic/core/core/ast`
+- `@alembic/core/core/discovery`
 
-消费原则：外层仓库应通过 package exports 使用 Core，不绕过入口 deep import sibling `src`。
+消费原则：外层仓库应通过 package exports 使用 Core，不绕过入口 deep import sibling `src`。`package.json` exports 是公共 API 边界；新增消费者需要先确认入口存在。
 
 ## `@alembic/agent`
 
@@ -37,13 +44,11 @@
 - `@alembic/agent/service`
 - `@alembic/agent/prompts`
 - `@alembic/agent/domain`
-- `@alembic/agent/forge`
 - `@alembic/agent/tasks`
 - `@alembic/agent/profiles`
 - `@alembic/agent/ai`
-- `@alembic/agent/tools`
 - `@alembic/agent/tools/terminal`
-- `@alembic/agent/tools/v2`
+- `@alembic/agent/tools/runtime`
 - `@alembic/agent/memory`
 - `@alembic/agent/context`
 
@@ -64,6 +69,8 @@
 - `alembic guard`
 - `alembic status`
 - `alembic health`
+- `alembic embed`
+- `alembic task list/sync/list-warnings`
 
 服务入口：
 
@@ -76,12 +83,13 @@
 
 入口：
 
-- `alembic_codex_*` local tools。
-- `alembic_intent` / `prime` / `work_start` / `work_finish` / `code_guard` / `decision_record`。
-- knowledge/search/structure/graph/call_context/guard tools。
-- bootstrap/rescan/evolve/dimension_complete/panorama/project_skill。
+- `alembic_status` / `alembic_init` / `alembic_job` / `alembic_runtime`。
+- `alembic_recipe_map` / `alembic_search` / `alembic_graph` / `alembic_plan`。
+- `alembic_prime` / `alembic_work` / `alembic_code_guard`。
+- `alembic_bootstrap` / `alembic_rescan` / `alembic_submit_knowledge` / `alembic_evolve` / `alembic_consolidate` / `alembic_dimension_complete` / `alembic_project_skill`。
+- admin-only `alembic_knowledge_lifecycle`。
 
-消费原则：Codex 通过 MCP 调用 Plugin；Plugin 再根据 route policy 消费 resident service、Core workflow contract 或 embedded runtime。
+消费原则：Codex 或 Claude Code 通过 MCP 调用 Plugin；Plugin 再根据 route policy 消费 resident/project-scope capability、Core workflow contract 或 in-process host runtime。
 
 ## Dashboard API
 

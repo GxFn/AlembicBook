@@ -6,6 +6,8 @@ Alembic 的知识层不是一堆 Markdown，也不是一个 SQLite 表。它是�
 
 ![Alembic 知识对象关系图](/images/ch16/01-knowledge-object-relationship.png)
 
+源码锚点：`AlembicCore/src/knowledge.ts`、`AlembicCore/src/domain/knowledge/KnowledgeEntry.ts`、`AlembicCore/src/service/knowledge/RecipeFreshnessService.ts`。
+
 ## 本章回答
 
 - KnowledgeEntry 如何统一 candidate、Recipe、rule、pattern、fact。
@@ -78,7 +80,7 @@ Recipe 不是模型输出的终点，而是后续开发中的输入。
 
 Alembic 知识必须尽可能带 sourceRef。sourceRef 说明知识来自哪个文件、哪段代码、哪次 evidence、哪个维度或哪个审阅结果。没有 sourceRef，知识难以演化，也难以在代码变化后判断是否 stale。
 
-SourceRefReconciler、RecipeSourceRefRepository、search sourceRef adapter、decision register sourceRef gate 都围绕这点展开。sourceRef 不一定每次都决定知识是否可消费，但它是审计和修复的基础。
+SourceRefReconciler、RecipeSourceRefRepository、search sourceRef adapter 和 Recipe freshness gate 都围绕这点展开。sourceRef 不一定每次都决定知识是否可消费，但它是审计和修复的基础。
 
 ## Wiki 是阅读投影
 
@@ -88,7 +90,7 @@ Wiki 让项目知识更适合人类阅读。它可以按模块、主题或工作
 
 ## Project Skill 是宿主投影
 
-Project Skill 可以把项目知识交给 Codex runtime，但它也不是 Recipe 本体。Skill 源在 dataRoot，runtime projection 需要授权和 receipt。Skill 可以总结项目规则、常用路径、操作流程，但真正的长期知识仍要回到 Recipe 和 Decision Register。
+Project Skill 可以把项目知识交给宿主 runtime，但它也不是 Recipe 本体。Skill 源在 dataRoot，runtime projection 需要授权和 receipt。Skill 可以总结项目规则、常用路径、操作流程，但真正的长期知识仍要回到 Recipe、sourceRef 和受控演化路径。
 
 ## 本章小结
 

@@ -15,7 +15,7 @@
 
 ## 包出口就是架构边界
 
-Core 的 `package.json` 暴露大量子路径：根入口、`./workspace`、`./knowledge`、`./search`、`./guard`、`./project-intelligence`、`./host-agent-workflows`、`./daemon`、`./database`、`./repositories`、`./config`、`./io`、`./events` 等。这个设计不是为了让所有内部文件都可随意 import，而是为了把稳定 contract 命名出来。
+Core 的 `package.json` 暴露大量子路径：根入口、`./workspace`、`./knowledge`、`./search`、`./guard`、`./project-context`、`./project-context-capabilities`、`./recipe-context-capabilities`、`./host-agent-workflows`、`./plans`、`./daemon`、`./database`、`./repositories`、`./config`、`./io`、`./events`、`./core/analysis`、`./core/ast`、`./core/discovery` 等。这个设计不是为了让所有内部文件都可随意 import，而是为了把稳定 contract 命名出来。
 
 根入口 `src/index.ts` 也刻意收敛。代码里明确说明根入口只暴露外层收敛需要的稳定契约，避免内部重复类型通过 `export *` 撞到一起。也就是说，Core 的 public API 不是目录镜像，而是一组经过挑选的 contract surface。
 
@@ -25,7 +25,10 @@ Core 的 `package.json` 暴露大量子路径：根入口、`./workspace`、`./k
 - `knowledge` 负责 KnowledgeEntry、candidate、Recipe、字段规范、生命周期和写入/同步服务。
 - `search` 负责 BM25、hybrid retrieval、ranking、sourceRef adapter、search response meta。
 - `guard` 负责 GuardCheckEngine 和规则检查 contract。
-- `project-intelligence` 负责 AST、discovery、snapshot、panorama 和 IDE agent analysis packet。
+- `project-context` 负责 space、repo、map、module、module-layers、file-flow、file-symbols、source-slice、anchor-range 等结构请求。
+- `project-context-capabilities` 负责 ProjectContext 查询 facade、architecture intelligence 和 dynamic planning signals。
+- `recipe-context-capabilities` 负责 detail、list、search、prime、source-refs、relations 等 RecipeContext facade。
+- `core/analysis`、`core/ast`、`core/discovery` 负责 AST、grammar、符号、调用关系和项目发现基础能力。
 - `host-agent-workflows` 负责 cold-start/rescan/dimension completion/Project Skill delivery 等宿主 Agent 协议。
 - `daemon` 负责 JobStore、runtime control state、process events 和 resident service 状态形状。
 
@@ -53,7 +56,7 @@ Core 应该回答确定性问题：
 - 这个知识条目是否是 candidate、accepted、degraded 或 deprecated。
 - 搜索结果应该如何融合 lexical、BM25、vector 和上下文信号。
 - Guard 如何从知识规则和代码输入生成检查结果。
-- host-agent bootstrap 需要哪些维度、snapshot、unit progress 和 completion contract。
+- host-agent bootstrap 需要哪些维度、ProjectContext、unit progress 和 completion contract。
 
 Core 不应该回答宿主体验问题：
 
@@ -73,9 +76,9 @@ Core 自己有 `smoke:public-api`、`lint:public-api-boundary`、`lint:consumer-
 
 ## 与外层仓库的关系
 
-主 `Alembic` 消费 Core 的 workspace、daemon、search、guard、host-agent workflow、database 和 config contract，把它们接进 CLI、daemon、HTTP API 和 Dashboard server。
+主 `Alembic` 消费 Core 的 workspace、daemon、search、guard、ProjectContext、host-agent workflow、database 和 config contract，把它们接进 CLI、daemon、HTTP API 和 Dashboard server。
 
-`AlembicPlugin` 消费 Core 的 workspace、daemon、host-agent workflows、io/path guard、ProjectSkillDeliveryReceipt、JobStore shape 和 public schemas，把它们投射成 Codex MCP 工具。
+`AlembicPlugin` 消费 Core 的 workspace、daemon contracts、ProjectContext、RecipeContext、host-agent workflows、io/path guard、ProjectSkillDeliveryReceipt、JobStore shape 和 public schemas，把它们投射成 MCP 工具。
 
 `AlembicAgent` 消费 Core 的 logging、知识/工作流 contract 和 runtime 所需类型，但 AI provider、tool registry、policy、strategy 留在 Agent 仓库。
 
@@ -83,7 +86,7 @@ Core 自己有 `smoke:public-api`、`lint:public-api-boundary`、`lint:consumer-
 
 ## 读代码时的落点判断
 
-看到 `WorkspaceResolver`、`ProjectRegistry`、`PathGuard`、`KnowledgeEntry`、`SearchEngine`、`GuardCheckEngine`、`buildIDEAgentAnalysisPacket`、`JobStore` 或 host-agent workflow contract，优先在 Core 找事实源。
+看到 `WorkspaceResolver`、`ProjectRegistry`、`PathGuard`、`KnowledgeEntry`、`SearchEngine`、`GuardCheckEngine`、`ProjectContext`、`RecipeContext`、`buildIDEAgentAnalysisPacket`、`JobStore` 或 host-agent workflow contract，优先在 Core 找事实源。
 
 看到 CLI command、daemon start/stop、HTTP route、Dashboard server、provider-backed job enqueue，优先在主 `Alembic` 找装配。
 
@@ -93,6 +96,6 @@ Core 自己有 `smoke:public-api`、`lint:public-api-boundary`、`lint:consumer-
 
 ## 本章小结
 
-`@alembic/core` 的价值在于稳定共享语义。它把项目定位、知识模型、检索、Guard、project intelligence、host-agent workflow 和 daemon state 这些确定性 contract 收敛成包入口，让主运行时、Plugin、Agent 和 Dashboard 能在同一套事实上协作。
+`@alembic/core` 的价值在于稳定共享语义。它把项目定位、知识模型、检索、Guard、ProjectContext、RecipeContext、host-agent workflow 和 daemon state 这些确定性 contract 收敛成包入口，让主运行时、Plugin、Agent 和 Dashboard 能在同一套事实上协作。
 
 后面两章会沿着这条脊柱下钻：先看项目模型、路径和存储，再看分析、检索与 Guard 内核。

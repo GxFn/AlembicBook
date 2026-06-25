@@ -32,9 +32,9 @@
 
 **Wiki**：项目知识的阅读投影，不是 Recipe 的替代事实源。
 
-**Project Skill**：项目知识面向 Codex runtime 的 Skill 投影。源在 dataRoot，导出到 `.agents/skills` 需要授权。
+**Project Skill**：项目知识面向宿主 runtime 的 Skill 投影。源在 dataRoot，导出到 `.agents/skills` 需要授权。
 
-**Host Agent**：外部宿主 Agent，例如 Codex。它可以通过 Plugin MCP tools 消费 Alembic。
+**Host Agent**：外部宿主 Agent，例如 Codex 或 Claude Code。它可以通过 Plugin MCP tools 消费 Alembic。
 
 **AgentRuntime**：`@alembic/agent` 中的 Alembic 内部 AI/tool 执行引擎。
 
@@ -44,13 +44,13 @@
 
 **Dimension**：知识覆盖维度，如 architecture、coding-standards、data-event-flow、testing-quality 等。
 
-**Project Intelligence**：AST、discovery、snapshot、analysis units、Panorama、IDE agent analysis packet 等结构化项目理解能力。
+**ProjectContext**：space、repo、map、module、file-flow、file-symbols、source-slice、anchor-range 等结构化项目理解能力。
 
 **Guard**：基于项目知识和代码输入的规则检查层。
 
-**Code Guard**：Codex-facing scoped Guard 工具，要求 explicit files、inline code 或 workRef scope。
+**Code Guard**：host-facing scoped Guard 工具，要求 explicit files、inline code 或 workRef scope。
 
-**Decision Register**：dataRoot-scoped durable decision store，保存已确认的长期决策和 audit。
+**Decision Register**：历史/治理术语。当前 public MCP 不提供 `alembic_decision_record`，主 Alembic provider contract 也不再暴露 decision-register HTTP entry；当前书稿只把它作为退役路径或检索信号背景说明。
 
 **Lifecycle**：知识状态机，包含 pending、staging、active、evolving、decaying、deprecated。
 

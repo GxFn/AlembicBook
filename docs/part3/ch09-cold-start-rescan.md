@@ -1,15 +1,17 @@
-# Ch09 Cold Start、Rescan 与 Project Intelligence
+# Ch09 Cold Start、Rescan 与 ProjectContext
 
-Cold start 和 rescan 是 Alembic 知识层从空白走向可用、再从可用走向持续新鲜的两条主工作流。它们不是“跑 AI 生成文档”的两个命令，而是围绕 Project Intelligence、维度任务、已有 Recipe、candidate、sourceRef、Guard audit、Agent execution 和 Job evidence 组织起来的长任务。
+Cold start 和 rescan 是 Alembic 知识层从空白走向可用、再从可用走向持续新鲜的两条主工作流。它们不是“跑 AI 生成文档”的两个命令，而是围绕 ProjectContext、维度任务、已有 Recipe、candidate、sourceRef、Guard audit、Agent execution 和 Job evidence 组织起来的长任务。
 
 本章从主 Alembic daemon 路径讲起，同时点明 Codex host-agent 路径在哪里分叉。两条路径最终共享同一目标：生成可审阅、可追溯、可消费的项目知识。
 
 ![cold start rescan 工作流图](/images/ch09/01-cold-start-rescan-workflow.png)
 
+源码锚点：`Alembic/lib/workflows/cold-start/ColdStartWorkflow.ts`、`Alembic/lib/workflows/knowledge-rescan/KnowledgeRescanWorkflow.ts`、`AlembicPlugin/lib/recipe-generation/host-agent-workflows/cold-start.ts`。
+
 ## 本章回答
 
 - Cold start 与 rescan 的输入和输出有什么不同。
-- Project Intelligence 在两条工作流里承担什么。
+- ProjectContext 和 analysis packet 在两条工作流里承担什么。
 - 为什么 long-running workflow 必须有 job、events、checkpoint 和 artifact。
 - 为什么冷启动完成不等于所有候选都成为 Recipe。
 
@@ -42,9 +44,9 @@ Rescan 的典型目标包括：
 
 这解释了为什么 rescan 必须携带 reason、dimension filter、maxFiles、contentMaxLines 等参数。它是增量治理动作，不是简单全量扫描按钮。
 
-## Project Intelligence 提供分析包
+## ProjectContext 提供分析包
 
-Cold start 和 rescan 都依赖 Project Intelligence。它会构建 project snapshot、AST/grammar 分析、dependency hints、IDE agent analysis packet、unit progress seed 和 retrieval hints。Plugin 的 bootstrap 工具描述中也明确提到 Mission Briefing 会包含 ideAgentAnalysis packet summary、next units、retrieval hints 和 unit progress seed。
+Cold start 和 rescan 都依赖 ProjectContext 和分析包。它会构建 space/repo/map/module/file refs、AST/grammar 分析、dependency hints、IDE agent analysis packet、unit progress seed 和 retrieval hints。Plugin 的 bootstrap 工具描述中也明确提到 Mission Briefing 会包含 ideAgentAnalysis packet summary、next units、retrieval hints 和 unit progress seed。
 
 这些数据让 Agent 不必盲读全仓。Agent 可以按 stable unit、dimension、evidence kind 和 sourceRef 组织分析。对于大项目，这一点尤其关键，因为上下文预算永远有限。
 
@@ -74,6 +76,6 @@ Cold start/rescan 产出的知识通常先进入 candidates。候选需要字段
 
 ## 本章小结
 
-Cold start 建立第一批项目知识，rescan 维护已有知识的新鲜度。两者都依赖 Project Intelligence、维度任务、Agent execution、candidate persistence、Job evidence 和审阅流程。
+Cold start 建立第一批项目知识，rescan 维护已有知识的新鲜度。两者都依赖 ProjectContext、维度任务、Agent execution、candidate persistence、Job evidence 和审阅流程。
 
 理解这两条工作流之后，就可以进入 Codex Plugin 部分：当宿主从 CLI/Dashboard 变成 Codex 时，Alembic 如何把这些能力包装成 MCP tools、public workflow tools 和 Project Skills。

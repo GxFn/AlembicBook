@@ -34,6 +34,13 @@ const ALEMBIC_PREFIXES = [
   'SOUL.md',
   'package.json',
 ];
+const REPO_ANCHOR_PREFIXES = {
+  Alembic: ALEMBIC_PREFIXES,
+  AlembicAgent: ['src/', 'test/', 'scripts/', 'package.json'],
+  AlembicCore: ['src/', 'test/', 'scripts/', 'config/', 'docs/', 'package.json'],
+  AlembicDashboard: ['src/', 'scripts/', 'package.json'],
+  AlembicPlugin: ['bin/', 'lib/', 'plugins/', 'scripts/', 'test/', 'package.json'],
+};
 
 const repoRoot = process.cwd();
 let args = {};
@@ -60,13 +67,14 @@ try {
 
   const commit = git(alembicRoot, ['rev-parse', 'HEAD']);
   const dirty = git(alembicRoot, ['status', '--short']);
-  const codeFacts = await collectCodeFacts(alembicRoot);
+  const sourceRoots = discoverSourceRoots(alembicRoot);
+  const codeFacts = await collectCodeFacts(alembicRoot, sourceRoots);
   const chapters = await collectChapterFiles(docsRoot, args.chapter);
   const report = [];
 
   for (const chapterAbs of chapters) {
     const chapterRel = slash(path.relative(repoRoot, chapterAbs));
-    const chapter = await verifyChapter(chapterAbs, chapterRel, alembicRoot);
+    const chapter = await verifyChapter(chapterAbs, chapterRel, sourceRoots);
     report.push(chapter);
   }
 
@@ -166,6 +174,21 @@ Options:
 `);
 }
 
+function discoverSourceRoots(mainAlembicRoot) {
+  const workspaceRoot = path.resolve(repoRoot, '..');
+  const roots = new Map([['Alembic', mainAlembicRoot]]);
+  for (const name of Object.keys(REPO_ANCHOR_PREFIXES)) {
+    if (name === 'Alembic') {
+      continue;
+    }
+    const candidate = path.join(workspaceRoot, name);
+    if (existsSync(candidate)) {
+      roots.set(name, candidate);
+    }
+  }
+  return roots;
+}
+
 function cloneRepo(repo, ref, dest) {
   run('git', ['clone', '--depth=1', repo, dest], process.cwd());
   if (ref) {
@@ -178,10 +201,10 @@ function git(cwd, argsForGit) {
   return run('git', argsForGit, cwd).trim();
 }
 
-async function collectCodeFacts(sourceRoot) {
+async function collectCodeFacts(sourceRoot, sourceRoots) {
   const facts = {};
-  facts.mcpTools = await collectMcpToolFacts(sourceRoot);
-  facts.v2Tools = await collectV2ToolFacts(sourceRoot);
+  facts.pluginMcpTools = await collectPluginMcpToolFacts(sourceRoots);
+  facts.agentRuntimeTools = await collectAgentRuntimeToolFacts(sourceRoots);
   facts.grammars = await collectGrammarFacts(sourceRoot);
   facts.dimensions = await collectDimensionFacts(sourceRoot);
   facts.relations = await collectRelationFacts(sourceRoot);
@@ -194,33 +217,64 @@ async function collectCodeFacts(sourceRoot) {
   return facts;
 }
 
-async function collectMcpToolFacts(sourceRoot) {
-  const file = path.join(sourceRoot, 'lib/external/mcp/tools.ts');
+async function collectPluginMcpToolFacts(sourceRoots) {
+  const pluginRoot = sourceRoots.get('AlembicPlugin');
+  const file = pluginRoot ? path.join(pluginRoot, 'lib/runtime/mcp/PluginToolSurfaceCatalog.ts') : '';
   const text = await readTextIfExists(file);
-  const matches = [...text.matchAll(/name:\s*'([^']+)'\s*,\n\s*tier:\s*'([^']+)'/g)].filter((m) =>
-    m[1].startsWith('alembic_')
-  );
-  const names = matches.map((m) => m[1]);
+  const entries = [...text.matchAll(/(\w+):\s*catalogEntry\(\{([\s\S]*?)\n\s*\}\),/g)]
+    .map((match) => {
+      const body = match[2];
+      const name = body.match(/name:\s*'([^']+)'/)?.[1] ?? match[1];
+      return {
+        name,
+        tier: body.match(/tier:\s*'([^']+)'/)?.[1] ?? '',
+        handlerOwner: body.match(/handlerOwner:\s*'([^']+)'/)?.[1] ?? '',
+        knowledgeGate: body.match(/knowledgeGate:\s*'([^']+)'/)?.[1] ?? '',
+      };
+    })
+    .filter((entry) => entry.name.startsWith('alembic_'));
+  const names = entries.map((entry) => entry.name);
   return {
     count: names.length,
-    agent: matches.filter((m) => m[2] === 'agent').length,
-    admin: matches.filter((m) => m[2] === 'admin').length,
+    agent: entries.filter((entry) => entry.tier === 'agent').length,
+    admin: entries.filter((entry) => entry.tier === 'admin').length,
+    agentPublic: entries.filter((entry) => entry.handlerOwner === 'McpServer.agent-public-tools').length,
     names,
+    agentPublicNames: entries
+      .filter((entry) => entry.handlerOwner === 'McpServer.agent-public-tools')
+      .map((entry) => entry.name),
   };
 }
 
-async function collectV2ToolFacts(sourceRoot) {
-  const file = path.join(sourceRoot, 'lib/tools/v2/registry.ts');
+async function collectAgentRuntimeToolFacts(sourceRoots) {
+  const agentRoot = sourceRoots.get('AlembicAgent');
+  const file = agentRoot ? path.join(agentRoot, 'src/tools/runtime/registry.ts') : '';
   const text = await readTextIfExists(file);
   const toolNames = [
-    ...new Set([...text.matchAll(/const\s+[A-Z_]+_SPEC:[\s\S]*?name:\s*'([^']+)'/g)].map((m) => m[1])),
+    ...new Set(
+      [...text.matchAll(/const\s+[A-Z_]+_SPEC:\s*ToolSpec\s*=\s*\{[\s\S]*?name:\s*'([^']+)'/g)].map(
+        (m) => m[1]
+      )
+    ),
   ];
-  const actionNames = [...text.matchAll(/^    ([a-z_]+):\s*\{/gm)].map((m) => m[1]);
+  const actionsByTool = {};
+  for (const match of text.matchAll(/handler:\s*async\s*\(p,\s*ctx\)\s*=>\s*handle([A-Za-z]+)\('([^']+)'/g)) {
+    const tool = match[1].toLowerCase();
+    const action = match[2];
+    actionsByTool[tool] = actionsByTool[tool] ?? [];
+    if (!actionsByTool[tool].includes(action)) {
+      actionsByTool[tool].push(action);
+    }
+  }
+  for (const actions of Object.values(actionsByTool)) {
+    actions.sort();
+  }
+  const actionNames = Object.values(actionsByTool).flat();
   return {
     toolCount: toolNames.length,
     actionCount: actionNames.length,
     tools: toolNames,
-    actions: actionNames,
+    actionsByTool,
   };
 }
 
@@ -420,7 +474,7 @@ async function walkTs(absDir, onFile) {
   }
 }
 
-async function verifyChapter(chapterAbs, chapterRel, sourceRoot) {
+async function verifyChapter(chapterAbs, chapterRel, sourceRoots) {
   const text = await readFile(chapterAbs, 'utf8');
   const lines = text.split(/\r?\n/);
   const headings = collectHeadings(lines);
@@ -428,7 +482,7 @@ async function verifyChapter(chapterAbs, chapterRel, sourceRoot) {
   const checks = [];
 
   for (const anchor of anchors) {
-    const resolved = await resolveAnchor(sourceRoot, anchor.path);
+    const resolved = await resolveAnchor(sourceRoots, anchor);
     const exists = resolved.exists;
     let lineCount = 0;
     let outOfRange = false;
@@ -438,7 +492,7 @@ async function verifyChapter(chapterAbs, chapterRel, sourceRoot) {
           checks.push({ ...anchor, status: 'line-target-not-file', resolvedPath: resolved.path });
           continue;
         }
-        lineCount = (await readFile(path.join(sourceRoot, resolved.path), 'utf8')).split(/\r?\n/).length;
+        lineCount = (await readFile(path.join(resolved.sourceRoot, resolved.path), 'utf8')).split(/\r?\n/).length;
         outOfRange = anchor.targetLine > lineCount;
       }
     }
@@ -494,12 +548,12 @@ function extractAnchors(text, lines, headings) {
 
   for (const candidate of candidates) {
     const normalized = normalizeAnchor(candidate.raw);
-    if (!normalized || !ALEMBIC_PREFIXES.some((prefix) => normalized.path === prefix || normalized.path.startsWith(prefix))) {
+    if (!normalized || !isAllowedRepoAnchor(normalized)) {
       continue;
     }
     const line = lineAtOffset(lines, candidate.index);
     const heading = nearestHeading(headings, line);
-    const key = `${normalized.path}:${normalized.targetLine ?? ''}:${line}`;
+    const key = `${normalized.repo}:${normalized.path}:${normalized.targetLine ?? ''}:${line}`;
     anchors.set(key, {
       ...normalized,
       docLine: line,
@@ -511,28 +565,45 @@ function extractAnchors(text, lines, headings) {
   return [...anchors.values()].sort((a, b) => a.docLine - b.docLine || a.path.localeCompare(b.path));
 }
 
-async function resolveAnchor(sourceRoot, relPath) {
+function isAllowedRepoAnchor(anchor) {
+  const prefixes = REPO_ANCHOR_PREFIXES[anchor.repo ?? 'Alembic'] ?? [];
+  return prefixes.some((prefix) => anchor.path === prefix || anchor.path.startsWith(prefix));
+}
+
+async function resolveAnchor(sourceRoots, anchor) {
+  const repoName = anchor.repo ?? 'Alembic';
+  const sourceRoot = sourceRoots.get(repoName);
+  const relPath = anchor.path;
+  if (!sourceRoot) {
+    return { exists: false, path: relPath, kind: 'missing', repo: repoName, sourceRoot: '' };
+  }
   const exact = path.join(sourceRoot, relPath);
   if (existsSync(exact)) {
     const st = await stat(exact);
-    return { exists: true, path: relPath, kind: st.isDirectory() ? 'directory' : 'file' };
+    return {
+      exists: true,
+      path: relPath,
+      kind: st.isDirectory() ? 'directory' : 'file',
+      repo: repoName,
+      sourceRoot,
+    };
   }
 
   if (relPath.includes('*')) {
     const matched = await globExists(sourceRoot, relPath);
     return matched
-      ? { exists: true, path: relPath, kind: 'glob' }
-      : { exists: false, path: relPath, kind: 'missing' };
+      ? { exists: true, path: relPath, kind: 'glob', repo: repoName, sourceRoot }
+      : { exists: false, path: relPath, kind: 'missing', repo: repoName, sourceRoot };
   }
 
   if (relPath.endsWith('.js')) {
     const tsPath = relPath.slice(0, -3) + '.ts';
     if (existsSync(path.join(sourceRoot, tsPath))) {
-      return { exists: true, path: tsPath, kind: 'file', mappedFrom: relPath };
+      return { exists: true, path: tsPath, kind: 'file', mappedFrom: relPath, repo: repoName, sourceRoot };
     }
     const tsxPath = relPath.slice(0, -3) + '.tsx';
     if (existsSync(path.join(sourceRoot, tsxPath))) {
-      return { exists: true, path: tsxPath, kind: 'file', mappedFrom: relPath };
+      return { exists: true, path: tsxPath, kind: 'file', mappedFrom: relPath, repo: repoName, sourceRoot };
     }
   }
 
@@ -540,12 +611,12 @@ async function resolveAnchor(sourceRoot, relPath) {
     for (const ext of ['.ts', '.tsx', '.js', '.mjs', '.json']) {
       const candidate = `${relPath}${ext}`;
       if (existsSync(path.join(sourceRoot, candidate))) {
-        return { exists: true, path: candidate, kind: 'file', mappedFrom: relPath };
+        return { exists: true, path: candidate, kind: 'file', mappedFrom: relPath, repo: repoName, sourceRoot };
       }
     }
   }
 
-  return { exists: false, path: relPath, kind: 'missing' };
+  return { exists: false, path: relPath, kind: 'missing', repo: repoName, sourceRoot };
 }
 
 async function globExists(sourceRoot, relPattern) {
@@ -602,20 +673,26 @@ function normalizeAnchor(raw) {
   });
   value = value.replace(/^\.\//, '');
 
+  const repoMatch = value.match(/^(Alembic|AlembicAgent|AlembicCore|AlembicDashboard|AlembicPlugin)\/(.+)$/);
+  const repo = repoMatch?.[1] ?? 'Alembic';
+  if (repoMatch) {
+    value = repoMatch[2];
+  }
+
   const hashLine = value.match(/^(.*)#L(\d+)$/);
   if (hashLine) {
-    return { path: slash(hashLine[1]), targetLine: Number(hashLine[2]) };
+    return { repo, path: slash(hashLine[1]), targetLine: Number(hashLine[2]) };
   }
 
   const colonLine = value.match(/^(.+\.[A-Za-z0-9]+):(\d+)$/);
   if (colonLine) {
-    return { path: slash(colonLine[1]), targetLine: Number(colonLine[2]) };
+    return { repo, path: slash(colonLine[1]), targetLine: Number(colonLine[2]) };
   }
 
   if (!value.includes('/') && !['README.md', 'README_CN.md', 'SOUL.md', 'package.json'].includes(value)) {
     return null;
   }
-  return { path: slash(value) };
+  return { repo, path: slash(value) };
 }
 
 function lineAtOffset(lines, offset) {
@@ -692,8 +769,10 @@ function printReport(payload) {
   if (codeFacts) {
     console.log(
       `Code facts: ${codeFacts.grammars.count} WASM grammars, ` +
-        `${codeFacts.v2Tools.toolCount} V2 tools/${codeFacts.v2Tools.actionCount} actions, ` +
-        `${codeFacts.mcpTools.count} MCP tools (${codeFacts.mcpTools.agent} agent + ${codeFacts.mcpTools.admin} admin), ` +
+        `${codeFacts.agentRuntimeTools.toolCount} Agent runtime tools/${codeFacts.agentRuntimeTools.actionCount} actions, ` +
+        `${codeFacts.pluginMcpTools.count} Plugin MCP catalog tools ` +
+        `(${codeFacts.pluginMcpTools.agent} agent + ${codeFacts.pluginMcpTools.admin} admin, ` +
+        `${codeFacts.pluginMcpTools.agentPublic} public workflow), ` +
         `${codeFacts.dimensions.count} dimensions, ${codeFacts.relations.count} relation buckets`
     );
     console.log(
@@ -714,10 +793,10 @@ function printReport(payload) {
   );
   if (summary.bodyChaptersWithoutAnchors > 0) {
     console.log(
-      `Evidence check: ${summary.bodyChaptersWithoutAnchors}/${summary.bodyChapters} body chapters have zero Alembic source anchors`
+      `Evidence check: ${summary.bodyChaptersWithoutAnchors}/${summary.bodyChapters} body chapters have zero source anchors`
     );
   } else {
-    console.log(`Evidence check: ${summary.bodyChapters}/${summary.bodyChapters} body chapters have Alembic source anchors`);
+    console.log(`Evidence check: ${summary.bodyChapters}/${summary.bodyChapters} body chapters have source anchors`);
   }
 
   for (const chapter of chapters) {
@@ -726,11 +805,12 @@ function printReport(payload) {
     console.log(`\n[${mark}] ${chapter.chapter}`);
     console.log(`  anchors: ${chapter.anchorCount}, ok: ${chapter.ok}, missing: ${chapter.missing}, line-out-of-range: ${chapter.outOfRange}`);
     if (evidenceFail) {
-      console.log('  evidence: body chapter has no Alembic source anchors');
+      console.log('  evidence: body chapter has no source anchors');
     }
     for (const check of chapter.checks) {
       const status = check.status.startsWith('ok') ? check.status : `!! ${check.status}`;
-      const target = check.targetLine ? `${check.path}:${check.targetLine}` : check.path;
+      const prefix = check.repo && check.repo !== 'Alembic' ? `${check.repo}/` : '';
+      const target = check.targetLine ? `${prefix}${check.path}:${check.targetLine}` : `${prefix}${check.path}`;
       const mapped = check.resolvedPath ? ` => ${check.resolvedPath}` : '';
       console.log(`  ${status} ${chapter.chapter}:${check.docLine} (${check.section}) -> ${target}${mapped}`);
     }

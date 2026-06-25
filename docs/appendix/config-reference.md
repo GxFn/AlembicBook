@@ -24,7 +24,6 @@ Ghost 模式下，`projectRoot` 仍指向真实源码目录，`dataRoot` 通常�
 - `context/`：向量索引和上下文缓存。
 - `logs/`：daemon、reports、signals、errors。
 - `jobs/`：bootstrap/rescan 等长任务记录。
-- `decision-register/`：durable Decision Register 与 append-only audit。
 - `daemon.json` / `daemon.pid`：resident service 状态。
 
 `.asd/` 是运行态，不是长期协作文档。

@@ -1,6 +1,6 @@
 # Ch01 当前系统地图
 
-今天的 Alembic 已经不是一个可以用“单仓库、单进程、单层 DDD”解释清楚的项目。它是一组围绕本地项目知识层协作的运行时：主 CLI 和 daemon 负责 resident service，Core 提供确定性内核，Plugin 把能力交给 Codex，Agent runtime 承担 AI/tool 执行循环，Dashboard 提供审阅界面，Workspace/Wakeflow 只负责多仓库协作和验收。
+今天的 Alembic 已经不是一个可以用“单仓库、单进程、单层 DDD”解释清楚的项目。它是一组围绕本地项目知识层协作的运行时：主 CLI 和 daemon 负责 resident service，Core 提供确定性内核，Plugin 把能力交给 Codex/Claude Code 这类宿主，Agent runtime 承担 AI/tool 执行循环，Dashboard 提供审阅界面，Workspace/Wakeflow 只负责多仓库协作和验收。
 
 这本书的新结构从这里开始。先画清地图，后面每一章才知道自己在讲哪一层、哪一个入口、哪一种事实源。
 
@@ -24,7 +24,7 @@ Alembic 的核心产品闭环是：从用户项目读取代码事实，在本地
 - 本地知识层：`Alembic/recipes`、`Alembic/candidates`、`Alembic/skills`、`Alembic/wiki`、`.asd/alembic.db`、向量索引和日志。
 - resident service：daemon、HTTP API、JobStore、Dashboard handoff、file monitor、search、jobs 和项目运行控制。
 - 宿主工具层：Codex MCP tools、skills、clean structured output、tool visibility 和 host-agent workflow。
-- 人类审阅层：Dashboard、Recipe/candidate review、Guard 报告、Jobs、Wiki、Panorama 和信号视图。
+- 人类审阅层：Dashboard、Recipe/candidate review、Guard 报告、Jobs、Project Pyramid、Skills 和 Help。
 
 如果把这六层压成一句“AI 自动理解项目”，就会丢掉 Alembic 最重要的性质：本地、可审查、可恢复、可治理。
 
@@ -50,13 +50,13 @@ Agent 与 Core 的关系很直接：Core 提供确定性项目知识和 workflow
 
 ### AlembicPlugin
 
-`AlembicPlugin` 是 Codex 插件和 MCP runtime 仓库，包名是私有的 `alembic-codex-plugin-runtime`。它负责 Codex tool schema、MCP server、tool policy、agent-facing public tools、Codex local status/diagnostics/init/dashboard/job/cleanup、skills、channel/marketplace、portable runtime artifact 和 plugin cache 刷新。
+`AlembicPlugin` 是 host plugin 和 MCP runtime 仓库，包名是私有的 `alembic-codex-plugin-runtime`。它负责 MCP tool schema、HostMcpServer、tool policy、agent-facing public tools、status/init/job/runtime、skills、channel/marketplace、portable runtime artifact 和 plugin cache 刷新。
 
-Plugin 的定位不是“另一个 Alembic daemon”。它把 Codex host project、Alembic dataRoot、resident service、Core workflow contract 和 Codex 可见工具接起来。它可以返回 Dashboard URL，但不拥有 Dashboard 前端；它可以启动或读取 recoverable job，但长期 resident service 的产品源仍在主 Alembic。
+Plugin 的定位不是“另一个 Alembic daemon”。它把 host project、Alembic dataRoot、resident/project-scope capability、Core workflow contract 和 MCP 可见工具接起来。当前 status 路径默认是 daemon-less PDR-3 host route；长期 daemon 和 Dashboard server 的产品源仍在主 Alembic。
 
 ### AlembicDashboard
 
-`AlembicDashboard` 是 private React/Vite 前端。它有 Recipes、Candidates、Module Explorer、Guard、Panorama、AI Chat、Knowledge、Skills、Bootstrap Progress、Jobs、Wiki、Signal Report 等视图，并通过 `/api/v1` 访问后端。
+`AlembicDashboard` 是 private React/Vite 前端。它有 Recipes、SPM/Module Explorer、Candidates、Knowledge、Guard、Project Pyramid、Skills、Jobs、Help 等视图，并通过 `/api/v1` 访问后端。
 
 Dashboard 不拥有数据库、AST、Agent 决策或 MCP tool execution。它的价值是把本地知识层变成可审阅、可操作、可观察的体验。
 
@@ -70,7 +70,7 @@ Dashboard 不拥有数据库、AST、Agent 决策或 MCP tool execution。它的
 
 第一条是 CLI/resident 链路：用户运行 `alembic setup --ghost`，Core 的 project registry 和 workspace resolver 确定 dataRoot，主 Alembic 初始化 `.asd/` 与 `Alembic/`，随后 `alembic start` 启动 daemon/API/Dashboard。
 
-第二条是 Codex host 链路：Codex 插件先做 status/diagnostics/init，再按项目知识状态暴露或调用 `alembic_bootstrap`、`alembic_prime`、`alembic_work_start`、`alembic_code_guard` 等 MCP 工具，把本地知识以 structuredContent 交给宿主 Agent。
+第二条是 host plugin 链路：插件先做 `alembic_status`/`alembic_init`，再按项目知识状态暴露或调用 `alembic_recipe_map`、`alembic_graph`、`alembic_search`、`alembic_bootstrap`、`alembic_prime`、`alembic_work`、`alembic_code_guard` 等 MCP 工具，把本地知识以 structuredContent 交给宿主 Agent。
 
 第三条是审阅和演化链路：bootstrap/rescan 产生候选知识，Dashboard 或工具流审阅它们，接受后的 Recipe 被同步到数据库与索引，后续 search/prime/Guard/decision 又把知识消费和新增证据带回系统。
 
@@ -83,7 +83,7 @@ Dashboard 不拥有数据库、AST、Agent 决策或 MCP tool execution。它的
 | `setup --ghost` 写到哪里 | `Alembic/lib/cli/SetupService.ts` 与 `@alembic/core/workspace` | Dashboard |
 | 项目身份或 dataRoot 错乱 | `ProjectRegistry`、`WorkspaceResolver`、Codex status | Recipe 内容 |
 | daemon、Dashboard URL、jobs | `Alembic/lib/daemon`、`Alembic/lib/http` | AlembicAgent prompt |
-| Codex 工具不可见或输出不对 | `AlembicPlugin/lib/codex/mcp`、tool policy、status | 主 CLI 命令表 |
+| Codex 工具不可见或输出不对 | `AlembicPlugin/lib/runtime/mcp`、tool policy、status | 主 CLI 命令表 |
 | AI job 执行循环 | `AlembicAgent/src/agent` 与主 Alembic job workflow | Core domain object |
 | 前端页面或交互 | `AlembicDashboard/src` | 后端 repository |
 | Recipe/Guard/search 的确定性 contract | `AlembicCore/src` | Plugin cache snapshot |
@@ -92,6 +92,6 @@ Dashboard 不拥有数据库、AST、Agent 决策或 MCP tool execution。它的
 
 ## 本章小结
 
-新版 AlembicBook 必须从多仓库系统地图写起。`Alembic` 是主 resident runtime，`AlembicCore` 是确定性共享内核，`AlembicAgent` 是 AI/tool 执行 runtime，`AlembicPlugin` 是 Codex host adapter，`AlembicDashboard` 是前端审阅体验，`AlembicWorkspace` 是协作控制面。
+新版 AlembicBook 必须从多仓库系统地图写起。`Alembic` 是主 resident runtime，`AlembicCore` 是确定性共享内核，`AlembicAgent` 是 AI/tool 执行 runtime，`AlembicPlugin` 是 host adapter，`AlembicDashboard` 是前端审阅体验，`AlembicWorkspace` 是协作控制面。
 
 后续章节会沿着这张地图展开：先讲用户旅程，再讲仓库边界；之后进入 Core contract、项目模型、analysis/search/Guard、daemon/API/jobs、Codex plugin、Agent runtime、Dashboard、知识生命周期、发布验证和维护。

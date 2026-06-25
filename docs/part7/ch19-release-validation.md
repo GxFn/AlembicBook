@@ -6,6 +6,8 @@ Alembic 的发布验证不是一个统一的 `npm publish` 按钮。五个产品
 
 ![多仓库发布验证矩阵图](/images/ch19/01-multi-repo-release-validation-matrix.png)
 
+源码锚点：`AlembicCore/package.json`、`Alembic/package.json`、`AlembicPlugin/package.json`、`AlembicAgent/package.json`、`AlembicDashboard/package.json`。
+
 ## 本章回答
 
 - 各仓库的发布形态有什么差别。
@@ -21,6 +23,7 @@ Alembic 的发布验证不是一个统一的 `npm publish` 按钮。五个产品
 npm run check
 npm run build
 npm run smoke:public-api
+npm run check:output-budgets
 npm run release:check
 ```
 
@@ -46,7 +49,7 @@ Core 的失败通常不是“某个 UI 坏了”，而是共享 contract 不稳�
 
 ## Agent 验证执行 runtime
 
-`AlembicAgent` 的 scripts 包含 build:check、lint、lint:agent-import-boundary、lint:public-api-boundary、lint:core-import-boundary、test、smoke:public-imports、release:stage、release:package-guard。
+`AlembicAgent` 的 scripts 包含 build:check、lint、lint:agent-import-boundary、lint:public-api-boundary、lint:core-import-boundary、test、smoke:public-imports、smoke:public-signatures、verify:validation-floor、release:stage、release:package-guard。
 
 Agent 的发布预览会把 `@alembic/core: file:../AlembicCore` 转成 Core registry version，并记录 Core source commit。如果 Core working tree dirty，staging 会拒绝，因为无法精确记录来源。
 
@@ -66,9 +69,11 @@ Plugin 的关键验证包括：
 - `npm run build`。
 - `npm run check`。
 - `verify:release-package-boundary`。
-- `verify:codex-channel`。
 - `verify:codex-plugin`。
+- `verify:codex-plugin:tools-local`。
 - `verify:codex-session`。
+- `verify:plugin-distribution`。
+- `check:runtime-pack-freshness`。
 - MCP clean output probes。
 - `dev:codex-plugin:reload` 后 probe installed cache。
 
@@ -76,7 +81,7 @@ Plugin 的关键验证包括：
 
 ## Dashboard 验证前端 contract
 
-`AlembicDashboard` 的 `npm run check` 包含 lint、dashboard contract test、typecheck 和 build。它保护前端与 `/api/v1` contract、TypeScript 类型、组件引用和 Vite 构建。
+`AlembicDashboard` 的 `npm run check` 包含 lint、dashboard contract test、typecheck、generated API types drift gate 和 build。它保护前端与 `/api/v1` contract、TypeScript 类型、组件引用、generated `src/generated/api-types.ts` copy 和 Vite 构建。
 
 Dashboard 的验证边界是前端体验。若后端 API shape 改了，除了 Dashboard check，还要跑主 Alembic 后端相关 tests/routes 验证；若只是页面文案/布局，Dashboard check 可能足够。
 

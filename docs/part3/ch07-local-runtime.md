@@ -67,7 +67,7 @@ daemon/API server 启动时会进入主仓库的 bootstrap 过程。`lib/bootstr
 
 Dashboard 是前端源码仓库，主 Alembic 负责 server/API 和静态/URL handoff。
 
-Plugin 是 Codex host adapter，主 Alembic 负责本地 daemon、resident service、jobs 和 runtime source of truth。
+Plugin 是 Codex/Claude Code host adapter，主 Alembic 负责本地 daemon、resident service、jobs 和 runtime source of truth。
 
 这种边界让用户可以同时用 CLI、Dashboard 和 Codex，而不让任一入口复制另一入口的核心状态。
 

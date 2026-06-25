@@ -24,9 +24,9 @@ alembic setup --ghost
 alembic start
 ```
 
-这三步背后有两条分支。第一条是主 CLI 路径，由 `Alembic/bin/cli.ts` 暴露 `setup`、`start`、`coldstart`、`rescan`、`search`、`guard` 等命令。第二条是 Codex 插件路径，由 `AlembicPlugin` 暴露 `alembic_codex_status`、`alembic_bootstrap`、`alembic_prime`、`alembic_work_start`、`alembic_code_guard` 等 MCP 工具。两条路径的入口不同，但最终都要落到同一个项目身份和同一套本地知识数据上。
+这三步背后有两条分支。第一条是主 CLI 路径，由 `Alembic/bin/cli.ts` 暴露 `setup`、`start`、`coldstart`、`rescan`、`search`、`guard` 等命令。第二条是宿主插件路径，由 `AlembicPlugin` 暴露 `alembic_status`、`alembic_init`、`alembic_recipe_map`、`alembic_graph`、`alembic_search`、`alembic_bootstrap`、`alembic_prime`、`alembic_work`、`alembic_code_guard` 等 MCP 工具。两条路径的入口不同，但最终都要落到同一个项目身份和同一套本地知识数据上。
 
-CLI 的 `setup` 命令会构造 `SetupService`，把当前目录解析为一个 Alembic 项目。`start` 命令则通过 `ProjectRuntimeControl` 选择或启动项目 runtime，并把 Dashboard URL 交给用户。Codex 插件不会假装自己就是主 daemon；它先做 status/diagnostics，确认当前 host project、Ghost dataRoot、daemon 状态和工具可见性，再决定是否调用 host-agent bootstrap、rescan 或知识消费工具。
+CLI 的 `setup` 命令会构造 `SetupService`，把当前目录解析为一个 Alembic 项目。`start` 命令则通过 `ProjectRuntimeControl` 选择或启动项目 runtime，并把 Dashboard URL 交给用户。Plugin 不会假装自己就是主 daemon；它先做 status，确认当前 host project、Ghost dataRoot、knowledge state、tool visibility、runtime identity 和 host-project alignment，再决定是否调用 host-agent bootstrap、rescan 或知识消费工具。
 
 这个设计让用户旅程保持简单，但不会把所有责任揉在一个进程里。用户输入的是一个短命令；系统内部确认的是项目身份、数据位置、运行服务、知识可用性和宿主工具权限。
 
@@ -55,7 +55,7 @@ CLI 的 `setup` 命令会构造 `SetupService`，把当前目录解析为一个 
 
 初始化只建立目录和配置，`alembic start` 才把本地运行服务带起来。主仓库的 `ProjectRuntimeControl` 负责项目选择、daemon 状态、Dashboard handoff 和 runtime control state。成功后，用户通常看到的是一个 Dashboard URL；实现上则包含 daemon health、HTTP API、JobStore、Dashboard server、search endpoint、project-scope endpoint、file monitor 和 AI job capability。
 
-这一层的职责是“让知识层持续在线”。它不是一次性脚本。Dashboard 能读取 candidates、Recipes、Jobs、Wiki、Guard、Panorama、Skills 等 API；Codex 插件能通过 status 确认当前 host project 是否和 Alembic runtime 对齐；daemon 能在文件变化、扫描任务、搜索请求和 Guard 请求之间保持同一个项目身份。
+这一层的职责是“让知识层持续在线”。它不是一次性脚本。Dashboard 能读取 candidates、Recipes、Jobs、Guard、Project Pyramid、Skills 等 API；Codex/Claude Code 插件能通过 status 确认当前 host project 是否和 Alembic runtime 对齐；daemon 能在文件变化、扫描任务、搜索请求和 Guard 请求之间保持同一个项目身份。
 
 这里也解释了为什么 Book 不能把 Dashboard 写成后端，也不能把 Plugin 写成 daemon。Dashboard 是 `AlembicDashboard` 的前端体验，server 和 API 在 `Alembic` 主仓库；Codex 插件只负责宿主 Agent 的 MCP surface、tool policy、skills 和 portable runtime，它通过 contract 消费 daemon/Core 能力。
 
@@ -78,31 +78,28 @@ Alembic 的知识对象有一个生命线：
 3. 候选知识保存在 candidates 中，并带上 source refs、维度、类型和证据。
 4. 审阅通过后，知识进入 Recipes。
 5. Recipes 被同步到数据库、索引和检索层。
-6. Agent 在语义任务中通过 intent/prime/search 获取紧凑上下文。
-7. 代码变更后通过 work_finish、code_guard 或 decision_record 把证据写回工作流。
+6. Agent 在语义任务中通过 prime/search/ProjectContext 获取紧凑上下文。
+7. 代码变更后通过 `alembic_work` finish 和 `alembic_code_guard` 把证据带回工作流。
 
 这个生命线里最关键的词是“证据”。Recipe 不是一句偏好，也不是某次模型回答的摘要；它必须能说明自己来自哪些文件、哪些调用链、哪些约束或哪些已确认决策。没有证据的知识最多是候选建议，不能成为项目规则。
 
 ![Candidate 到 Recipe 生命周期图](/images/ch02/02-candidate-to-recipe-lifecycle.png)
 
-## Codex 看到的是六个工作流工具
+## Codex 看到的是三件套 public workflow
 
 在 Codex 插件路径里，最重要的不是旧式的“查知识工具”，而是一组 agent-facing public workflow tools：
 
-- `alembic_intent` 规范化当前宿主任务，生成可复用的 intentRef。
-- `alembic_prime` 为这个 intent 加载紧凑、带信任标签的项目知识。
-- `alembic_work_start` 为实现、修复、重构、审查等具体工作创建 workRef。
-- `alembic_work_finish` 用变更文件、结果摘要和证据关闭 workRef，并给出 Guard 建议。
+- `alembic_prime` 为具体代码任务加载紧凑、带信任标签的项目知识。
+- `alembic_work` 用 `phase=start|finish` 创建或关闭 workRef，并记录变更文件、结果摘要和证据。
 - `alembic_code_guard` 对明确文件、内联代码或当前 workRef 的 scoped files 做规则检查。
-- `alembic_decision_record` 把已确认的 durable decision 写入 Decision Register。
 
-这六个工具把“AI 正在做什么”从自由文本对话里抽出来。先意图、再 prime、再工作、再证据、再 Guard 或决策记录，形成一个可审计的节奏。它不会替宿主 Agent 写代码，也不会把 tentative suggestion 当成最终决策。Codex 仍然是执行者，Alembic 提供的是项目知识、边界和证据轨道。
+这三个工具把“AI 正在做什么”从自由文本对话里抽出来。先 prime，再 work，再 Guard，形成一个可审计的节奏。它不会替宿主 Agent 写代码，也不会把 tentative suggestion 当成最终决策。Codex 仍然是执行者，Alembic 提供的是项目知识、边界和证据轨道。
 
 ## 日常闭环：读、写、验、记
 
 接入完成后，用户的日常体验大致有四步。
 
-第一步是读。Codex 或人类开发者提出一个具体问题，例如“这个模块的错误分类应该怎样扩展”。Alembic 通过 intent/prime/search 返回相关 Recipe、source refs、调用上下文或结构信息，而不是把整库内容塞进模型上下文。
+第一步是读。Codex 或人类开发者提出一个具体问题，例如“这个模块的错误分类应该怎样扩展”。Alembic 通过 prime/search/recipe_map/graph 返回相关 Recipe、source refs、调用上下文或结构信息，而不是把整库内容塞进模型上下文。
 
 第二步是写。Agent 根据真实源码和被 prime 的知识完成修改。这里 Alembic 不应该替代代码阅读；它只缩短定位和约束理解的距离。
 
@@ -122,7 +119,7 @@ MCP 配置不是知识源。它只是宿主 Agent 调用 Alembic 的入口。真
 
 Dashboard 不是权威后端。它是面向人的审阅和观察界面，背后依赖 Alembic API 和 Core contract。
 
-Plugin 不是主 daemon。它负责 Codex host adaptation、工具 schema、tier policy、clean output 和 portable runtime；长期 resident service 仍由 Alembic 主仓库提供。
+Plugin 不是主 daemon。它负责 host adaptation、工具 schema、tier policy、clean output 和 portable runtime；长期 resident service 仍由 Alembic 主仓库提供。当前 Plugin status 默认报告 daemon-less PDR-3 route，这不等同于主 `Alembic` daemon 被移除。
 
 ## 失败时先查身份和边界
 
@@ -141,4 +138,4 @@ Plugin 不是主 daemon。它负责 Codex host adaptation、工具 schema、tier
 
 Alembic 的用户旅程可以压缩成一句话：在不污染用户项目的前提下，为这个项目建立一个本地、可审阅、可恢复、可被 Agent 消费的知识层。
 
-`setup --ghost` 建立边界，`start` 启动 resident service，bootstrap/rescan 发现候选知识，review 把候选变成 Recipe，intent/prime/search 把 Recipe 交给 Agent，work_finish/code_guard/decision_record 把工作证据带回系统。理解了这一条链路，后面的章节就能分别展开项目模型、Core 内核、运行时服务、Codex 插件、Agent runtime 和 Dashboard，而不会再把它们写成一个模糊的“知识有机体”。
+`setup --ghost` 建立边界，`start` 启动 resident service，bootstrap/rescan 发现候选知识，review 把候选变成 Recipe，prime/search/ProjectContext 把 Recipe 交给 Agent，work/code_guard 把工作证据带回系统。理解了这一条链路，后面的章节就能分别展开项目模型、Core 内核、运行时服务、Codex 插件、Agent runtime 和 Dashboard，而不会再把它们写成一个模糊的“知识有机体”。

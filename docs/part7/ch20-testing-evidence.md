@@ -6,6 +6,8 @@ Alembic 是多仓库、本地运行、AI 参与的系统。这里的“测试通
 
 ![测试证据层级图](/images/ch20/01-testing-evidence-hierarchy.png)
 
+源码锚点：`Alembic/test/unit/ResidentServiceBoundary.test.ts`、`AlembicPlugin/test/unit/McpCleanOutputContract.test.ts`、`AlembicDashboard/scripts/dashboard-contract.test.mjs`。
+
 ## 本章回答
 
 - 哪些证据能支持“功能完成”。

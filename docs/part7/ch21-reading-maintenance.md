@@ -41,7 +41,7 @@
 - Workspace/path/storage：`AlembicCore/src/shared` 与 `src/workspace.ts`。
 - Knowledge/lifecycle/search/guard：`AlembicCore/src/domain`、`src/service`、`src/knowledge.ts`、`src/search.ts`、`src/guard.ts`。
 - CLI/daemon/API/jobs：`Alembic/bin`、`Alembic/lib/daemon`、`Alembic/lib/http/routes`、`Alembic/lib/workflows`。
-- Codex tools/Plugin：`AlembicPlugin/lib/codex`、`lib/codex/mcp`、`scripts/prepare-codex-plugin-runtime.mjs`。
+- Host tools/Plugin：`AlembicPlugin/lib/runtime/mcp`、`AlembicPlugin/lib/runtime/status`、`AlembicPlugin/lib/runtime/host-adapter`、`AlembicPlugin/scripts/prepare-codex-plugin-runtime.mjs`。
 - Agent runtime：`AlembicAgent/src/agent`、`src/tools`、`src/ai`。
 - Dashboard：`AlembicDashboard/src/App.tsx`、`src/api.ts`、`src/components/Views`。
 - Release/validation：各仓库 `package.json` 与 `scripts/`。

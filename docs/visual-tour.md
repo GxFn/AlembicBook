@@ -36,7 +36,7 @@
 
 ![Codex MCP surface](/images/ch10/01-codex-plugin-tool-surface.png)
 
-展示 Codex MCP host、public workflow tools 与 Core services。
+展示 Codex/Claude Code MCP host、三件套 public workflow tools 与 ProjectContext/RecipeContext services。
 
 ## AgentRuntime 与 Dashboard
 

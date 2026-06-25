@@ -4,6 +4,8 @@ Alembic 的仓库边界不是目录整理问题，而是产品正确性的基础
 
 本章给出阅读和改动 Alembic 时最重要的判断规则：Core 向上被消费；主 Alembic 负责 resident runtime；Agent 负责 AI/tool 执行；Plugin 负责 Codex host adaptation；Dashboard 负责前端体验；Workspace 负责协作控制。任何反向依赖、重复实现、临时 vendor 修改或发布边界混用，都会让系统变得难以验证。
 
+源码锚点：`AlembicCore/package.json`、`Alembic/package.json`、`AlembicPlugin/package.json`、`AlembicAgent/package.json`、`AlembicDashboard/package.json`。
+
 ![仓库依赖方向与发布边界图](/images/ch03/01-repository-dependency-boundaries.png)
 
 ## 本章回答
@@ -119,8 +121,8 @@ Alembic 里有几种看起来相似但含义不同的“复制”：
 | CLI setup/start 行为 | Alembic | CLI test、daemon/runtime smoke、Dashboard handoff |
 | 搜索、Guard、Recipe 模型 | AlembicCore | unit tests、public API、consumer import boundary |
 | provider-backed job 执行 | Alembic + AlembicAgent | Agent runtime tests、job API、process events |
-| Codex tool schema/output | AlembicPlugin | MCP probe、tool visibility、clean output contract |
-| Codex Project Skill delivery | AlembicPlugin | plugin route receipt、export authorization、cache refresh |
+| Host plugin tool schema/output | AlembicPlugin | MCP probe、tool visibility、clean output contract |
+| Project Skill delivery | AlembicPlugin | plugin route receipt、export authorization、cache refresh |
 | Dashboard 页面/交互 | AlembicDashboard | lint、contract test、typecheck、build |
 | release/package 边界 | 对应发布仓库 | package guard、staging dry run、source metadata |
 
@@ -130,12 +132,12 @@ Alembic 里有几种看起来相似但含义不同的“复制”：
 
 第一，把 Core 当成万能仓库。这样会让 Core 依赖外部 host、UI 或 provider 细节，最终失去可复用和可发布性。
 
-第二，把 Plugin 当成主 runtime。这样会让 Codex 插件复制 daemon/API/Dashboard 的职责，造成 status、jobs、project identity 和 Dashboard handoff 分裂。
+第二，把 Plugin 当成主 runtime。这样会让 host 插件复制 daemon/API/Dashboard 的职责，造成 status、jobs、project identity 和 Dashboard handoff 分裂。
 
 第三，把发布 artifact 当源码。这样会让 vendor、runtime.tgz、plugin cache 和 registry package 失去可追溯关系，后续验证无法判断哪个 commit 才是真实来源。
 
 ## 本章小结
 
-Alembic 的多仓库结构不是偶然复杂，而是为了把不同性质的事实分开：Core 是确定性共享内核，Alembic 是 resident runtime，Agent 是 AI/tool runtime，Plugin 是 Codex host adapter，Dashboard 是审阅 UI，Workspace 是协作控制面。
+Alembic 的多仓库结构不是偶然复杂，而是为了把不同性质的事实分开：Core 是确定性共享内核，Alembic 是 resident runtime，Agent 是 AI/tool runtime，Plugin 是 host adapter，Dashboard 是审阅 UI，Workspace 是协作控制面。
 
 以后读任何章节、定位任何 bug、设计任何功能，都先问：事实源在哪里，运行时在哪里，发布边界在哪里。三者一致，改动才容易验证；三者混乱，代码即使暂时能跑，也会在发布、插件缓存、Dashboard 或 Agent workflow 中重新断开。

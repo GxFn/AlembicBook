@@ -6,6 +6,8 @@
 
 ![知识演化治理图](/images/ch17/01-knowledge-evolution-governance.png)
 
+源码锚点：`AlembicCore/src/evolution.ts`、`AlembicCore/src/service/evolution/EvolutionGateway.ts`、`Alembic/lib/http/routes/signals.ts`。
+
 ## 本章回答
 
 - 为什么 LifecycleStateMachine 是知识状态变化的权威路径。
@@ -78,4 +80,4 @@ Warnings 不是失败，它们是知识健康度的输入。
 
 Evolution 和 governance 让 Alembic 知识层保持活的同时不失控。LifecycleStateMachine 控制状态变化，proposals 和 warnings 承载待审建议，signals 和 reports 提供使用证据，governance gateway 和 constitution 保护权限边界。
 
-下一章会聚焦两个最终约束面：Guard 和 Decision Register。
+下一章会聚焦最终约束面：Guard、Code Guard 和当前实现中的决策信号。

@@ -10,7 +10,7 @@
 
 - `Alembic`：本地 CLI、daemon、HTTP/API、Dashboard server、项目 runtime 和发布安装体验。
 - `AlembicCore`：`@alembic/core`，共享 headless deterministic kernel。
-- `AlembicPlugin`：Codex MCP、skills、channel/marketplace、plugin runtime 和 Codex host adaptation。
+- `AlembicPlugin`：Codex/Claude Code MCP host adaptation、skills、channel/marketplace、plugin runtime 和 ProjectContext/RecipeContext tool surface。
 - `AlembicAgent`：`@alembic/agent`，AgentRuntime、AI providers、tool system、memory/context。
 - `AlembicDashboard`：独立 React/Vite Dashboard 前端。
 

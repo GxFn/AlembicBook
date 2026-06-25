@@ -1,21 +1,23 @@
 # Ch06 分析、检索与 Guard 内核
 
-Core 的第二条主线是把“项目理解”拆成三个确定性能力：分析项目结构，检索已有知识，检查代码是否违背项目规则。它们分别对应 `project-intelligence`、`search` 和 `guard`。外层 CLI、daemon、Plugin、Dashboard 都可以包装这些能力，但不应该改变它们的核心语义。
+Core 的第二条主线是把“项目理解”拆成三个确定性能力：分析项目结构，检索已有知识，检查代码是否违背项目规则。它们分别对应 ProjectContext/analysis/discovery、`search` 和 `guard`。外层 CLI、daemon、Plugin、Dashboard 都可以包装这些能力，但不应该改变它们的核心语义。
 
 本章不把这些能力写成一个“AI 智能扫描”的黑箱，而是分别说明它们输入什么、输出什么、如何被后续 workflow 使用。
+
+源码锚点：`AlembicCore/src/project-context.ts`、`AlembicCore/src/search.ts`、`AlembicCore/src/guard.ts`。
 
 ![analysis search guard 内核关系图](/images/ch06/01-analysis-search-guard-kernel.png)
 
 ## 本章回答
 
-- Project Intelligence 与普通文件扫描有什么差别。
+- ProjectContext 与普通文件扫描有什么差别。
 - Search 为什么不是简单字符串匹配。
 - Guard 在 Core 中稳定什么，在外层 adapter 中包装什么。
 - 分析、检索和 Guard 如何共同支撑 host-agent workflow。
 
-## Project Intelligence 先建立结构事实
+## ProjectContext 先建立结构事实
 
-`@alembic/core/project-intelligence` 暴露 AST analyzer、grammar loading、discoverer registry、config parser、ProjectGraph、project snapshot、Panorama、IDE agent analysis packet 等能力。它的目标不是直接产出最终 Recipe，而是给后续分析提供结构化事实。
+`@alembic/core/project-context`、`@alembic/core/project-context-capabilities`、`@alembic/core/core/analysis`、`@alembic/core/core/ast` 和 `@alembic/core/core/discovery` 暴露结构请求、AST analyzer、grammar loading、discoverer registry、config parser、project map、architecture intelligence、dynamic planning signals 和 IDE agent analysis packet 等能力。它的目标不是直接产出最终 Recipe，而是给后续分析提供结构化事实。
 
 结构事实包括：
 
@@ -23,10 +25,10 @@ Core 的第二条主线是把“项目理解”拆成三个确定性能力：分
 - AST 提取到的 class、function、interface、type、method 等符号。
 - 配置文件、构建文件、框架线索和模块边界。
 - 依赖图、调用关系和 structural evidence。
-- Project snapshot 与 stable unit key。
+- ProjectContext refs、source slice、anchor range 与 stable unit key。
 - 给 host agent 使用的 analysis packet、unit progress 和 retrieval hints。
 
-这些事实是 bootstrap/rescan 的地基。Agent 可以在此基础上阅读代码、提交候选知识、完成维度；Dashboard 可以展示 Panorama；Plugin 可以把 Mission Briefing 交给 Codex；主 daemon 可以记录 job process events。
+这些事实是 bootstrap/rescan 的地基。Agent 可以在此基础上阅读代码、提交候选知识、完成维度；Dashboard 可以展示 Project Pyramid；Plugin 可以把 Mission Briefing 和 ProjectContext guidance 交给宿主；主 daemon 可以记录 job process events。
 
 ## Search 是多信号检索
 
@@ -68,17 +70,17 @@ Guard 的输入应该是显式的：
 
 Cold start 和 rescan 不只是“扫描文件”。它们需要先建立项目结构事实，再读取已有 Recipe/candidate/sourceRef，再决定每个维度应该补什么，最后把候选知识和 completion 状态写回。
 
-Project Intelligence 提供 snapshot 和 analysis units。Search 提供已有知识、相关 Recipe、sourceRef 和 retrieval hints。Guard 提供规则审计和代码约束信号。Agent 或 host-agent workflow 在这些基础上完成维度分析和知识提交。
+ProjectContext 提供结构 refs 和 analysis units。Search 提供已有知识、相关 Recipe、sourceRef 和 retrieval hints。Guard 提供规则审计和代码约束信号。Agent 或 host-agent workflow 在这些基础上完成维度分析和知识提交。
 
 这就是为什么 bootstrap/rescan 的结果不应该被理解成“模型总结了一遍项目”。它是结构分析、知识检索、规则检查和 Agent 阅读共同形成的工作流。
 
 ## 与外层 adapter 的边界
 
-主 Alembic 会把 Core 能力接入 CLI、daemon jobs、HTTP routes 和 Dashboard server。例如 `/api/v1/search`、Guard routes、Panorama routes、jobs bootstrap/rescan routes。
+主 Alembic 会把 Core 能力接入 CLI、daemon jobs、HTTP routes 和 Dashboard server。例如 `/api/v1/search`、Guard routes、module/project-scope routes、jobs bootstrap/rescan routes。
 
-AlembicPlugin 会把 Core 能力接入 MCP tool surface，例如 `alembic_search`、`alembic_structure`、`alembic_call_context`、`alembic_code_guard`、`alembic_bootstrap`、`alembic_rescan`。
+AlembicPlugin 会把 Core 能力接入 MCP tool surface，例如 `alembic_recipe_map`、`alembic_graph`、`alembic_search`、`alembic_prime`、`alembic_code_guard`、`alembic_bootstrap`、`alembic_rescan`。
 
-AlembicDashboard 通过 API client 展示 search、Guard、Panorama、Jobs 和 candidates。
+AlembicDashboard 通过 API client 展示 search、Guard、Project Pyramid、Jobs 和 candidates。
 
 AlembicAgent 通过 tool system 或主 Alembic job workflow 使用这些能力，但 Agent 的 LLM prompt、provider 和 strategy 不属于 Core。
 
@@ -98,6 +100,6 @@ Core contract 应该保留 enough meta，让外层说清楚：
 
 ## 本章小结
 
-Project Intelligence、Search 和 Guard 是 Core 中最直接服务 AI 编程体验的三个内核。它们分别提供结构事实、知识检索和规则检查，三者共同支撑 bootstrap、rescan、prime、Dashboard 和 code guard。
+ProjectContext、Search 和 Guard 是 Core 中最直接服务 AI 编程体验的三个内核。它们分别提供结构事实、知识检索和规则检查，三者共同支撑 bootstrap、rescan、prime、Dashboard 和 code guard。
 
 记住边界：Core 稳定算法、数据形状和确定性语义；外层 runtime 负责命令、HTTP、MCP、UI、AI provider 和输出体验。下一部分会进入主 `Alembic` 仓库，看这些 Core contract 如何成为本地 resident service。
