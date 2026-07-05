@@ -15,7 +15,7 @@
 
 ## CLI 是用户入口，也是边界声明
 
-`Alembic/bin/cli.ts` 暴露的命令覆盖用户旅程的大部分动作：`setup`、`start`、`ai status/configure/import-env`、`daemon start/status/stop`、`projects` 系列、`project-scope`、`coldstart`、`rescan`、`evolve-check`、`search`、`guard`、`panorama`、`status`、`health` 等。
+`Alembic/bin/cli.ts` 暴露的命令覆盖用户旅程的大部分动作：`setup`、`start`、`ai status/configure/import-env`、`daemon start/status/stop`、`projects` 系列、`project-scope`、`coldstart`、`rescan`、`evolve-check`、`ais`、`search`、`guard`、`guard:ci`、`guard:staged`、`status`、`health`、`embed`、`task list/sync/list-warnings`、`ghost` 等。当前命令树里既有顶层命令，也有 `ai`、`daemon`、`projects`、`project-scope`、`task` 这类嵌套命令。
 
 这些命令不是全部业务逻辑。CLI 的责任是解析用户意图、创建服务对象、调用 runtime/control/workflow，并把结果以人可读或 JSON 的方式输出。真实事实源仍在 Core contract、主 runtime service 和数据库里。
 
@@ -60,6 +60,12 @@ ProjectRuntimeControl 不直接把所有进程细节写在自己里面，而是�
 daemon/API server 启动时会进入主仓库的 bootstrap 过程。`lib/bootstrap.ts` 会初始化 WorkspaceResolver、数据库、repositories、services、vector、search、guard、file monitor、bootstrap task manager、AI runtime 相关组件，并把它们放进 ServiceContainer。
 
 这个 container 是主 Alembic resident service 的装配层。Core 提供 contract 和服务实现，Agent 提供 AI runtime，主仓库把它们组合成 API、jobs、Dashboard 和命令可用的对象。
+
+## Recipe pipeline 是长任务装配层
+
+当前主仓库的 cold start、rescan、planning 和 sustain 代码集中在 `Alembic/lib/recipe-pipeline`。例如 host-facing 冷启动主类位于 `lib/recipe-pipeline/generate/ColdStartWorkflow.ts`，增量 rescan 位于 `lib/recipe-pipeline/generate/incremental/IncrementalRescanWorkflow.ts`。旧书里若还写早期 workflows 目录下的 cold-start 或 knowledge-rescan 路径，那是已经过期的事实。
+
+这个迁移很有意义：主仓库仍拥有 daemon/API/jobs，但知识生成与维护的装配从泛泛的 workflow 目录收敛成 recipe pipeline。读代码时要把它理解成“主 Alembic 对 Core workflow contract、Agent execution、JobStore、candidate persistence、Dashboard artifact 的装配层”，而不是 Core 的公共 API。
 
 ## 主运行时不是 Plugin，也不是 Dashboard
 

@@ -23,11 +23,15 @@ AlembicDashboard 是面向人的审阅和操作界面。它不拥有后端业务
 
 ## API client 是前后端边界
 
-`src/api.ts` 明确写着：前端直接调用 V3 RESTful API，baseURL 为 `/api/v1`。前端使用 V3 KnowledgeEntry 类型，不做字段语义重写。API client 中有大量 normalizer 和 mapper，用来兼容 raw backend fields、runtime records、jobs、project runtime snapshot、knowledge pagination 等。
+`src/api/index.ts` 是当前 API 聚合出口。旧的单文件 API god file 已按后端 route family 拆成 `src/api/` 目录下的族文件，`index.ts` 再把各族方法 spread 成与拆分前一致的单一 `api` 对象。文件头说明这次拆分保持 default 和 named exports 恒等，让 26+6 个消费文件无需同步改动。
+
+前端仍然直接调用 V3 RESTful API，baseURL 为 `/api/v1`。前端使用 V3 KnowledgeEntry 类型，不做字段语义重写。API client 中的 normalizer 和 mapper 分散在 client、problem、sse、projects、projectScope、jobs、search、guard、fetchData 等模块，用来兼容 raw backend fields、runtime records、jobs、project runtime snapshot、knowledge pagination 等。
 
 这条边界很重要：Dashboard 可以格式化展示、缓存 UI 状态、处理 loading/error、发起 API 请求，但不应该在前端重新定义 Knowledge lifecycle、Guard 规则、search ranking 或 JobStore contract。
 
 如果 API response 变化，应该同步后端 contract、front-end types、API mapper 和 dashboard contract tests，而不是在组件里临时猜字段。
+
+当前 `src/api/index.ts` 的命名出口还暴露 provider adapter policy、failure normalization、SSE projection、project/job/search/guard/runtime normalizers 等稳定工具面。它们是前端 contract 的守门层，不应被页面组件绕过。
 
 ## Dashboard 的核心工作流
 

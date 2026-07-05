@@ -46,6 +46,10 @@ AlembicCore
 
 所以不要把 `file:../` 当成产品 contract。它是 workspace 开发线索，不是用户安装后的依赖事实。
 
+当前 package scripts 也体现了这个边界。Core 的 `check` 会跑 public API、layer contract、consumer core imports、scope resolution、output budget、space edges、doctrine/naming 和 tests；主 Alembic 的 `check` 会额外覆盖 Dashboard type drift、agent extraction、repo boundary、shared asset drift 和 ring direction；Plugin 的 `check` 会覆盖 host/runtime layer boundary、cross-shell drift、runtime pack freshness 和 plugin distribution；Agent 与 Dashboard 也各自有 public API、core import、generated API types drift、space/layer contract 等门禁。
+
+换句话说，仓库边界不是“架构师口头说法”。每个仓库都把自己的发布形态写进 `package.json` 的脚本里。
+
 ## Core 的边界
 
 Core 应该承载这些能力：

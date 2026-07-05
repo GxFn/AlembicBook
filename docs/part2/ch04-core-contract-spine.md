@@ -15,7 +15,7 @@
 
 ## 包出口就是架构边界
 
-Core 的 `package.json` 暴露大量子路径：根入口、`./workspace`、`./knowledge`、`./search`、`./guard`、`./project-context`、`./project-context-capabilities`、`./recipe-context-capabilities`、`./host-agent-workflows`、`./plans`、`./daemon`、`./database`、`./repositories`、`./config`、`./io`、`./events`、`./core/analysis`、`./core/ast`、`./core/discovery` 等。这个设计不是为了让所有内部文件都可随意 import，而是为了把稳定 contract 命名出来。
+Core 的 `package.json` 当前暴露 66 个子路径：根入口、`./workspace`、`./knowledge`、`./search`、`./guard`、`./project-context`、`./project-context-capabilities`、`./recipe-context-capabilities`、`./host-agent-workflows`、`./plans`、`./daemon`、`./database`、`./repositories`、`./config`、`./io`、`./events`、`./dimensions`、`./evolution`、`./sustain`、`./workflows/*`、`./core/analysis`、`./core/ast`、`./core/discovery` 等。这个设计不是为了让所有内部文件都可随意 import，而是为了把稳定 contract 命名出来。
 
 根入口 `src/index.ts` 也刻意收敛。代码里明确说明根入口只暴露外层收敛需要的稳定契约，避免内部重复类型通过 `export *` 撞到一起。也就是说，Core 的 public API 不是目录镜像，而是一组经过挑选的 contract surface。
 
@@ -36,7 +36,7 @@ Core 的 `package.json` 暴露大量子路径：根入口、`./workspace`、`./k
 
 ## 四层代码组织
 
-Core 代码大致可以分成四层。
+Core 代码大致可以分成四层；当前 layer contract 还把更细的类别命名为 `shared`、`types`、`domain`、`core`、`infrastructure`、`repository`、`service`、`workflows`、`daemon`、`root-facade`。这些名字是边界检查的一部分，不只是目录描述。
 
 第一层是 domain。这里定义知识条目、维度、生命周期、字段规范、演化策略等业务语义。domain 的价值是让“candidate 是否可消费”“Recipe 是否 readiness”“lifecycle 是否合法转移”这些问题有确定答案。
 
@@ -47,6 +47,17 @@ Core 代码大致可以分成四层。
 第四层是 infrastructure/shared。这里提供数据库连接、Drizzle schema、logging、vector adapter、event bus、io/path guard、config loader、project registry、workspace resolver 等技术底座。
 
 这种分层并不是为了教科书式整齐，而是为了让外层 runtime 可以选择合适的入口：CLI 可能调用 service，Plugin 可能通过 host-agent workflow contract 组织输出，Dashboard 只通过 HTTP API 读取结果，Agent 只消费它需要的工具和知识上下文。
+
+## 当前 Core 事实源
+
+几个 Core 文件是阅读全书时反复回到的事实源：
+
+- `src/domain/dimension/DimensionRegistry.ts` 是维度定义单一来源；当前源码包含 26 个 `UnifiedDimension` 常量：13 个 universal、7 个 language、5 个 framework，以及显式启用时才进入编排的 cross-dimension synthesis。Bootstrap、Panorama、Rescan、Dashboard 都从这里消费元数据。
+- `src/domain/knowledge/values/Relations.ts` 定义关系桶，当前合法 bucket 包括 `inherits`、`implements`、`calls`、`depends_on`、`data_flow`、`conflicts`、`extends`、`related`、`alternative`、`prerequisite`、`deprecated_by`、`solves`、`enforces`、`references`。
+- `src/core/enhancement/index.ts` 注册 enhancement packs；当前按 React、Next.js、Vue、Node server、Django、FastAPI、ML、LangChain、Spring、Android、Go web/gRPC、Rust web/Tokio 等方向懒加载。
+- `src/infrastructure/database/drizzle/schema.ts` 与 migrations 共同定义 `.asd/alembic.db` 的持久化边界。
+
+这些文件适合作为章节事实锚点：维度、关系、增强包、数据库 schema 都不应从 Dashboard label 或旧 ledger 散文里反推。
 
 ## Core 稳定的是确定性，不是宿主体验
 

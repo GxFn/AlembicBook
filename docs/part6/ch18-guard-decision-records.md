@@ -6,6 +6,8 @@ Guard 是 Alembic 把项目知识用于真实代码工作的约束面。它负�
 
 ![Guard 与决策信号工作图](/images/ch18/01-guard-decision-register-workflow.png)
 
+源码锚点：`AlembicCore/src/service/guard/GuardCheckEngine.ts`、`AlembicPlugin/lib/shared/schemas/mcp-tools.ts`、`AlembicPlugin/lib/host-runtime/mcp/handlers/agent-public-tools.ts`、`Alembic/test/unit/AlembicProviderContracts.test.ts`。
+
 ## 本章回答
 
 - Guard 与 Code Guard 的区别是什么。
@@ -40,6 +42,8 @@ Guard result 是证据，不是最终验收。它可以指出规则命中、违�
 ## 当前没有 public decision_record
 
 当前 active public tools 是 `alembic_prime`、`alembic_work`、`alembic_code_guard`。Plugin 测试明确要求 active guidance 不再广告 `alembic_intent`、`alembic_work_start`、`alembic_work_finish`、`alembic_decision_record`，并要求 `alembic_task` 退休。
+
+这条事实可以从两个地方证明：Plugin public tool contract 只列出 prime/work/code_guard；主 Alembic provider contract 测试记录 decision-register HTTP entry 退休。维护本章时，这两个测试/contract 比旧文档更可靠。
 
 这不代表系统完全没有 decision 概念。Prime public package 里可能有 observe-only 的 `feedbackDigest.decisionRefCount`；rescan/evolution 路径里也有 recipe impact decisions、`alembic_evolve` 和 Agent runtime 的 `knowledge.manage` evolution decisions。但这些不是“Codex public tool 直接写 durable Decision Register”的路径。
 

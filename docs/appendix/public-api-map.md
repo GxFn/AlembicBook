@@ -47,7 +47,6 @@
 - `@alembic/agent/tasks`
 - `@alembic/agent/profiles`
 - `@alembic/agent/ai`
-- `@alembic/agent/tools/terminal`
 - `@alembic/agent/tools/runtime`
 - `@alembic/agent/memory`
 - `@alembic/agent/context`
@@ -94,3 +93,5 @@
 ## Dashboard API
 
 Dashboard 前端统一通过 `/api/v1` API client 消费后端。它不直接拥有 Core runtime，也不应重新定义 Knowledge lifecycle、search ranking 或 Guard semantics。
+
+当前 API client 的公开消费点是 `AlembicDashboard/src/api/index.ts`。旧单文件 API client 已拆成 route-family files；`index.ts` 负责维持 default/named exports 的兼容聚合。

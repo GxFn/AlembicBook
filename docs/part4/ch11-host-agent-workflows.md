@@ -6,7 +6,7 @@ Host-agent workflow 是 Alembic 面向 Codex 与 Claude Code 的工作协议。�
 
 ![host-agent workflow 生命周期图](/images/ch11/01-host-agent-workflow-lifecycle.png)
 
-源码锚点：`AlembicPlugin/lib/shared/schemas/mcp-tools.ts`、`AlembicPlugin/lib/runtime/mcp/handlers/agent-public-tools.ts`、`AlembicPlugin/lib/runtime/status/OnboardingContract.ts`。
+源码锚点：`AlembicPlugin/lib/shared/schemas/mcp-tools.ts`、`AlembicPlugin/lib/host-runtime/mcp/handlers/agent-public-tools.ts`、`AlembicPlugin/lib/host-runtime/status/OnboardingContract.ts`。
 
 ## 本章回答
 
@@ -20,6 +20,8 @@ Host-agent workflow 是 Alembic 面向 Codex 与 Claude Code 的工作协议。�
 Host agent 面对用户请求时，第一步不应该是盲目搜索全库。当前 public contract 把原来的 intent tool 收缩到 `alembic_prime` 输入里：宿主需要声明 `taskAction`、`requirementGoal`，并提供 capability、scenario、domainObjects、integrationBoundary 或 qualityConcerns 中至少一个 locator facet。
 
 `alembic_prime` 加载紧凑、带信任标签的项目知识，返回 primeRef、detailRefs、trust posture 和 ProjectContext follow-up guidance。这里的“紧凑”很关键：Alembic 不是把所有 Recipe 展开给模型，而是只把当前任务最相关的知识材料交给宿主。
+
+当前 schema 还会拒绝旧式 `intentRef`、`recognizedIntent`、裸 query 或 hostDeclaredIntent 之类输入。Prime 的职责是从一个明确的编码任务出发装载项目知识，而不是让宿主把任意自然语言塞进“意图识别”工具。
 
 这样做的结果是：Codex 的上下文有来源、有目的、有预算，而不是一堆历史文档堆叠。
 
@@ -39,6 +41,8 @@ Host agent 面对用户请求时，第一步不应该是盲目搜索全库。当
 `alembic_code_guard` 的 public contract 明确要求 scope：显式文件、inline code，或当前 workRef 中的 scoped files。它不会从 diffRef、primeRef、acceptedGuards 之类字段推断无限范围，也不会做 no-args whole-diff review。
 
 这是 Alembic 对 AI 工作流的一条硬边界。Guard 是项目规则检查，不是替代人类审查的万能工具；范围越明确，结果越可用。
+
+在代码上，这条边界落在两处：`AlembicPlugin/lib/shared/schemas/mcp-tools.ts` 定义输入形状，`AlembicPlugin/lib/host-runtime/mcp/handlers/agent-public-tools.ts` 处理降级、reason code、detailRefs 和结构化输出。读 public tools 行为时，应同时看 schema 和 handler，不要只看 README 或技能文案。
 
 ## Host-agent bootstrap 返回 Mission Briefing
 

@@ -6,7 +6,7 @@ Alembic 可以使用 AI，但 AI 配置不是所有仓库都拥有的能力。�
 
 ![AI 配置边界图](/images/ch15/01-ai-configuration-boundary.png)
 
-源码锚点：`Alembic/lib/cli/AiScanService.ts`、`Alembic/lib/injection/modules/AiModule.ts`、`AlembicAgent/src/ai/AiFactory.ts`、`AlembicPlugin/lib/runtime/mcp/public-tools/contract.ts`。
+源码锚点：`Alembic/lib/cli/AiScanService.ts`、`Alembic/lib/injection/modules/AiModule.ts`、`AlembicAgent/src/ai/AiFactory.ts`、`AlembicPlugin/lib/host-runtime/mcp/public-tools/contract.ts`。
 
 ## 本章回答
 
@@ -38,6 +38,8 @@ Alembic 可以使用 AI，但 AI 配置不是所有仓库都拥有的能力。�
 当用户通过 Codex 插件调用 host-agent `alembic_bootstrap` 或日常 public tools 时，Codex 自己是宿主 Agent。Plugin 可以返回 Mission Briefing、prime material 和 workflow refs，让 Codex 阅读和执行。这条路径不要求 Alembic resident provider key。
 
 把这两条路径混淆，会导致错误的产品要求，例如要求 Codex 插件存第三方 AI key，或认为没有 resident AI provider 就不能做任何 Alembic 知识工作。
+
+Plugin public contract 中的 host identity 只声明当前宿主，例如 `codex` 或 `claude-code`。它不等价于 AI provider 选择。Codex host-agent workflow 使用的是宿主已有的模型执行能力；Alembic resident provider 则由主 Alembic/Agent runtime 配置。
 
 ## Dashboard 配置只是 UI 投影
 

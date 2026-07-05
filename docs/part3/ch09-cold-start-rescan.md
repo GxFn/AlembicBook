@@ -2,11 +2,11 @@
 
 Cold start 和 rescan 是 Alembic 知识层从空白走向可用、再从可用走向持续新鲜的两条主工作流。它们不是“跑 AI 生成文档”的两个命令，而是围绕 ProjectContext、维度任务、已有 Recipe、candidate、sourceRef、Guard audit、Agent execution 和 Job evidence 组织起来的长任务。
 
-本章从主 Alembic daemon 路径讲起，同时点明 Codex host-agent 路径在哪里分叉。两条路径最终共享同一目标：生成可审阅、可追溯、可消费的项目知识。
+本章从主 Alembic recipe-pipeline/job 路径讲起，同时点明 Codex host-agent 路径在哪里分叉。两条路径最终共享同一目标：生成可审阅、可追溯、可消费的项目知识。
 
 ![cold start rescan 工作流图](/images/ch09/01-cold-start-rescan-workflow.png)
 
-源码锚点：`Alembic/lib/workflows/cold-start/ColdStartWorkflow.ts`、`Alembic/lib/workflows/knowledge-rescan/KnowledgeRescanWorkflow.ts`、`AlembicPlugin/lib/recipe-generation/host-agent-workflows/cold-start.ts`。
+源码锚点：`Alembic/lib/recipe-pipeline/generate/ColdStartWorkflow.ts`、`Alembic/lib/recipe-pipeline/generate/incremental/IncrementalRescanWorkflow.ts`、`AlembicPlugin/lib/recipe-pipeline/generate/cold-start.ts`。
 
 ## 本章回答
 
@@ -30,6 +30,12 @@ Cold start 的目标是给一个项目建立第一批可审阅知识。主 CLI �
 
 这一步的正确结果不是“直接写满 Recipes”，而是建立分析任务、提交候选知识、记录证据，并让审阅流程决定哪些候选可以成为 Recipe。
 
+## 当前实现路径
+
+主 Alembic 的长任务入口现在落在 `lib/recipe-pipeline`，不再是早期泛化 workflows 目录。`generate/ColdStartWorkflow.ts` 承担 cold start 的主装配，`generate/incremental/IncrementalRescanWorkflow.ts` 承担增量 rescan；`sustain/KnowledgeRescanWorkflow.ts` 只是兼容导出壳，用来把旧名字导向当前实现。
+
+Plugin 的 host-agent cold start 也已经从早期生成目录迁到 `AlembicPlugin/lib/recipe-pipeline/generate/cold-start.ts`。这个路径迁移说明两个事实：一是 Plugin 只包装 host-agent workflow，不拥有主 daemon job；二是 cold start/rescan 的知识生成逻辑已经围绕 recipe pipeline 命名，而不是泛化 workflow 目录。
+
 ## Rescan 面向已有知识层
 
 Rescan 与 cold start 最大区别是它必须尊重已有 Recipe。代码里 `RescanContext` 会读取 existingRecipes、decayingRecipes、coverageByDim、executionDecisions、occupiedTriggers 等信息。它不是把项目重扫一遍然后覆盖旧知识，而是先判断旧知识是否仍有证据、哪些维度需要补齐、哪些 Recipe 应该 watch 或 decay。
@@ -46,7 +52,7 @@ Rescan 的典型目标包括：
 
 ## ProjectContext 提供分析包
 
-Cold start 和 rescan 都依赖 ProjectContext 和分析包。它会构建 space/repo/map/module/file refs、AST/grammar 分析、dependency hints、IDE agent analysis packet、unit progress seed 和 retrieval hints。Plugin 的 bootstrap 工具描述中也明确提到 Mission Briefing 会包含 ideAgentAnalysis packet summary、next units、retrieval hints 和 unit progress seed。
+Cold start 和 rescan 都依赖 ProjectContext 和分析包。它会构建 space/repo/map/module/file refs、AST/grammar 分析、dependency hints、IDE agent analysis packet、unit progress seed 和 retrieval hints。Plugin 的 bootstrap 工具描述中也明确提到 Mission Briefing 会包含 ideAgentAnalysis packet summary、next units、retrieval hints 和 unit progress seed，并通过 structuredContent 返回可继续执行的任务，而不是只给一段散文。
 
 这些数据让 Agent 不必盲读全仓。Agent 可以按 stable unit、dimension、evidence kind 和 sourceRef 组织分析。对于大项目，这一点尤其关键，因为上下文预算永远有限。
 

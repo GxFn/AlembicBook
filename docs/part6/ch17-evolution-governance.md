@@ -6,7 +6,7 @@
 
 ![知识演化治理图](/images/ch17/01-knowledge-evolution-governance.png)
 
-源码锚点：`AlembicCore/src/evolution.ts`、`AlembicCore/src/service/evolution/EvolutionGateway.ts`、`Alembic/lib/http/routes/signals.ts`。
+源码锚点：`AlembicCore/src/evolution.ts`、`AlembicCore/src/service/sustain/ProposalGateway.ts`、`AlembicCore/src/service/sustain/LifecycleStateMachine.ts`、`AlembicCore/src/repository/evolution/ProposalRepository.ts`、`Alembic/lib/http/routes/signals.ts`。
 
 ## 本章回答
 
@@ -30,11 +30,17 @@ Core 的 `LifecycleStateMachine` 注释明确写着：它替代旧的 RecipeLife
 
 这防止外层服务绕过规则直接改状态。若 Guard 拒绝，调用者不应 fallback 到普通 updateLifecycle。
 
+## ProposalGateway 汇聚演化决策
+
+当前 Core 中没有旧的 evolution gateway 类口径。统一入口是 `ProposalGateway`：Agent tools、MCP handler、Evolution Agent 或维护 sweep 产生的演化判断，最终都应汇聚成 `update`、`deprecate`、`valid` 三种动作之一。
+
+这个 gateway 的设计意图很明确：消除 Agent tools、MCP handler、Metabolism 各自创建 proposal 的重复逻辑；统一 observation window；让高置信 Agent deprecate 可以立即执行，而规则引擎来源先进入观察窗口；如果 lifecycle 变更被 Guard 拒绝，则降级为 Proposal 让人审阅。
+
 ## Evolution proposals 是待审变更
 
 Evolution route 提供 proposals 列表、stats、execute、observe、reject，以及 warnings 列表、stats、resolve、dismiss。proposal 可以来自 decay detector、redundancy analyzer、enhancement suggester、recipe impact planner、consolidation advisor 等。
 
-Proposal 的意义是把“系统建议改变知识”变成可审阅对象。它可以建议更新内容、合并重复、废弃过期 Recipe、观察某个规则、补充证据，但执行前应有明确状态和原因。
+Proposal 的意义是把“系统建议改变知识”变成可审阅对象。它可以建议更新内容、合并重复、废弃过期 Recipe、观察某个规则、补充证据，但执行前应有明确状态和原因。底层持久化由 `ProposalRepository` 负责；执行路径会继续通过 `ProposalExecutor`、`LifecycleStateMachine`、ContentPatcher 或相关 sustain 服务，而不是 route 直接改知识。
 
 这比自动修改 Recipe 更安全。AI 或规则分析可以提出变更，但是否执行需要治理路径。
 

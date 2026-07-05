@@ -40,13 +40,15 @@
 
 - Workspace/path/storage：`AlembicCore/src/shared` 与 `src/workspace.ts`。
 - Knowledge/lifecycle/search/guard：`AlembicCore/src/domain`、`src/service`、`src/knowledge.ts`、`src/search.ts`、`src/guard.ts`。
-- CLI/daemon/API/jobs：`Alembic/bin`、`Alembic/lib/daemon`、`Alembic/lib/http/routes`、`Alembic/lib/workflows`。
-- Host tools/Plugin：`AlembicPlugin/lib/runtime/mcp`、`AlembicPlugin/lib/runtime/status`、`AlembicPlugin/lib/runtime/host-adapter`、`AlembicPlugin/scripts/prepare-codex-plugin-runtime.mjs`。
+- CLI/daemon/API/jobs：`Alembic/bin`、`Alembic/lib/daemon`、`Alembic/lib/http/routes`、`Alembic/lib/recipe-pipeline`。
+- Host tools/Plugin：`AlembicPlugin/lib/host-runtime/mcp`、`AlembicPlugin/lib/host-runtime/status`、`AlembicPlugin/lib/host-runtime/host-adapter`、`AlembicPlugin/lib/service/skills`、`AlembicPlugin/scripts/prepare-codex-plugin-runtime.mjs`。
 - Agent runtime：`AlembicAgent/src/agent`、`src/tools`、`src/ai`。
-- Dashboard：`AlembicDashboard/src/App.tsx`、`src/api.ts`、`src/components/Views`。
+- Dashboard：`AlembicDashboard/src/App.tsx`、`src/api/index.ts`、`src/api/` route-family files、`src/components/Views`。
 - Release/validation：各仓库 `package.json` 与 `scripts/`。
 
 不要用旧书段落当事实源。旧书可以提示历史意图，但当前书稿必须以当前代码为准。
+
+Wakeflow ledger 下的仓库文档适合当阅读索引，而不是最终证明。它们记录了某个日期、某个 commit 附近的架构深读，能帮助快速定位概念和历史决策；但如果 ledger 路径、类名或数量与当前源码冲突，必须以当前源码、package scripts 和验证输出为准。
 
 ## 避免三种旧叙事
 
@@ -58,7 +60,7 @@
 
 ## 插图规则
 
-当前阶段使用 prompt-managed 新插图，不再使用旧图，也不再保留 `.diagram-placeholder` 作为正文图位。
+当前阶段使用 prompt-managed 新插图，不再使用旧图，也不再保留旧占位文件作为正文图位。
 
 每张图都应有一个 prompt 源文件，推荐图型包括：
 
@@ -88,6 +90,7 @@ Glossary 应只收录当前书中真实使用的术语，避免复活旧叙事�
 
 ```bash
 npm run build
+npm run verify:alembic -- --local ../Alembic
 git diff --check
 ```
 
@@ -96,7 +99,8 @@ git diff --check
 - Markdown 内链没有断。
 - 章节不引用旧图片。
 - `npm run illustrations -- --list` 显示所有 prompt-managed 图片 ready。
-- 正文没有残留 `.diagram-placeholder`。
+- 正文没有残留旧占位文件。
+- `verify:alembic` 没有 missing source anchors，并且报告的 Plugin MCP tools、Agent runtime tools、Core dimensions/relations 等事实与章节叙述一致。
 - 目录和侧边栏能对应新章节。
 - 新增术语在 glossary 或正文首次出现处解释。
 

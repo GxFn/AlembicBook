@@ -6,7 +6,7 @@ Alembic 是多仓库、本地运行、AI 参与的系统。这里的“测试通
 
 ![测试证据层级图](/images/ch20/01-testing-evidence-hierarchy.png)
 
-源码锚点：`Alembic/test/unit/ResidentServiceBoundary.test.ts`、`AlembicPlugin/test/unit/McpCleanOutputContract.test.ts`、`AlembicDashboard/scripts/dashboard-contract.test.mjs`。
+源码锚点：`Alembic/test/unit/ResidentServiceBoundary.test.ts`、`AlembicPlugin/test/unit/McpCleanOutputContract.test.ts`、`AlembicDashboard/scripts/dashboard-contract.test.mjs`、`Alembic/lib/daemon/observability/JobProcessEventRecorder.ts`、`Alembic/lib/daemon/observability/JobDisplaySnapshotStore.ts`。
 
 ## 本章回答
 
@@ -67,6 +67,8 @@ Bootstrap/rescan job 的 status 可能是 completed、failed、cancelled、runni
 - error event 与 source class。
 
 一个 failed job 可能仍然产出有用 artifact；一个 completed job 也可能有 degraded dimension。验收时要读过程证据，而不是只看终态。
+
+主仓库的 observability 代码把这类证据拆得很细：`JobProcessEventRecorder` 记录 process events，`JobProcessEventArtifacts` 处理长报告/日志等 artifact，`JobDisplaySnapshotStore` 保存 Dashboard 可读快照，`DaemonJobRunner` 驱动 bootstrap/rescan job。验收长任务时，这些文件比单个 status badge 更接近事实源。
 
 ## MCP 证据要看 structuredContent
 

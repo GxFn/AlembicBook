@@ -91,6 +91,7 @@ AlembicBook 是文档产品。它的最低验证应包括：
 
 ```bash
 npm run build
+npm run verify:alembic -- --local ../Alembic
 git diff --check
 ```
 
@@ -101,6 +102,7 @@ git diff --check
 - 需要插图的位置使用 `docs/public/images/` 下的当前生成图，并能被 `npm run illustrations -- --list` 管理。
 - Markdown 内链不能断。
 - 章节内容要能追溯到真实仓库实现，而不是旧书叙事。
+- `verify:alembic` 要报告 21/21 主体章节都有 source anchors，且 missing anchors 为 0。
 
 如果书稿引用某个工具、命令、路径或发布规则，最好能在源码或 package scripts 中找到对应证据。
 

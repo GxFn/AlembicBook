@@ -38,13 +38,13 @@ Alembic 的核心产品闭环是：从用户项目读取代码事实，在本地
 
 ### AlembicCore
 
-`AlembicCore` 发布 `@alembic/core`。它是 Alembic family 的 headless deterministic core，承担 workspace、database、repository、domain、search、vector、Guard、AST、project intelligence、host-agent workflow contract、daemon contracts 等共享能力。
+`AlembicCore` 发布 `@alembic/core`。它是 Alembic family 的 headless deterministic core，承担 workspace、database、repository、domain、search、vector、Guard、AST、project intelligence、host-agent workflow contract、daemon contracts 等共享能力。当前 `package.json` 暴露 66 个 exports，说明它不是一个随意被 deep import 的源码目录，而是被多个外层仓库消费的包边界。
 
 Core 的关键约束是“被消费，不反向依赖外层”。它不应该 import 主 `Alembic` app，不应该依赖 Codex 插件，也不应该携带 Dashboard UI。外层仓库通过包入口消费它，发布时也必须回到 registry/package 边界。
 
 ### AlembicAgent
 
-`AlembicAgent` 发布 `@alembic/agent`。它拥有 AgentRuntime、AI provider adapter、tool system、terminal/code/knowledge tools、memory/context、prompt、strategy、policy、run tracking 和错误恢复等非确定性执行能力。
+`AlembicAgent` 发布 `@alembic/agent`。它拥有 AgentRuntime、AI provider adapter、tool system、terminal/code/knowledge/graph/memory/meta/evidence tools、memory/context、prompt、strategy、policy、run tracking 和错误恢复等非确定性执行能力。
 
 Agent 与 Core 的关系很直接：Core 提供确定性项目知识和 workflow contract，Agent 负责把 AI、工具调用、上下文压缩、策略和执行循环组织起来。主 `Alembic` 可以使用 Agent 来跑 provider-backed jobs；Codex 插件也要明确区分“宿主 Codex Agent”和 Alembic 自己的 Agent runtime。
 
@@ -52,7 +52,7 @@ Agent 与 Core 的关系很直接：Core 提供确定性项目知识和 workflow
 
 `AlembicPlugin` 是 host plugin 和 MCP runtime 仓库，包名是私有的 `alembic-codex-plugin-runtime`。它负责 MCP tool schema、HostMcpServer、tool policy、agent-facing public tools、status/init/job/runtime、skills、channel/marketplace、portable runtime artifact 和 plugin cache 刷新。
 
-Plugin 的定位不是“另一个 Alembic daemon”。它把 host project、Alembic dataRoot、resident/project-scope capability、Core workflow contract 和 MCP 可见工具接起来。当前 status 路径默认是 daemon-less PDR-3 host route；长期 daemon 和 Dashboard server 的产品源仍在主 Alembic。
+Plugin 的定位不是“另一个 Alembic daemon”。它把 host project、Alembic dataRoot、resident/project-scope capability、Core workflow contract 和 MCP 可见工具接起来。当前 status 路径默认是 daemon-less PDR-3 host route；长期 daemon 和 Dashboard server 的产品源仍在主 Alembic。当前 MCP catalog 位于 `AlembicPlugin/lib/host-runtime/mcp/PluginToolSurfaceCatalog.ts`，不再沿用早期 runtime-era MCP 目录。
 
 ### AlembicDashboard
 
@@ -65,6 +65,18 @@ Dashboard 不拥有数据库、AST、Agent 决策或 MCP tool execution。它的
 `AlembicWorkspace` 是多仓库协作的 controller workspace。它记录计划、分发、验收、边界和长期协作账本，但不实现 Alembic 产品能力。Book 位于这个 workspace 里的 sibling repo，只是文档产品本身；它不应该被误解为主运行时的一部分。
 
 这个边界对读者很重要。看到某个 Wakeflow 文档、dispatch packet 或验收记录时，不要把它当成产品代码；看到某个产品仓库里的实现时，也不要用总控便利去替代它自己的测试和发布边界。
+
+## 当前源码读数
+
+本书每次更新都应重新核对一组低成本源码事实。本轮阅读得到的当前读数是：
+
+- Core package exports：66 个子路径，覆盖 `workspace`、`knowledge`、`search`、`guard`、`project-context`、`host-agent-workflows`、`daemon`、`database`、`repositories`、`workflows/*` 等边界。
+- 主 Alembic HTTP route families：`lib/http/routes` 下 24 个 route 文件；生成的 Dashboard API contract table 声明 28 个 routes、contract version 1。
+- Plugin MCP catalog：19 个 entries，其中 18 个 agent tier、1 个 admin-only，3 个 agent-facing public workflow tools。
+- Agent runtime registry：7 类工具、21 个 actions，包括新增的 `evidence.get` 和 `evidence.search`。
+- Dashboard tabs：`recipes`、`spm`、`candidates`、`knowledge`、`guard`、`project-pyramid`、`skills`、`jobs`、`help`。
+
+这些数字不是为了炫耀规模，而是给读者一个防漂移的基线：如果未来某章仍然写 6 个 Agent tools、旧 Plugin runtime 路径或旧 Dashboard API god file，就应该回到源码重查。
 
 ## 三条主链路
 
@@ -83,7 +95,7 @@ Dashboard 不拥有数据库、AST、Agent 决策或 MCP tool execution。它的
 | `setup --ghost` 写到哪里 | `Alembic/lib/cli/SetupService.ts` 与 `@alembic/core/workspace` | Dashboard |
 | 项目身份或 dataRoot 错乱 | `ProjectRegistry`、`WorkspaceResolver`、Codex status | Recipe 内容 |
 | daemon、Dashboard URL、jobs | `Alembic/lib/daemon`、`Alembic/lib/http` | AlembicAgent prompt |
-| Codex 工具不可见或输出不对 | `AlembicPlugin/lib/runtime/mcp`、tool policy、status | 主 CLI 命令表 |
+| Codex 工具不可见或输出不对 | `AlembicPlugin/lib/host-runtime/mcp`、tool policy、status | 主 CLI 命令表 |
 | AI job 执行循环 | `AlembicAgent/src/agent` 与主 Alembic job workflow | Core domain object |
 | 前端页面或交互 | `AlembicDashboard/src` | 后端 repository |
 | Recipe/Guard/search 的确定性 contract | `AlembicCore/src` | Plugin cache snapshot |

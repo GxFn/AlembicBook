@@ -6,7 +6,7 @@ Alembic 的知识层不是一堆 Markdown，也不是一个 SQLite 表。它是�
 
 ![Alembic 知识对象关系图](/images/ch16/01-knowledge-object-relationship.png)
 
-源码锚点：`AlembicCore/src/knowledge.ts`、`AlembicCore/src/domain/knowledge/KnowledgeEntry.ts`、`AlembicCore/src/service/knowledge/RecipeFreshnessService.ts`。
+源码锚点：`AlembicCore/src/knowledge.ts`、`AlembicCore/src/domain/knowledge/KnowledgeEntry.ts`、`AlembicCore/src/domain/knowledge/Lifecycle.ts`、`AlembicCore/src/domain/knowledge/values/Relations.ts`、`AlembicCore/src/service/knowledge/RecipeFreshnessService.ts`。
 
 ## 本章回答
 
@@ -30,6 +30,8 @@ Core 的 `knowledge` 入口导出 KnowledgeEntry、KnowledgeRepository、FieldSp
 - dimensionId、sourceRefs、lifecycle、createdAt、updatedAt。
 
 这些字段让知识既能被人阅读，也能被 search、prime、Guard、Dashboard 和 Agent workflow 使用。
+
+当前关系字段已经统一为分桶结构，而不是扁平 relation 数组。`Relations.ts` 负责把字符串数组、扁平数组或分桶输入归一化到 `inherits`、`calls`、`depends_on`、`solves` 等 bucket 中；Dashboard 需要扁平展示时再调用 flat view。这一点很重要：关系图的内部事实源是 bucket，UI 展示只是投影。
 
 ## 生命周期决定可消费性
 

@@ -23,7 +23,9 @@ daemon 的职责是守住当前项目的 resident boundary。它知道项目 dat
 
 主仓库 `lib/http/routes` 当前有这些 route families：`ai`、`audit`、`candidates`、`commands`、`daemon`、`evolution`、`extract`、`file-changes`、`governance`、`guard`、`guardRules`、`health`、`jobs`、`knowledge`、`logs`、`modules`、`project-scope`、`projects`、`recipes`、`search`、`signals`、`skills`、`violations`、`wiki`。
 
-另外，`Alembic/lib/generated/dashboard-api-types.ts` 由 provider contract 生成，当前记录 28 个 HTTP route contracts。Dashboard 侧提交了同名 generated copy 和 sha256 pin，用来检查前后端 API 漂移。
+另外，`Alembic/lib/generated/dashboard-api-types.ts` 由 provider contract 生成，当前文件头记录 `HTTP route contract table (28 routes, contract version 1)`。Dashboard 侧提交了同名 generated copy 和 sha256 pin，用来检查前后端 API 漂移。
+
+生成表中的代表性路径包括 `/api-spec`、`/health`、`/daemon/health`、`/projects`、`/projects/{projectId}/switch`、`/project-scope`、`/jobs`、`/jobs/bootstrap`、`/jobs/rescan`、`/jobs/{jobId}/events`、`/jobs/{jobId}/display-snapshot`、`/jobs/{jobId}/artifacts/{artifactId}`、`/guard`、`/rules`、`/violations`、`/knowledge`、`/search`、`/recipes`、`/modules/scan`、`/wiki/generate`、`/governance`、`/evolution/proposals`、`/file-changes`、`/signals/trace`、`/audit`、`/logs`。这里的 route contract 是 Dashboard 和其他消费者的 API 事实源。
 
 这说明 Dashboard 不是直接读文件，也不是自己决定知识生命周期。它通过 API client 调 `/api/v1`。Codex Plugin 的 status/dashboard/job 能力也会读取这些 resident capability。CLI 的一部分命令同样可以走本地服务或共享底层 service。
 

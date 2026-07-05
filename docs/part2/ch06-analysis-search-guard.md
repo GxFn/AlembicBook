@@ -30,6 +30,8 @@ Core 的第二条主线是把“项目理解”拆成三个确定性能力：分
 
 这些事实是 bootstrap/rescan 的地基。Agent 可以在此基础上阅读代码、提交候选知识、完成维度；Dashboard 可以展示 Project Pyramid；Plugin 可以把 Mission Briefing 和 ProjectContext guidance 交给宿主；主 daemon 可以记录 job process events。
 
+当前验证脚本会从源码收集 ProjectContext、Search、Guard 周边事实，包括 service domains、import aliases、database tables、DI registrations 和 indexable extensions。这个读数不是验收结论，但能很快发现书稿是否还在引用旧目录、旧服务名或旧索引假设。
+
 ## Search 是多信号检索
 
 Core 的 `search` 入口暴露 `SearchEngine`、BM25 scorer、field-weighted scorer、hybrid retriever、multi-signal ranker、context boost、sourceRef adapter、search response meta 和 tokenization。它不是 `grep` 的包装。
@@ -48,6 +50,8 @@ Core 的 `search` 入口暴露 `SearchEngine`、BM25 scorer、field-weighted sco
 ## Guard 是规则检查引擎，不是泛化代码审查
 
 Core 的 `guard` 入口暴露 `createGuardCheckEngine` 和 service/guard 能力。代码注释很清楚：Core 稳定规则检查、跨文件检查、报告和正向治理闭环；MCP tool schema、CLI 参数、Codex 输出格式由外层 adapter 包装。
+
+Guard 的具体引擎落在 `AlembicCore/src/service/guard/GuardCheckEngine.ts`；主 HTTP wrapper 落在 `Alembic/lib/http/routes/guard.ts`；Plugin public wrapper 落在 `AlembicPlugin/lib/host-runtime/mcp/handlers/agent-public-tools.ts`。同一个 Guard 概念在三层分别承担 engine、route、host-facing scoped wrapper，不能互相替代。
 
 这句话定义了 Guard 的边界。Guard 的职责是把项目知识中的规则应用到明确代码输入上，生成可解释结果。它不应该假装自己是全能 reviewer，也不应该在没有文件、inline code 或 workRef scope 时做无边界全仓检查。
 

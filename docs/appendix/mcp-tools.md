@@ -1,6 +1,6 @@
 # Appendix C MCP Tool Surface
 
-本附录概览当前 Plugin MCP tool surface。完整事实以 `AlembicPlugin/lib/runtime/mcp/PluginToolSurfaceCatalog.ts`、`AlembicPlugin/lib/shared/schemas/mcp-tools.ts`、public-tools contract 和真实 `tools/list` 为准。
+本附录概览当前 Plugin MCP tool surface。完整事实以 `AlembicPlugin/lib/host-runtime/mcp/PluginToolSurfaceCatalog.ts`、`AlembicPlugin/lib/shared/schemas/mcp-tools.ts`、public-tools contract 和真实 `tools/list` 为准。
 
 ![MCP tool grouping 图](/images/appendix/02-mcp-tool-grouping.png)
 

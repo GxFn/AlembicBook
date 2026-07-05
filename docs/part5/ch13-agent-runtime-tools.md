@@ -10,7 +10,7 @@
 
 - AgentRuntime 为什么是单一执行引擎。
 - Capability、Strategy、Policy、ToolRouter 在运行时中分别做什么。
-- runtime tool registry 如何把 code、terminal、knowledge、graph、memory 等能力结构化。
+- runtime tool registry 如何把 code、terminal、knowledge、graph、memory、meta、evidence 等能力结构化。
 - Agent runtime 与 Codex host-agent workflow 有何不同。
 
 ## 一个 Runtime，多种配置
@@ -38,7 +38,7 @@ AgentRuntime 构造时需要 aiProvider、toolRegistry、toolRouter、capabiliti
 
 ## Runtime tool registry 是声明式工具目录
 
-`AlembicAgent/src/tools/runtime/registry.ts` 是当前工具注册表。它声明 code、terminal、knowledge、graph、memory、meta 等工具，每个 action 都有 summary、description、params schema、handler、cache、concurrency、risk、maxOutputTokens。
+`AlembicAgent/src/tools/runtime/registry.ts` 是当前工具注册表。它声明 code、terminal、knowledge、graph、memory、meta、evidence 七类工具，每个 action 都有 summary、description、params schema、handler、cache、concurrency、risk、maxOutputTokens。
 
 例如 code 工具包含 search、read、outline、structure、write：
 
@@ -48,7 +48,9 @@ AgentRuntime 构造时需要 aiProvider、toolRegistry、toolRouter、capabiliti
 - structure 输出目录树。
 - write 支持创建/覆盖文件，但受 protected path 限制。
 
-terminal 工具声明 exec，标记 side-effect risk、single concurrency 和 output compression。knowledge 工具声明 search、submit、detail、manage，强调候选提交、去重、详情读取和 lifecycle/evolution 管理。graph 工具提供 overview 和 query；memory 工具提供 save、recall、note_finding、get_previous_evidence；meta 工具提供 tools、plan、review。
+terminal 工具声明 exec，标记 side-effect risk、single concurrency 和 output compression。knowledge 工具声明 search、submit、detail、manage，强调候选提交、去重、详情读取和 lifecycle/evolution 管理。graph 工具提供 overview 和 query；memory 工具提供 save、recall、note_finding、get_previous_evidence；meta 工具提供 tools、plan、review；evidence 工具提供 get 和 search。
+
+按当前 registry 统计，7 类工具共 21 个 actions：code 5 个、terminal 1 个、knowledge 4 个、graph 2 个、memory 4 个、meta 3 个、evidence 2 个。这个数字可以作为维护时的漂移检查：如果新增工具没有进入本章，读者就会低估 Agent runtime 的可审计证据能力。
 
 这使工具能力不是 prompt 里的自由文本，而是可验证 contract。
 

@@ -15,7 +15,7 @@ AlembicPlugin 的核心职责是 host adaptation。它把 Alembic 的本地知�
 
 ## Tool surface catalog 是插件入口表
 
-`AlembicPlugin/lib/runtime/mcp/PluginToolSurfaceCatalog.ts` 是 host 可见工具元数据的单一表。每个工具都声明：
+`AlembicPlugin/lib/host-runtime/mcp/PluginToolSurfaceCatalog.ts` 是 host 可见工具元数据的单一表。每个工具都声明：
 
 - `owner`：`codex-local` 或 `plugin-embedded-core`。
 - `handlerOwner`：由 HostMcpServer local、resident jobs、McpServer host-agent、agent public tools、knowledge admin 等谁处理。
@@ -54,9 +54,18 @@ Plugin 当前 catalog 中的知识、结构和治理入口包括 `alembic_recipe
 
 如果知识库为空，search/prime 类工具不应该假装有答案。status 会告诉宿主：先 init、bootstrap 或修复 dataRoot。
 
+当前 catalog 有 19 个 entries。按 handler/用途读，可以分成四类：
+
+- Local/runtime control：`alembic_status`、`alembic_init`、`alembic_job`、`alembic_runtime`。
+- ProjectContext、RecipeContext 与知识读写：`alembic_recipe_map`、`alembic_search`、`alembic_graph`、`alembic_plan`、`alembic_submit_knowledge`、`alembic_project_skill`。
+- Host-agent 长流程与治理：`alembic_bootstrap`、`alembic_rescan`、`alembic_evolve`、`alembic_consolidate`、`alembic_dimension_complete`。
+- Agent-facing public workflow 和 admin：`alembic_prime`、`alembic_work`、`alembic_code_guard`，以及 admin-only `alembic_knowledge_lifecycle`。
+
+这个分组比“工具列表”更重要：它告诉读者哪些工具只读状态，哪些工具消费已有知识，哪些工具驱动知识建设，哪些工具属于宿主 Agent 日常工作闭环。
+
 ## 三个 agent-facing public tools 是日常工作骨架
 
-`AlembicPlugin/lib/runtime/mcp/public-tools/contract.ts` 明确列出三个 agent-facing public tools：
+`AlembicPlugin/lib/host-runtime/mcp/public-tools/contract.ts` 明确列出三个 agent-facing public tools：
 
 - `alembic_prime`
 - `alembic_work`

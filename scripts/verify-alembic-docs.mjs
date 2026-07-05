@@ -205,13 +205,14 @@ async function collectCodeFacts(sourceRoot, sourceRoots) {
   const facts = {};
   facts.pluginMcpTools = await collectPluginMcpToolFacts(sourceRoots);
   facts.agentRuntimeTools = await collectAgentRuntimeToolFacts(sourceRoots);
+  const coreRoot = sourceRoots.get('AlembicCore') ?? sourceRoot;
   facts.grammars = await collectGrammarFacts(sourceRoot);
-  facts.dimensions = await collectDimensionFacts(sourceRoot);
-  facts.relations = await collectRelationFacts(sourceRoot);
-  facts.enhancementPacks = await collectEnhancementFacts(sourceRoot);
+  facts.dimensions = await collectDimensionFacts(coreRoot);
+  facts.relations = await collectRelationFacts(coreRoot);
+  facts.enhancementPacks = await collectEnhancementFacts(coreRoot);
   facts.serviceDomains = await collectServiceDomainFacts(sourceRoot);
   facts.importAliases = await collectImportAliasFacts(sourceRoot);
-  facts.database = await collectDatabaseFacts(sourceRoot);
+  facts.database = await collectDatabaseFacts(coreRoot);
   facts.serviceMap = await collectServiceMapFacts(sourceRoot);
   facts.indexing = await collectIndexingFacts(sourceRoot);
   return facts;
@@ -219,7 +220,12 @@ async function collectCodeFacts(sourceRoot, sourceRoots) {
 
 async function collectPluginMcpToolFacts(sourceRoots) {
   const pluginRoot = sourceRoots.get('AlembicPlugin');
-  const file = pluginRoot ? path.join(pluginRoot, 'lib/runtime/mcp/PluginToolSurfaceCatalog.ts') : '';
+  const file = pluginRoot
+    ? firstExistingPath(pluginRoot, [
+        'lib/host-runtime/mcp/PluginToolSurfaceCatalog.ts',
+        'lib/runtime/mcp/PluginToolSurfaceCatalog.ts',
+      ])
+    : '';
   const text = await readTextIfExists(file);
   const entries = [...text.matchAll(/(\w+):\s*catalogEntry\(\{([\s\S]*?)\n\s*\}\),/g)]
     .map((match) => {
@@ -287,7 +293,10 @@ async function collectGrammarFacts(sourceRoot) {
 }
 
 async function collectDimensionFacts(sourceRoot) {
-  const file = path.join(sourceRoot, 'lib/domain/dimension/DimensionRegistry.ts');
+  const file = firstExistingPath(sourceRoot, [
+    'src/domain/dimension/DimensionRegistry.ts',
+    'lib/domain/dimension/DimensionRegistry.ts',
+  ]);
   const text = await readTextIfExists(file);
   const dimensions = [...text.matchAll(/const\s+\w+:\s*UnifiedDimension\s*=\s*\{([\s\S]*?)\n\};/g)]
     .map((match) => {
@@ -307,7 +316,10 @@ async function collectDimensionFacts(sourceRoot) {
 }
 
 async function collectRelationFacts(sourceRoot) {
-  const file = path.join(sourceRoot, 'lib/domain/knowledge/values/Relations.ts');
+  const file = firstExistingPath(sourceRoot, [
+    'src/domain/knowledge/values/Relations.ts',
+    'lib/domain/knowledge/values/Relations.ts',
+  ]);
   const text = await readTextIfExists(file);
   const arrayMatch = text.match(/RELATION_BUCKETS\s*=\s*\[([\s\S]*?)\];/);
   const buckets = arrayMatch ? [...arrayMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : [];
@@ -315,7 +327,10 @@ async function collectRelationFacts(sourceRoot) {
 }
 
 async function collectEnhancementFacts(sourceRoot) {
-  const file = path.join(sourceRoot, 'lib/core/enhancement/index.ts');
+  const file = firstExistingPath(sourceRoot, [
+    'src/core/enhancement/index.ts',
+    'lib/core/enhancement/index.ts',
+  ]);
   const text = await readTextIfExists(file);
   const packs = [...text.matchAll(/import\('\.\/([^']+)\.js'\)/g)].map((m) => m[1]).sort();
   return { count: packs.length, packs };
@@ -345,7 +360,10 @@ async function collectImportAliasFacts(sourceRoot) {
 }
 
 async function collectDatabaseFacts(sourceRoot) {
-  const file = path.join(sourceRoot, 'lib/infrastructure/database/drizzle/schema.ts');
+  const file = firstExistingPath(sourceRoot, [
+    'src/infrastructure/database/drizzle/schema.ts',
+    'lib/infrastructure/database/drizzle/schema.ts',
+  ]);
   const text = await readTextIfExists(file);
   const tables = [...text.matchAll(/export const\s+(\w+)\s*=\s*sqliteTable\(\s*['"]([^'"]+)['"]/g)]
     .map((m) => ({ exportName: m[1], tableName: m[2] }))
@@ -413,6 +431,16 @@ async function readTextIfExists(file) {
     return '';
   }
   return readFile(file, 'utf8');
+}
+
+function firstExistingPath(root, candidates) {
+  for (const candidate of candidates) {
+    const abs = path.join(root, candidate);
+    if (existsSync(abs)) {
+      return abs;
+    }
+  }
+  return path.join(root, candidates[0]);
 }
 
 function run(cmd, cmdArgs, cwd) {

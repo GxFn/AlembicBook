@@ -30,6 +30,17 @@ CLI 的 `setup` 命令会构造 `SetupService`，把当前目录解析为一个 
 
 这个设计让用户旅程保持简单，但不会把所有责任揉在一个进程里。用户输入的是一个短命令；系统内部确认的是项目身份、数据位置、运行服务、知识可用性和宿主工具权限。
 
+## 用户旅程的代码落点
+
+这一章的用户动作可以直接落到几组文件：
+
+- setup：`Alembic/lib/cli/SetupService.ts` 负责初始化目录、数据库、配置和 Ghost registry 交互。
+- start/open/switch：`Alembic/lib/daemon/runtime/ProjectRuntimeControl.ts` 与 `Alembic/lib/daemon/runtime/ProjectRuntimeSourceOfTruth.ts` 负责项目选择、active/selected runtime、Dashboard handoff 和诊断。
+- workspace identity：`AlembicCore/src/shared/ProjectRegistry.ts` 与 `AlembicCore/src/shared/WorkspaceResolver.ts` 负责 projectRoot、projectRealpath、projectId、dataRoot 和 Ghost 模式。
+- host status/public workflow：`AlembicPlugin/lib/host-runtime/status/OnboardingContract.ts` 与 `AlembicPlugin/lib/host-runtime/mcp/handlers/agent-public-tools.ts` 负责 Codex/Claude Code 看到的 onboarding、prime/work/code_guard。
+
+如果用户旅程出问题，先按这四组落点查，而不是从 Dashboard 页面或 AI prompt 开始猜。
+
 ## Ghost 模式先保护项目，再建立知识层
 
 `alembic setup --ghost` 的关键不是“隐身”，而是“零项目侵入”。在 Ghost 模式下，用户源码仍在原来的项目目录，Alembic 的运行态和知识资产写入外置 dataRoot。Core 的 `WorkspaceResolver` 明确区分两个位置：

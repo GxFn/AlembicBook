@@ -6,6 +6,8 @@ Alembic 的项目模型有一个容易被低估的核心：源码位置和知识
 
 ![projectRoot 与 dataRoot 路径模型图](/images/ch05/01-projectroot-dataroot-model.png)
 
+源码锚点：`AlembicCore/src/shared/ProjectRegistry.ts`、`AlembicCore/src/shared/WorkspaceResolver.ts`、`AlembicCore/src/shared/PathGuard.ts`、`Alembic/lib/project-scope/ProjectScopeRegistry.ts`。
+
 ## 本章回答
 
 - `ProjectRegistry`、`WorkspaceResolver`、folder names 和 ProjectScope 如何共同确定路径。
@@ -84,6 +86,12 @@ Core 的 `DEFAULT_FOLDER_NAMES`、`resolveFolderNames` 和 folder name validatio
 路径模型最终必须落到安全写入。Core 的 IO/PathGuard 能阻止外层工具把文件写到 `.git`、`node_modules`、`.env` 或越界路径。Agent tool 的 code write、Plugin Project Skill export、主 runtime 的文件写入，都应尊重这个边界。
 
 路径保护不是权限系统的全部，但它是最底层防线。没有路径边界，Ghost 模式和 ProjectScope 都会变成 UI 叙事，不能真正保护用户项目。
+
+## 当前测试覆盖的路径风险
+
+路径模型有直接测试证据：主 Alembic 的 `Alembic/test/unit/SetupService.test.ts` 覆盖 Ghost/standard registry 行为，`Alembic/test/unit/ProjectRuntimeControl.test.ts` 覆盖 selected/active project、switch、openDashboard 和 registry 交互，Plugin 的 `AlembicPlugin/test/unit/WorkspaceResolver.test.ts` 覆盖 symlink realpath、Ghost workspace dir 和 registry inspection。
+
+这些测试提醒维护者：路径 bug 往往不是字符串拼接 bug，而是 project identity、realpath、dataRootSource 和 runtime control state 的组合 bug。
 
 ## 读者应该记住的路径事实
 

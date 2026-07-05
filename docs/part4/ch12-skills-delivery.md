@@ -6,7 +6,7 @@ AlembicPlugin 不只暴露 MCP 工具，还要把项目知识以 Codex 可以长
 
 ![Project Skill delivery 与 plugin artifact 图](/images/ch12/01-project-skill-delivery-artifacts.png)
 
-源码锚点：`AlembicPlugin/lib/runtime/ProjectSkillDelivery.ts`、`AlembicPlugin/lib/service/skills/ProjectSkillService.ts`、`AlembicPlugin/scripts/prepare-codex-plugin-runtime.mjs`。
+源码锚点：`AlembicPlugin/lib/service/skills/ProjectSkillDelivery.ts`、`AlembicPlugin/lib/service/skills/ProjectSkillService.ts`、`AlembicPlugin/scripts/prepare-codex-plugin-runtime.mjs`。
 
 ## 本章回答
 
@@ -41,6 +41,8 @@ Alembic 的项目 Skill 源应该保存在 `dataRoot/Alembic/skills/{skill-name}
 - Alembic 是否管理这个投影。
 
 没有 receipt，后续 refresh、delete、export、冲突处理都会变成猜测。
+
+当前 delivery 代码位于 `AlembicPlugin/lib/service/skills`，不再放在早期 runtime 目录。这符合新的分层：host-runtime 处理 MCP/status/tool route，service/skills 处理 Project Skill 源、receipt、export 和冲突状态，脚本层再把插件级 runtime artifact 打包出去。把这三层混成一个 runtime 目录，会让读者误以为 Skill 交付只是 MCP handler 的副作用。
 
 ## 导出需要项目级授权
 
