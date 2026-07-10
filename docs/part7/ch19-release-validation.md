@@ -1,6 +1,6 @@
 # Ch19 发布、验证与边界守卫
 
-Alembic 的发布验证不是一个统一的 `npm publish` 按钮。五个产品仓库有不同发布形态：Core 是 registry package，Agent 是 registry package，主 Alembic 是 CLI/runtime package，Plugin 是 Codex artifact/channel/portable runtime，Dashboard 是前端构建产物并由主 runtime 服务。每个仓库都必须用自己的边界守卫验证。
+Alembic 的发布验证不是一个统一的 `npm publish` 按钮。五个产品仓库有不同发布形态：Core 是 registry package，Agent 是 registry package，主 Alembic 是 CLI/runtime package，Plugin 由私有开发根仓、双宿主轻壳与公开 runtime package 组成，Dashboard 是前端构建产物并由主 runtime 服务。每个仓库都必须用自己的边界守卫验证。
 
 本章把这些验证路径收束成维护规则。读者不需要记住所有脚本细节，但必须知道每个脚本在保护什么。
 
@@ -60,9 +60,9 @@ Agent 验证重点是：
 - Core import 是否通过 public entrypoint。
 - release package 是否不含本地 workspace dependency。
 
-## Plugin 验证 Codex artifact
+## Plugin 分别验证 shell 与 runtime package
 
-`AlembicPlugin` 是 private root package。`verify-release-package-boundary.mjs` 明确要求 root package private，root registry publish disabled，release workflow 不调用 root `npm publish`，Codex plugin 通过 artifact/channel 路径发布，runtime.tgz 作为 portable runtime artifact。
+`AlembicPlugin` 根包是 private 开发仓，root registry publish disabled。公开 npm 交付物是 `packages/alembic-runtime` 定义的 `alembic-runtime`，其 bin 为 `alembic-codex-mcp`，并依赖同版本 `@alembic/core`；Codex 与 Claude Code marketplace 目录则是固定版本的轻量 shell。验证时必须分别证明 shell manifest/启动器正确、runtime package 边界正确、二者版本一致。
 
 Plugin 的关键验证包括：
 
@@ -73,11 +73,13 @@ Plugin 的关键验证包括：
 - `verify:codex-plugin:tools-local`。
 - `verify:codex-session`。
 - `verify:plugin-distribution`。
+- `verify:codex-runtime-package`。
 - `check:runtime-pack-freshness`。
+- `check:cross-shell-drift`。
 - MCP clean output probes。
 - `dev:codex-plugin:reload` 后 probe installed cache。
 
-如果改了 Codex tool schema、tool visibility、clean output、Project Skill delivery、runtime artifact 或 cache refresh，必须验证 installed plugin surface，而不只是源码 typecheck。
+如果改了 tool schema、tool visibility、clean output、HostAdapter、Project Skill delivery、runtime package、双宿主 shell 或 cache refresh，必须验证 installed plugin surface，而不只是源码 typecheck。离线场景还要证明缺少精确 runtime 版本时会给出可恢复错误，而不是静默下载错误版本。
 
 ## Dashboard 验证前端 contract
 

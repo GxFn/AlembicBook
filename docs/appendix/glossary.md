@@ -32,7 +32,7 @@
 
 **Wiki**：项目知识的阅读投影，不是 Recipe 的替代事实源。
 
-**Project Skill**：项目知识面向宿主 runtime 的 Skill 投影。源在 dataRoot，导出到 `.agents/skills` 需要授权。
+**Project Skill**：项目知识面向宿主 runtime 的 Skill 投影。源在 dataRoot；Codex 投影到 `.agents/skills`，Claude Code 投影到 `.claude/skills`，导出需要授权。
 
 **Host Agent**：外部宿主 Agent，例如 Codex 或 Claude Code。它可以通过 Plugin MCP tools 消费 Alembic。
 
@@ -46,6 +46,14 @@
 
 **ProjectContext**：space、repo、map、module、file-flow、file-symbols、source-slice、anchor-range 等结构化项目理解能力。
 
+**RecipeContext**：数据库支持的只读知识投影，提供 detail、list、search、prime、source refs 与 relations；不拥有生命周期写入。
+
+**Graph**：Recipe-free 的 ProjectContext 结构图，以及 path、impact、neighborhood、stats 等派生遍历。
+
+**Recipe Map**：ProjectContext 结构区域与 RecipeContext 知识挂载的组合，不是语义搜索别名。
+
+**Panorama**：主 Alembic 提供 overview、health、gaps API，Dashboard 以 overview、dependencies、graph、gaps 四个标签投影的项目全景。
+
 **Guard**：基于项目知识和代码输入的规则检查层。
 
 **Code Guard**：host-facing scoped Guard 工具，要求 explicit files、inline code 或 workRef scope。
@@ -54,12 +62,16 @@
 
 **Lifecycle**：知识状态机，包含 pending、staging、active、evolving、decaying、deprecated。
 
+**Drifted SourceRef**：源码文件仍在，但被引用区间的内容指纹已经变化。消费时应降权并显式标记；它不自动等于 deprecated。
+
 **Proposal**：Evolution 层提出的待审知识变更建议。
 
 **Warning**：知识健康、证据或演化风险提示。
 
 **Signal**：search hit、guard hit、view、adoption、application、lifecycle 等使用或运行信号。
 
-**Portable Runtime**：AlembicPlugin 打包给 Codex 插件使用的 runtime artifact，例如 `runtime.tgz`。
+**Runtime Shell**：Codex 或 Claude Code marketplace 中的轻量启动壳，固定下载、校验并启动精确版本的 `alembic-runtime`。
 
-**Plugin Cache**：Codex 已安装插件的本地运行副本，不是源码事实源。
+**Alembic Runtime Package**：公开 npm 包 `alembic-runtime`，提供 `alembic-codex-mcp` bin，并依赖同版本 registry `@alembic/core`；它不同于 private Plugin 根包。
+
+**Plugin/Runtime Cache**：宿主已安装 shell 与固定 runtime 的本地运行副本，不是源码事实源。

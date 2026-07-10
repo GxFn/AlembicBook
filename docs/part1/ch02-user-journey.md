@@ -66,9 +66,9 @@ CLI 的 `setup` 命令会构造 `SetupService`，把当前目录解析为一个 
 
 初始化只建立目录和配置，`alembic start` 才把本地运行服务带起来。主仓库的 `ProjectRuntimeControl` 负责项目选择、daemon 状态、Dashboard handoff 和 runtime control state。成功后，用户通常看到的是一个 Dashboard URL；实现上则包含 daemon health、HTTP API、JobStore、Dashboard server、search endpoint、project-scope endpoint、file monitor 和 AI job capability。
 
-这一层的职责是“让知识层持续在线”。它不是一次性脚本。Dashboard 能读取 candidates、Recipes、Jobs、Guard、Project Pyramid、Skills 等 API；Codex/Claude Code 插件能通过 status 确认当前 host project 是否和 Alembic runtime 对齐；daemon 能在文件变化、扫描任务、搜索请求和 Guard 请求之间保持同一个项目身份。
+这一层的职责是“让知识层持续在线”。它不是一次性脚本。Dashboard 能读取 Candidates、Recipes、Jobs、Guard、Panorama、Skills 等 API；Codex/Claude Code 插件能通过 status 确认当前 host project 是否和 Alembic runtime 对齐；daemon 能在文件变化、扫描任务、搜索请求和 Guard 请求之间保持同一个项目身份。
 
-这里也解释了为什么 Book 不能把 Dashboard 写成后端，也不能把 Plugin 写成 daemon。Dashboard 是 `AlembicDashboard` 的前端体验，server 和 API 在 `Alembic` 主仓库；Codex 插件只负责宿主 Agent 的 MCP surface、tool policy、skills 和 portable runtime，它通过 contract 消费 daemon/Core 能力。
+这里也解释了为什么 Book 不能把 Dashboard 写成后端，也不能把 Plugin 写成 daemon。Dashboard 是 `AlembicDashboard` 的前端体验，server 和 API 在 `Alembic` 主仓库；Plugin 负责宿主 Agent 的 MCP surface、tool policy、skills、轻量 marketplace shell 与公开 runtime package，并通过 contract 消费 resident/Core 能力。
 
 ## 冷启动不是“自动生成团队规范”
 
@@ -116,7 +116,7 @@ Alembic 的知识对象有一个生命线：
 
 第三步是验。变更完成后，`alembic_code_guard` 或 CLI `guard` 检查显式文件或代码片段。Guard 的价值在于把已知项目规则应用到当前变更，而不是无边界地审查整个仓库。
 
-第四步是记。如果这次工作产生了稳定、可复用、经确认的判断，就通过 decision register 或候选知识提交进入 Alembic。反过来，如果 Recipe 变旧，rescan/evolve 会发现证据断裂、触发 decay 或要求补齐。
+第四步是记。如果这次工作产生了稳定、可复用、经确认的判断，就通过 Candidate 提交进入人工审阅；已有知识的调整则进入 evolution proposal 与生命周期治理。反过来，如果 Recipe 变旧，rescan/evolve 会发现证据断裂、触发 decay 或要求补齐。
 
 这四步构成 Alembic 的最小产品闭环：项目知识被发现、被审阅、被消费、被验证、再被更新。
 
@@ -126,11 +126,11 @@ Alembic 的知识对象有一个生命线：
 
 `.asd/alembic.db` 不是唯一事实源。它是本地运行缓存和索引入口，应该能从文件、扫描和同步链路恢复；不能把数据库存在本身当成知识已被治理。
 
-MCP 配置不是知识源。它只是宿主 Agent 调用 Alembic 的入口。真正的项目事实仍来自源码、Recipe、candidate、decision 和 runtime evidence。
+MCP 配置不是知识源。它只是宿主 Agent 调用 Alembic 的入口。真正的项目事实仍来自源码、Recipe、Candidate、Evolution/Lifecycle 审阅结果和 runtime evidence。
 
 Dashboard 不是权威后端。它是面向人的审阅和观察界面，背后依赖 Alembic API 和 Core contract。
 
-Plugin 不是主 daemon。它负责 host adaptation、工具 schema、tier policy、clean output 和 portable runtime；长期 resident service 仍由 Alembic 主仓库提供。当前 Plugin status 默认报告 daemon-less PDR-3 route，这不等同于主 `Alembic` daemon 被移除。
+Plugin 不是主 daemon。它负责 host adaptation、工具 schema、tier policy、clean output、shell 与 runtime package；长期 resident service 仍由 Alembic 主仓库提供。当前 Plugin status 默认报告 daemon-less PDR-3 route，这不等同于主 `Alembic` daemon 被移除。
 
 ## 失败时先查身份和边界
 

@@ -13,7 +13,7 @@ Alembic 的仓库边界不是目录整理问题，而是产品正确性的基础
 - 各仓库的职责边界如何判断。
 - 为什么 `file:../AlembicCore` 是本地开发便利，不是发布形态。
 - 为什么不能为了“干净”把外层仓库削成空壳，或把 Core 做成万能仓库。
-- vendor、portable runtime、plugin cache 和 registry package 各自代表什么。
+- marketplace shell、公开 runtime package、plugin cache 和源码根仓各自代表什么。
 - 一个需求应如何选择改动落点和验证命令。
 
 ## 依赖方向先于代码位置
@@ -25,7 +25,7 @@ AlembicCore
   ^
   |- AlembicAgent
   |- Alembic
-  |- AlembicPlugin portable runtime snapshot
+  |- AlembicPlugin public runtime package
 ```
 
 这个箭头的意思不是“Core 包含一切”，而是“共享确定性能力从 Core 出口向外提供”。外层仓库可以消费 Core 的 public package entrypoints；Core 不反过来依赖主 app、Codex plugin 或 Dashboard。
@@ -42,7 +42,7 @@ AlembicCore
 
 在这个 workspace 里，主 `Alembic`、`AlembicAgent` 和 `AlembicPlugin` 都可以通过 `file:../AlembicCore` 使用本地 Core 源码。这让跨仓库开发更快：修改 Core 后，外层仓库能直接验证。
 
-但发布边界必须收回来。Core 是 `@alembic/core` 包；Agent 发布预览会把本地 `file:../AlembicCore` 转成 registry 版本，并记录 Core source commit；Plugin root package 是 private，Codex 插件发布的是 channel/marketplace/portable runtime artifact，embedded runtime 里的 Core 是 `file:vendor/AlembicCore` 快照并带 source metadata；主 Alembic 也有 release package boundary guard 和 Core import boundary check。
+但发布边界必须收回来。Core 是 `@alembic/core` 包；Agent 发布预览会把本地 `file:../AlembicCore` 转成 registry 版本并记录来源；Plugin root package 是 private，Codex/Claude Code 发布轻量 shell，公开 `alembic-runtime` 使用 registry `@alembic/core`；主 Alembic 也有 release package boundary guard 和 Core import boundary check。
 
 所以不要把 `file:../` 当成产品 contract。它是 workspace 开发线索，不是用户安装后的依赖事实。
 
@@ -94,7 +94,7 @@ Agent 可以消费 Core 提供的项目知识、workflow contract 和结构能�
 
 ## Plugin 的边界
 
-AlembicPlugin 的关键词是 host adaptation。它拥有 Codex 可见的 MCP tool surface、tool visibility、tier policy、clean output、status/diagnostics/init、Project Skill delivery、Codex local jobs、channel/marketplace 和 portable runtime packaging。
+AlembicPlugin 的关键词是 host adaptation。它拥有 MCP tool surface、tool visibility、tier policy、clean output、status/diagnostics/init、Project Skill delivery、local jobs、双宿主 marketplace shell 与公开 runtime packaging。
 
 Plugin 可以读取 resident service 状态，可以调用 host-agent workflow，可以把 Dashboard URL 返回给 Codex；但它不应该成为主 daemon 的第二实现，也不应该打包 Dashboard 前端源码作为长期事实源。它的 release guard 已经明确：root package private，root registry publish disabled，Codex plugin 通过 artifact/channel 路径发布。
 
@@ -108,14 +108,15 @@ Dashboard 可以帮助用户审阅和操作知识层，不能被写成权威事�
 
 ## Vendor 和 snapshot 只服务发布，不服务日常开发
 
-Alembic 里有几种看起来相似但含义不同的“复制”：
+Alembic 里有几种看起来相似但含义不同的“交付副本”：
 
 - local sibling source：workspace 中的 `../AlembicCore`，用于开发和验证。
 - registry package：发布后的 `@alembic/core`，用于外部消费。
-- vendor snapshot：portable runtime 中的 Core 快照，用于离线/插件 artifact。
-- plugin cache：Codex 已安装插件的本地缓存，用于运行当前插件版本。
+- marketplace shell：Codex/Claude Code 插件目录中的轻量启动器与 manifest。
+- runtime package/cache：公开 `alembic-runtime` 及其精确版本本地缓存。
+- plugin cache：宿主已安装 shell 的运行副本。
 
-日常代码修改应该回到 source repo。不要直接把 vendor snapshot 当源码改，也不要把 plugin cache 当源仓库改。只有发布、离线安装、portable runtime 或 explicit release repair 才应该触碰 snapshot/cache，并且必须能追溯到 source commit。
+日常代码修改应该回到 source repo。不要直接把 marketplace shell 的安装副本或 runtime/plugin cache 当源码改；发布与离线修复也必须能追溯到精确 package 版本和 source commit。
 
 ## 改动落点速查
 
@@ -132,13 +133,27 @@ Alembic 里有几种看起来相似但含义不同的“复制”：
 
 表格不是绝对答案，但它能阻止最常见的错误：在看得见的外层临时补逻辑，却没有修真正的事实源。
 
+## 文档也有权威方向
+
+多仓库系统不仅会发生代码依赖漂移，也会发生叙述漂移。本书采用以下证据顺序：
+
+1. 当前可执行源码、公开 package contract 与调用方。
+2. 当前测试、生成契约、验证脚本与真实运行证据。
+3. 同一版本的源码注释和 README。
+4. `wakeflow-ledger` 中带日期的深读、设计与验收文档。
+5. 旧书、旧截图和历史规模数字。
+
+后两层很有价值：它们解释为什么改、当时发现了什么、哪些风险尚未关闭；但它们是调查入口，不是当前实现证明。本轮重构就发现了典型纠错链：早期 Plugin 深读认为知识入库后没有 freshness 机制，随后 Core 的 2026-07-10 生命周期设计用 `SourceRefReconciler`、提交检查点和 Search 漂移投影纠正了这个结论，当前源码又进一步证明 `sourceRefStatus` 已进入消费输出。因此书稿应记录“旧判断如何被新证据推翻”，而不是选择一份文档永久当真。
+
+源码注释也不自动高于执行路径。当前 Plugin 注释仍有“16 tools”或“按需启动 daemon”的历史说法，实际 catalog 是 19 项，`HostMcpServer` 启动后会异步尝试主仓 resident autostart。遇到冲突时，应核对 catalog、handler、调用链和测试，而不是引用离代码最近的一句注释。
+
 ## 三个反模式
 
 第一，把 Core 当成万能仓库。这样会让 Core 依赖外部 host、UI 或 provider 细节，最终失去可复用和可发布性。
 
 第二，把 Plugin 当成主 runtime。这样会让 host 插件复制 daemon/API/Dashboard 的职责，造成 status、jobs、project identity 和 Dashboard handoff 分裂。
 
-第三，把发布 artifact 当源码。这样会让 vendor、runtime.tgz、plugin cache 和 registry package 失去可追溯关系，后续验证无法判断哪个 commit 才是真实来源。
+第三，把发布副本当源码。这样会让 marketplace shell、runtime cache、plugin cache 与 registry package 失去可追溯关系，后续验证无法判断哪个 commit 和 package version 才是真实来源。
 
 ## 本章小结
 

@@ -37,9 +37,9 @@ const ALEMBIC_PREFIXES = [
 const REPO_ANCHOR_PREFIXES = {
   Alembic: ALEMBIC_PREFIXES,
   AlembicAgent: ['src/', 'test/', 'scripts/', 'package.json'],
-  AlembicCore: ['src/', 'test/', 'scripts/', 'config/', 'docs/', 'package.json'],
+  AlembicCore: ['src/', 'test/', 'scripts/', 'config/', 'docs/', 'resources/', 'package.json'],
   AlembicDashboard: ['src/', 'scripts/', 'package.json'],
-  AlembicPlugin: ['bin/', 'lib/', 'plugins/', 'scripts/', 'test/', 'package.json'],
+  AlembicPlugin: ['bin/', 'lib/', 'packages/', 'plugins/', 'scripts/', 'test/', 'package.json'],
 };
 
 const repoRoot = process.cwd();
@@ -74,7 +74,7 @@ try {
 
   for (const chapterAbs of chapters) {
     const chapterRel = slash(path.relative(repoRoot, chapterAbs));
-    const chapter = await verifyChapter(chapterAbs, chapterRel, sourceRoots);
+    const chapter = await verifyChapter(chapterAbs, chapterRel, sourceRoots, codeFacts);
     report.push(chapter);
   }
 
@@ -99,7 +99,12 @@ try {
     console.log(`\nJSON report written: ${args.json}`);
   }
 
-  if (summary.missing > 0 || summary.outOfRange > 0 || summary.bodyChaptersWithoutAnchors > 0) {
+  if (
+    summary.missing > 0 ||
+    summary.outOfRange > 0 ||
+    summary.bodyChaptersWithoutAnchors > 0 ||
+    summary.factMismatches > 0
+  ) {
     process.exitCode = 1;
   }
 } catch (error) {
@@ -206,7 +211,12 @@ async function collectCodeFacts(sourceRoot, sourceRoots) {
   facts.pluginMcpTools = await collectPluginMcpToolFacts(sourceRoots);
   facts.agentRuntimeTools = await collectAgentRuntimeToolFacts(sourceRoots);
   const coreRoot = sourceRoots.get('AlembicCore') ?? sourceRoot;
-  facts.grammars = await collectGrammarFacts(sourceRoot);
+  const dashboardRoot = sourceRoots.get('AlembicDashboard');
+  facts.coreExports = await collectPackageExportFacts(coreRoot);
+  facts.mainHttp = await collectMainHttpFacts(sourceRoot);
+  facts.dashboardTabs = await collectDashboardTabFacts(dashboardRoot);
+  facts.projectContextParsers = await collectProjectContextParserFacts(coreRoot);
+  facts.grammars = await collectGrammarFacts(coreRoot);
   facts.dimensions = await collectDimensionFacts(coreRoot);
   facts.relations = await collectRelationFacts(coreRoot);
   facts.enhancementPacks = await collectEnhancementFacts(coreRoot);
@@ -214,8 +224,52 @@ async function collectCodeFacts(sourceRoot, sourceRoots) {
   facts.importAliases = await collectImportAliasFacts(sourceRoot);
   facts.database = await collectDatabaseFacts(coreRoot);
   facts.serviceMap = await collectServiceMapFacts(sourceRoot);
-  facts.indexing = await collectIndexingFacts(sourceRoot);
+  facts.indexing = await collectIndexingFacts(coreRoot);
   return facts;
+}
+
+async function collectPackageExportFacts(sourceRoot) {
+  const text = await readTextIfExists(path.join(sourceRoot, 'package.json'));
+  const pkg = text ? JSON.parse(text) : {};
+  const names = Object.keys(pkg.exports ?? {}).sort();
+  return { count: names.length, names };
+}
+
+async function collectMainHttpFacts(sourceRoot) {
+  const routesDir = path.join(sourceRoot, 'lib/http/routes');
+  const routeFamilies = existsSync(routesDir)
+    ? (await readdir(routesDir)).filter((name) => name.endsWith('.ts')).sort()
+    : [];
+  const providerContract = await readTextIfExists(path.join(sourceRoot, 'lib/http/provider-contracts.ts'));
+  return {
+    routeFamilyCount: routeFamilies.length,
+    routeFamilies,
+    providerRouteCount: [...providerContract.matchAll(/^\s*route\(/gm)].length,
+    providerMountCount: [...providerContract.matchAll(/^\s*mount\(/gm)].length,
+    panoramaRouteCount: [...providerContract.matchAll(/['"]\/panorama(?:\/[^'"]*)?['"]/g)].length,
+  };
+}
+
+async function collectDashboardTabFacts(sourceRoot) {
+  if (!sourceRoot) {
+    return { count: 0, names: [] };
+  }
+  const text = await readTextIfExists(path.join(sourceRoot, 'src/constants/index.ts'));
+  const block = text.match(/validTabs\s*=\s*\[([^\]]+)\]/)?.[1] ?? '';
+  const names = [...block.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1]);
+  return { count: names.length, names };
+}
+
+async function collectProjectContextParserFacts(sourceRoot) {
+  const file = path.join(sourceRoot, 'src/service/project-context/shared/parserLanguage.ts');
+  const text = await readTextIfExists(file);
+  const block = text.match(/EXTENSION_PARSER_LANGUAGE[^=]*=\s*\{([\s\S]*?)\n\};/)?.[1] ?? '';
+  const entries = [...block.matchAll(/['"]([^'"]+)['"]\s*:\s*['"]([^'"]+)['"]/g)].map(
+    (match) => ({ extension: match[1], language: match[2] })
+  );
+  const languageBlock = text.match(/AST_PARSER_LANGUAGES\s*=\s*new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? '';
+  const languages = [...languageBlock.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1]).sort();
+  return { extensionCount: entries.length, languageCount: languages.length, entries, languages };
 }
 
 async function collectPluginMcpToolFacts(sourceRoots) {
@@ -415,7 +469,10 @@ async function collectDiRegistrationKeys(sourceRoot) {
 }
 
 async function collectIndexingFacts(sourceRoot) {
-  const file = path.join(sourceRoot, 'lib/infrastructure/vector/IndexingPipeline.ts');
+  const file = firstExistingPath(sourceRoot, [
+    'src/infrastructure/vector/IndexingPipeline.ts',
+    'lib/infrastructure/vector/IndexingPipeline.ts',
+  ]);
   const text = await readTextIfExists(file);
   const extBlock = text.match(/SCANNABLE_EXTENSIONS\s*=\s*new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? '';
   const extensions = [...extBlock.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
@@ -502,11 +559,19 @@ async function walkTs(absDir, onFile) {
   }
 }
 
-async function verifyChapter(chapterAbs, chapterRel, sourceRoots) {
+async function verifyChapter(chapterAbs, chapterRel, sourceRoots, codeFacts) {
   const text = await readFile(chapterAbs, 'utf8');
   const lines = text.split(/\r?\n/);
   const headings = collectHeadings(lines);
   const anchors = extractAnchors(text, lines, headings);
+  const factChecks = extractFactAssertions(text).map((assertion) => {
+    const actual = readNestedFact(codeFacts, assertion.path);
+    return {
+      ...assertion,
+      actual,
+      status: Object.is(actual, assertion.expected) ? 'ok' : actual === undefined ? 'missing-fact' : 'mismatch',
+    };
+  });
   const checks = [];
 
   for (const anchor of anchors) {
@@ -540,9 +605,39 @@ async function verifyChapter(chapterAbs, chapterRel, sourceRoots) {
     ok: checks.filter((item) => item.status.startsWith('ok')).length,
     missing: checks.filter((item) => item.status === 'missing' || item.status === 'line-target-not-file').length,
     outOfRange: checks.filter((item) => item.status === 'line-out-of-range').length,
+    factCount: factChecks.length,
+    factMismatches: factChecks.filter((item) => item.status !== 'ok').length,
+    factChecks,
     sectionCoverage: summarizeSectionCoverage(headings, checks),
     checks,
   };
+}
+
+function extractFactAssertions(text) {
+  const assertions = [];
+  const pattern = /<!--\s*alembic-fact:\s*([A-Za-z0-9_.]+)\s*=\s*([^>]+?)\s*-->/g;
+  for (const match of text.matchAll(pattern)) {
+    assertions.push({
+      path: match[1],
+      expected: parseFactLiteral(match[2].trim()),
+      docLine: text.slice(0, match.index ?? 0).split(/\r?\n/).length,
+    });
+  }
+  return assertions;
+}
+
+function parseFactLiteral(value) {
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) {
+    return Number(value);
+  }
+  if (value === 'true' || value === 'false') {
+    return value === 'true';
+  }
+  return value.replace(/^['"]|['"]$/g, '');
+}
+
+function readNestedFact(root, factPath) {
+  return factPath.split('.').reduce((value, key) => value?.[key], root);
 }
 
 function collectHeadings(lines) {
@@ -766,6 +861,8 @@ function summarize(report) {
       acc.ok += chapter.ok;
       acc.missing += chapter.missing;
       acc.outOfRange += chapter.outOfRange;
+      acc.facts += chapter.factCount;
+      acc.factMismatches += chapter.factMismatches;
       if (chapter.anchorCount === 0) {
         acc.chaptersWithoutAnchors += 1;
       }
@@ -783,6 +880,8 @@ function summarize(report) {
       ok: 0,
       missing: 0,
       outOfRange: 0,
+      facts: 0,
+      factMismatches: 0,
       chaptersWithoutAnchors: 0,
       bodyChapters: 0,
       bodyChaptersWithoutAnchors: 0,
@@ -796,7 +895,7 @@ function printReport(payload) {
   console.log(`Alembic commit: ${alembic.commit}${alembic.dirty ? ' (dirty)' : ''}`);
   if (codeFacts) {
     console.log(
-      `Code facts: ${codeFacts.grammars.count} WASM grammars, ` +
+      `Code facts: ${codeFacts.coreExports.count} Core exports, ${codeFacts.grammars.count} WASM grammars, ` +
         `${codeFacts.agentRuntimeTools.toolCount} Agent runtime tools/${codeFacts.agentRuntimeTools.actionCount} actions, ` +
         `${codeFacts.pluginMcpTools.count} Plugin MCP catalog tools ` +
         `(${codeFacts.pluginMcpTools.agent} agent + ${codeFacts.pluginMcpTools.admin} admin, ` +
@@ -815,6 +914,12 @@ function printReport(payload) {
         `${codeFacts.serviceMap.registeredNotTyped.length} untyped registered), ` +
         `${codeFacts.indexing.extensionCount} indexable extensions`
     );
+    console.log(
+      `Code facts: ${codeFacts.mainHttp.routeFamilyCount} HTTP route families/` +
+        `${codeFacts.mainHttp.providerRouteCount} provider routes, ` +
+        `${codeFacts.dashboardTabs.count} Dashboard tabs, ` +
+        `${codeFacts.projectContextParsers.languageCount} ProjectContext parser languages`
+    );
   }
   console.log(
     `Docs checked: ${summary.chapters} chapters, ${summary.anchors} anchors, ${summary.ok} ok, ${summary.missing} missing, ${summary.outOfRange} line out of range`
@@ -826,12 +931,15 @@ function printReport(payload) {
   } else {
     console.log(`Evidence check: ${summary.bodyChapters}/${summary.bodyChapters} body chapters have source anchors`);
   }
+  console.log(`Fact assertions: ${summary.facts - summary.factMismatches}/${summary.facts} match current source`);
 
   for (const chapter of chapters) {
     const evidenceFail = chapter.bodyChapter && chapter.anchorCount === 0;
-    const mark = chapter.missing || chapter.outOfRange || evidenceFail ? 'FAIL' : 'OK';
+    const mark = chapter.missing || chapter.outOfRange || chapter.factMismatches || evidenceFail ? 'FAIL' : 'OK';
     console.log(`\n[${mark}] ${chapter.chapter}`);
-    console.log(`  anchors: ${chapter.anchorCount}, ok: ${chapter.ok}, missing: ${chapter.missing}, line-out-of-range: ${chapter.outOfRange}`);
+    console.log(
+      `  anchors: ${chapter.anchorCount}, ok: ${chapter.ok}, missing: ${chapter.missing}, line-out-of-range: ${chapter.outOfRange}, facts: ${chapter.factCount - chapter.factMismatches}/${chapter.factCount}`
+    );
     if (evidenceFail) {
       console.log('  evidence: body chapter has no source anchors');
     }
@@ -841,6 +949,12 @@ function printReport(payload) {
       const target = check.targetLine ? `${prefix}${check.path}:${check.targetLine}` : `${prefix}${check.path}`;
       const mapped = check.resolvedPath ? ` => ${check.resolvedPath}` : '';
       console.log(`  ${status} ${chapter.chapter}:${check.docLine} (${check.section}) -> ${target}${mapped}`);
+    }
+    for (const check of chapter.factChecks) {
+      const status = check.status === 'ok' ? 'ok-fact' : `!! ${check.status}`;
+      console.log(
+        `  ${status} ${chapter.chapter}:${check.docLine} ${check.path} expected=${JSON.stringify(check.expected)} actual=${JSON.stringify(check.actual)}`
+      );
     }
   }
 }

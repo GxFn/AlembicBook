@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Alembic 当前实现架构书',
-  description: '从用户项目、Core 内核、Codex 插件、Agent Runtime 到 Dashboard 的分层读本',
+  description: '沿真实代码链理解 Alembic 的结构事实、知识生产、宿主消费、新鲜度与验证',
   lang: 'zh-CN',
   base: '/',
 
@@ -57,7 +57,7 @@ export default defineConfig({
             ]
       },
       {
-            "text": "Part II · Core 内核",
+            "text": "Part II · 事实内核与结构证据",
             "collapsed": false,
             "items": [
                   {
@@ -69,13 +69,13 @@ export default defineConfig({
                         "link": "/part2/ch05-project-model-storage"
                   },
                   {
-                        "text": "分析、检索与 Guard",
+                        "text": "ProjectContext、检索与 Guard",
                         "link": "/part2/ch06-analysis-search-guard"
                   }
             ]
       },
       {
-            "text": "Part III · 本地运行时",
+            "text": "Part III · 项目运行与知识生产",
             "collapsed": false,
             "items": [
                   {
@@ -87,17 +87,17 @@ export default defineConfig({
                         "link": "/part3/ch08-daemon-http-jobs"
                   },
                   {
-                        "text": "Cold Start / Rescan",
+                        "text": "计划、Cold Start 与 Rescan",
                         "link": "/part3/ch09-cold-start-rescan"
                   }
             ]
       },
       {
-            "text": "Part IV · Codex 插件",
+            "text": "Part IV · 宿主消费与交付",
             "collapsed": false,
             "items": [
                   {
-                        "text": "Codex 插件表面",
+                        "text": "MCP 请求链与工具表面",
                         "link": "/part4/ch10-codex-plugin-surface"
                   },
                   {
@@ -111,7 +111,7 @@ export default defineConfig({
             ]
       },
       {
-            "text": "Part V · Agent 与 Dashboard",
+            "text": "Part V · 执行器、UI 与 Provider",
             "collapsed": false,
             "items": [
                   {
@@ -129,7 +129,7 @@ export default defineConfig({
             ]
       },
       {
-            "text": "Part VI · 知识生命周期",
+            "text": "Part VI · 知识对象、新鲜度与治理",
             "collapsed": false,
             "items": [
                   {
@@ -137,7 +137,7 @@ export default defineConfig({
                         "link": "/part6/ch16-knowledge-model"
                   },
                   {
-                        "text": "Evolution 与 Governance",
+                        "text": "新鲜度、Evolution 与 Governance",
                         "link": "/part6/ch17-evolution-governance"
                   },
                   {
@@ -147,7 +147,7 @@ export default defineConfig({
             ]
       },
       {
-            "text": "Part VII · 发布与证据",
+            "text": "Part VII · 验证、证据与维护",
             "collapsed": false,
             "items": [
                   {
@@ -168,6 +168,10 @@ export default defineConfig({
             "text": "附录",
             "collapsed": true,
             "items": [
+                  {
+                        "text": "当前实现快照",
+                        "link": "/appendix/implementation-snapshot"
+                  },
                   {
                         "text": "配置和运行目录",
                         "link": "/appendix/config-reference"

@@ -50,7 +50,7 @@ Ghost 模式需要项目身份。Core 的 `ProjectRegistry` 负责生成 project
 
 ## `.asd/` 是运行态，不是协作文档
 
-`.asd/` 下面放的是运行时状态：`config.json`、SQLite 数据库、context/vector index、logs、reports、signals、conversations、cache、bootstrap checkpoint、jobs、decision register、settings/secrets 等。它服务于本机运行、快速检索、任务恢复和诊断。
+`.asd/` 下面放的是运行时状态：`config.json`、SQLite 数据库、context/vector index、logs、reports、signals、conversations、cache、bootstrap checkpoint、jobs、settings/secrets 等。它服务于本机运行、快速检索、任务恢复和诊断。
 
 因此 `.asd/` 不应该被写成长期协作入口。数据库存在不代表知识已经治理；JobStore 里有记录不代表结果被接受；runtime-control state 可以帮助诊断 selected/active project，但不能覆盖当前 host 的真实 projectRoot。
 
@@ -67,7 +67,7 @@ Ghost 模式需要项目身份。Core 的 `ProjectRegistry` 负责生成 project
 - `skills/` 保存项目级 Skill 源内容。
 - `wiki/` 保存生成或维护的项目文档视图。
 
-但即便在 `Alembic/` 内部，也有生命周期差异。Recipe 可以被 search、prime、Guard 消费；candidate 只是提案；skill 源还需要授权导出到 Codex runtime；wiki 是阅读投影，不应取代 Recipe 和 sourceRef。
+但即便在 `Alembic/` 内部，也有生命周期差异。Recipe 可以被 search、prime、Guard 消费；Candidate 只是提案；Skill 源还需要授权导出到当前宿主 runtime；Wiki 是阅读投影，不应取代 Recipe 和 SourceRef。
 
 ## Folder names 是 contract，不是装饰
 
@@ -105,7 +105,7 @@ Core 的 `DEFAULT_FOLDER_NAMES`、`resolveFolderNames` 和 folder name validatio
 
 `Alembic/candidates` 是待审阅提案，不是最终规则。
 
-`Alembic/skills` 是项目 Skill 源，`.agents/skills` 是 Codex runtime 可见投影，二者之间需要授权和 receipt。
+`Alembic/skills` 是项目 Skill 源，`.agents/skills`（Codex）或 `.claude/skills`（Claude Code）是宿主可见投影，二者之间需要授权和 receipt。
 
 ## 本章小结
 

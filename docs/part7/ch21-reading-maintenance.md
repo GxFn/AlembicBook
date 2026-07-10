@@ -18,11 +18,11 @@
 第一次读 Alembic，按全书顺序阅读：
 
 1. Part I 建立系统地图、用户旅程和仓库边界。
-2. Part II 理解 Core contract、项目模型、分析/检索/Guard。
-3. Part III 理解主 Alembic resident runtime。
-4. Part IV 理解 Codex Plugin 和 host-agent workflow。
-5. Part V 理解 AgentRuntime、Dashboard 和 AI 配置。
-6. Part VI 理解知识生命周期、演化治理、Guard/Decision。
+2. Part II 分清结构事实、知识投影、检索与 Guard。
+3. Part III 沿计划、主 runtime、daemon/jobs 读知识生产链。
+4. Part IV 沿 MCP 请求链理解宿主消费与交付。
+5. Part V 分清 Agent 执行器、Dashboard 投影和 provider 配置。
+6. Part VI 理解知识对象、SourceRef 新鲜度、演化与 Guard。
 7. Part VII 理解发布验证、证据验收和维护规则。
 
 如果是带任务阅读，可以按问题跳转：
@@ -33,6 +33,7 @@
 - 改 Dashboard：读 Ch14、Ch08、Ch20。
 - 改 bootstrap/rescan：读 Ch09、Ch13、Ch16、Ch20。
 - 查知识生命周期：读 Ch16、Ch17、Ch18。
+- 核对易漂移数字：先读[当前实现快照](/appendix/implementation-snapshot)，再回到对应源码。
 
 ## 维护时先找事实源
 
@@ -48,7 +49,31 @@
 
 不要用旧书段落当事实源。旧书可以提示历史意图，但当前书稿必须以当前代码为准。
 
-Wakeflow ledger 下的仓库文档适合当阅读索引，而不是最终证明。它们记录了某个日期、某个 commit 附近的架构深读，能帮助快速定位概念和历史决策；但如果 ledger 路径、类名或数量与当前源码冲突，必须以当前源码、package scripts 和验证输出为准。
+Wakeflow ledger 下的仓库文档适合当阅读索引，而不是最终证明。它们记录了某个日期、某个 commit 附近的架构深读、需求设计和未闭合风险，能帮助快速定位概念与历史决策；但如果 ledger 路径、类名、数量或完成判断与当前源码冲突，必须以当前源码、package scripts、调用方和验证输出为准。
+
+## 用纠错链维护判断，不只覆盖段落
+
+维护书稿时，关键不是把旧句子改成新句子，而是保留判断如何变化：
+
+1. 记录原判断来自哪份账本、README、注释或旧代码。
+2. 找到当前实现入口、真实调用方和反例。
+3. 明确哪些部分被证实、哪些被推翻、哪些仍无法证明。
+4. 更新正文和附录，并给易漂移数字增加机器断言。
+5. 运行验证，再审读“存在资产”和“运行链已接通”是否被混写。
+
+例如，旧 Plugin 深读曾把 post-ingest freshness 评为缺失；后续 Core 设计与当前 `AlembicCore/src/service/knowledge/SourceRefReconciler.ts`、`SearchEngine.ts` 证明 reconcile、fingerprint、drift status 和消费降权已经存在。与此同时，line-shift/content-change 仍是 observe-only，不能反向夸大成自动修复完成。高质量书稿应同时记录这两半事实。
+
+## 用事实断言约束易漂移表面
+
+`scripts/verify-alembic-docs.mjs` 除了检查源码锚点，还识别以下内联格式：
+
+```html
+<!-- alembic-fact: agentRuntimeTools.actionCount=22 -->
+```
+
+校验器会从五个 sibling 源码仓重算 Core exports/grammars、Agent tools/actions、Plugin MCP catalog、HTTP/provider routes、Dashboard tabs、parser languages 等读数，再与[当前实现快照](/appendix/implementation-snapshot)比较。断言失败表示需要调查，不表示应该机械更新数字；收集器本身也可能因源码结构变化而过期。
+
+这套断言适合“计数与枚举”，不适合证明语义链。例如存在 `SourceGraphService` 和 DTO 不能证明 cold start 已把结果写入 snapshot；这种判断仍需搜索生产调用方、测试真实入口与运行证据。
 
 ## 避免三种旧叙事
 
@@ -101,6 +126,7 @@ git diff --check
 - `npm run illustrations -- --list` 显示所有 prompt-managed 图片 ready。
 - 正文没有残留旧占位文件。
 - `verify:alembic` 没有 missing source anchors，并且报告的 Plugin MCP tools、Agent runtime tools、Core dimensions/relations 等事实与章节叙述一致。
+- `Fact assertions` 全部匹配当前源码；任何修改都能解释是实现变化、正文漂移还是收集器失效。
 - 目录和侧边栏能对应新章节。
 - 新增术语在 glossary 或正文首次出现处解释。
 
@@ -111,9 +137,9 @@ git diff --check
 一本高质量的 AlembicBook 应该做到：
 
 - 每章能说清对应代码边界。
-- 每个关键能力能追到仓库和入口文件。
+- 每个关键能力能追到仓库、入口文件和实际调用方。
 - 每个用户动作能接到运行链路。
-- 每个知识对象能说明生命周期和证据。
+- 每个知识对象能说明生命周期、SourceRef 新鲜度和漂移消费方式。
 - 每个发布/验证建议能对应脚本或 runtime 证据。
 - 每张插图都有明确 prompt 来源、目标 PNG 和章节引用。
 
@@ -121,6 +147,6 @@ git diff --check
 
 ## 本章小结
 
-AlembicBook 的维护方式应该和 Alembic 本身一致：本地优先、证据优先、边界清晰、可恢复、可审阅。随着 Alembic 继续演化，书稿也要跟着源码、工具表、发布脚本和真实用户旅程更新。
+AlembicBook 的维护方式应该和 Alembic 本身一致：本地优先、证据优先、边界清晰、可恢复、可审阅。账本提供调查入口，源码与调用链裁决现状，运行证据裁决闭环，事实断言阻止静默数字漂移。
 
 到这里，全书的主体章节完成闭环：从系统地图，到 Core 和 resident runtime，到 Codex Plugin、Agent/Dashboard/AI，再到知识治理、验证和维护。后续工作可以继续精修文风、补充代码片段、扩展附录和迭代插图，但主体分层已经建立。

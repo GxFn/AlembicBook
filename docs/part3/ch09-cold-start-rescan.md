@@ -1,6 +1,6 @@
-# Ch09 Cold Start、Rescan 与 ProjectContext
+# Ch09 计划、Cold Start、Rescan 与 ProjectContext
 
-Cold start 和 rescan 是 Alembic 知识层从空白走向可用、再从可用走向持续新鲜的两条主工作流。它们不是“跑 AI 生成文档”的两个命令，而是围绕 ProjectContext、维度任务、已有 Recipe、candidate、sourceRef、Guard audit、Agent execution 和 Job evidence 组织起来的长任务。
+Cold start 和 rescan 是 Alembic 知识层从空白走向可用、再从可用走向持续新鲜的两条主工作流。真正的入口不是“立刻扫描”，而是先建立项目结构与预算，再确认执行计划。它们围绕 ProjectContext、维度任务、已有 Recipe、Candidate、SourceRef、Guard audit、Agent execution 和 Job evidence 组织长任务。
 
 本章从主 Alembic recipe-pipeline/job 路径讲起，同时点明 Codex host-agent 路径在哪里分叉。两条路径最终共享同一目标：生成可审阅、可追溯、可消费的项目知识。
 
@@ -11,6 +11,7 @@ Cold start 和 rescan 是 Alembic 知识层从空白走向可用、再从可用�
 ## 本章回答
 
 - Cold start 与 rescan 的输入和输出有什么不同。
+- `alembic_plan` 为什么要先 draft、再 confirm。
 - ProjectContext 和 analysis packet 在两条工作流里承担什么。
 - 为什么 long-running workflow 必须有 job、events、checkpoint 和 artifact。
 - 为什么冷启动完成不等于所有候选都成为 Recipe。
@@ -30,11 +31,21 @@ Cold start 的目标是给一个项目建立第一批可审阅知识。主 CLI �
 
 这一步的正确结果不是“直接写满 Recipes”，而是建立分析任务、提交候选知识、记录证据，并让审阅流程决定哪些候选可以成为 Recipe。
 
+## Plan 是执行门，不是装饰性预览
+
+Plugin 的 host-agent 路径把计划拆成两步：draft 读取 ProjectContext、项目树、知识缺口和规模约束，形成可审阅选择；confirm 才把选择固化为 bootstrap/rescan 可消费的 plan。实现集中在 `AlembicPlugin/lib/recipe-pipeline/plan/plan-tool.ts`、`plan-generation-gate.ts` 与 `plan-confirm.ts`。
+
+确认计划至少约束：目标维度、深度、文件范围、`maxFiles`、`contentMaxLines`、创建预算和停止条件。它解决的是“这轮应读什么、做到什么程度、何时停止”，不是承诺模型一定产出多少高质量 Recipe。对大型项目跳过这一步，会把上下文上限误当成仓库全貌。
+
+计划本身也不是完成证据。只有后续任务实际读取文件、提交 Candidate、记录维度完成与事件/产物，才能证明生产链运行。
+
 ## 当前实现路径
 
 主 Alembic 的长任务入口现在落在 `lib/recipe-pipeline`，不再是早期泛化 workflows 目录。`generate/ColdStartWorkflow.ts` 承担 cold start 的主装配，`generate/incremental/IncrementalRescanWorkflow.ts` 承担增量 rescan；`sustain/KnowledgeRescanWorkflow.ts` 只是兼容导出壳，用来把旧名字导向当前实现。
 
-Plugin 的 host-agent cold start 也已经从早期生成目录迁到 `AlembicPlugin/lib/recipe-pipeline/generate/cold-start.ts`。这个路径迁移说明两个事实：一是 Plugin 只包装 host-agent workflow，不拥有主 daemon job；二是 cold start/rescan 的知识生成逻辑已经围绕 recipe pipeline 命名，而不是泛化 workflow 目录。
+Plugin 的 host-agent cold start 也已经从早期生成目录迁到 `AlembicPlugin/lib/recipe-pipeline/generate/cold-start.ts`。这个路径迁移说明两个事实：一是 Plugin 包装 host-agent workflow，但不拥有主 daemon job；二是 cold start/rescan 的知识生成逻辑已经围绕 recipe pipeline 命名，而不是泛化 workflow 目录。
+
+两条生产路径的执行者不同：主 daemon job 由 `@alembic/agent` 和配置的 provider 执行；Plugin host-agent 路径返回 Mission Briefing，由当前 Codex/Claude Code 宿主执行。它们共享 Core contract 与 dataRoot，却不能用一条路径的“任务已发出”证明另一条已经完成。
 
 ## Rescan 面向已有知识层
 
@@ -48,13 +59,15 @@ Rescan 的典型目标包括：
 - 补充维度空白。
 - 让 Agent 对变化部分做 gap-fill，而不是重写一切。
 
+这里的“新鲜度”已经不只是一次 rescan 的愿景。SourceRef reconcile 会比较当前文件与生成时指纹/提交检查点；消费现场若发现漂移，Search 会降权并返回 `sourceRefStatus` 和 `driftedSourceRefs`。Rescan 再把这些可观察信号变成修复、恢复、decay 或 deprecate 的输入。
+
 这解释了为什么 rescan 必须携带 reason、dimension filter、maxFiles、contentMaxLines 等参数。它是增量治理动作，不是简单全量扫描按钮。
 
 ## ProjectContext 提供分析包
 
 Cold start 和 rescan 都依赖 ProjectContext 和分析包。它会构建 space/repo/map/module/file refs、AST/grammar 分析、dependency hints、IDE agent analysis packet、unit progress seed 和 retrieval hints。Plugin 的 bootstrap 工具描述中也明确提到 Mission Briefing 会包含 ideAgentAnalysis packet summary、next units、retrieval hints 和 unit progress seed，并通过 structuredContent 返回可继续执行的任务，而不是只给一段散文。
 
-这些数据让 Agent 不必盲读全仓。Agent 可以按 stable unit、dimension、evidence kind 和 sourceRef 组织分析。对于大项目，这一点尤其关键，因为上下文预算永远有限。
+这些数据让 Agent 不必盲读全仓。Agent 可以按 stable unit、dimension、evidence kind 和 sourceRef 组织分析。对于大项目，这一点尤其关键，因为上下文预算永远有限。analysis packet 是定向阅读导航，不是“已经理解全仓”的证明。
 
 ## 维度不是目录分类
 
@@ -82,6 +95,6 @@ Cold start/rescan 产出的知识通常先进入 candidates。候选需要字段
 
 ## 本章小结
 
-Cold start 建立第一批项目知识，rescan 维护已有知识的新鲜度。两者都依赖 ProjectContext、维度任务、Agent execution、candidate persistence、Job evidence 和审阅流程。
+Plan 先把范围、预算和停止条件变成可审阅决定；cold start 建立第一批项目知识；rescan 结合已有 Recipe 与漂移证据维护新鲜度。三者都依赖 ProjectContext、维度任务、Agent execution、Candidate persistence、Job evidence 和审阅流程。
 
 理解这两条工作流之后，就可以进入 Codex Plugin 部分：当宿主从 CLI/Dashboard 变成 Codex 时，Alembic 如何把这些能力包装成 MCP tools、public workflow tools 和 Project Skills。

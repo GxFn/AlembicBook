@@ -17,15 +17,17 @@ Alembic resident service 的外观是一个本地 Dashboard URL，内部则是�
 
 daemon 的职责是守住当前项目的 resident boundary。它知道项目 dataRoot、runtimeDir、databasePath、API base URL、Dashboard URL、file monitor 状态、jobs capability、api-ai 配置、runtime source of truth。
 
+主链从 `Alembic/bin/daemon-server.ts` 启动：先建立 AppRuntime 和 DI，随后挂载 HTTP server、文件变更采集、知识维护 sweep 与 Dashboard 静态资源，并做 readiness 检查。ready 后，动态端口、token、数据库路径、migration 版本、entrypoint 与 execPath 被写入 daemon state，供 ProjectRuntimeControl、Dashboard 和 Plugin resident client 复用。Dashboard 构建缺失时只降级静态 UI，API 仍可运行。
+
 这些状态会出现在 `alembic status`、Plugin `alembic_status`、Dashboard handoff 和 ProjectRuntimeControl snapshot 中。它们是诊断证据，但也有明确限制：selected/active runtime state 是诊断和控制数据，不能随意覆盖当前 host project 的 identity。
 
 ## HTTP routes 是 Dashboard 和工具的共同后端
 
-主仓库 `lib/http/routes` 当前有这些 route families：`ai`、`audit`、`candidates`、`commands`、`daemon`、`evolution`、`extract`、`file-changes`、`governance`、`guard`、`guardRules`、`health`、`jobs`、`knowledge`、`logs`、`modules`、`project-scope`、`projects`、`recipes`、`search`、`signals`、`skills`、`violations`、`wiki`。
+主仓库 `lib/http/routes` 当前有 25 个 route families：`ai`、`audit`、`candidates`、`commands`、`daemon`、`evolution`、`extract`、`file-changes`、`governance`、`guard`、`guardRules`、`health`、`jobs`、`knowledge`、`logs`、`modules`、`panorama`、`project-scope`、`projects`、`recipes`、`search`、`signals`、`skills`、`violations`、`wiki`。
 
-另外，`Alembic/lib/generated/dashboard-api-types.ts` 由 provider contract 生成，当前文件头记录 `HTTP route contract table (28 routes, contract version 1)`。Dashboard 侧提交了同名 generated copy 和 sha256 pin，用来检查前后端 API 漂移。
+另外，`Alembic/lib/generated/dashboard-api-types.ts` 由 provider contract 生成，当前 provider contract table 有 31 条 route。Dashboard 侧提交 generated copy 和 sha256 pin，用来检查前后端 API 漂移。
 
-生成表中的代表性路径包括 `/api-spec`、`/health`、`/daemon/health`、`/projects`、`/projects/{projectId}/switch`、`/project-scope`、`/jobs`、`/jobs/bootstrap`、`/jobs/rescan`、`/jobs/{jobId}/events`、`/jobs/{jobId}/display-snapshot`、`/jobs/{jobId}/artifacts/{artifactId}`、`/guard`、`/rules`、`/violations`、`/knowledge`、`/search`、`/recipes`、`/modules/scan`、`/wiki/generate`、`/governance`、`/evolution/proposals`、`/file-changes`、`/signals/trace`、`/audit`、`/logs`。这里的 route contract 是 Dashboard 和其他消费者的 API 事实源。
+生成表中的代表性路径包括 `/api-spec`、`/health`、`/daemon/health`、`/projects`、`/projects/{projectId}/switch`、`/project-scope`、`/jobs`、`/jobs/bootstrap`、`/jobs/rescan`、`/jobs/{jobId}/events`、`/jobs/{jobId}/display-snapshot`、`/jobs/{jobId}/artifacts/{artifactId}`、`/guard`、`/rules`、`/violations`、`/knowledge`、`/search`、`/recipes`、`/modules/scan`、`/panorama`、`/panorama/health`、`/panorama/gaps`、`/wiki/generate`、`/governance`、`/evolution/proposals`、`/file-changes`、`/signals/trace`、`/audit`、`/logs`。这里的 route contract 是 Dashboard 和其他消费者的 API 事实源。
 
 这说明 Dashboard 不是直接读文件，也不是自己决定知识生命周期。它通过 API client 调 `/api/v1`。Codex Plugin 的 status/dashboard/job 能力也会读取这些 resident capability。CLI 的一部分命令同样可以走本地服务或共享底层 service。
 
@@ -42,6 +44,14 @@ Job API 的响应不只是 status。它会装饰 progress、summary、displaySna
 - 可恢复：CLI 结束后 job 记录仍在。
 - 可观察：process events 和 snapshots 能说明任务阶段。
 - 可审阅：artifact 可以被读取，而不是只剩一行成功/失败。
+
+终态分类也必须诚实。`Alembic/lib/daemon/jobs/bootstrapStatusClassification.ts` 对 `completed_with_errors` 做保守区分：能够证明至少有一项成功产出时，job 记为 completed（部分成功）；零成功或缺少成功证据时仍记为 failed。部分成功不能被前端抹成全成功，也不应因为局部失败而否认已有产物。
+
+## Panorama 是真实 API，不是前端概念图
+
+`Alembic/lib/http/routes/panorama.ts` 已挂载在 `HttpServer`，提供 overview、health 与 gaps 三个端点；Dashboard 的 `AlembicDashboard/src/api/panorama.ts` 和 `PanoramaView.tsx` 直接消费这三条 API。页面内部再组织 overview、dependencies、graph、gaps 四个标签，并使用 `Promise.allSettled` 允许部分面板成功。
+
+因此 Panorama 的正确归属是：Core/主 runtime 计算项目结构与健康事实，HTTP 提供契约，Dashboard 负责投影和交互。前端不是 Panorama 分析器。
 
 ## Process events 是运行证据
 
@@ -71,6 +81,6 @@ HTTP routes 是外层服务边界，Core contract 仍是确定性语义来源。
 
 ## 本章小结
 
-主 Alembic daemon 把本地知识系统变成持续服务。HTTP routes 给 Dashboard、CLI 和 Plugin 提供统一后端；JobStore 和 process events 让长任务可恢复、可观察、可审阅；file-change endpoint 把代码变化接入演化报告；ProjectScope API 让多仓库项目保持可见。
+主 Alembic daemon 把本地知识系统变成持续服务。25 个 route families、31 条 provider contract route 给 Dashboard、CLI 和 Plugin 提供统一后端；JobStore 和 process events 让长任务可恢复、可观察、可审阅；Panorama、file-change 和 ProjectScope 则把项目结构、变化与多仓库范围变成可诊断事实。
 
 下一章会聚焦两个最重要的长任务：cold start 和 rescan。

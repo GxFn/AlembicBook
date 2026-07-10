@@ -1,6 +1,6 @@
 # Alembic 当前实现架构书
 
-> 这是 Alembic 配套技术书的新版结构。它不再沿用旧的单仓库章节和旧插图，而是按当前多仓库实现重新解释 Alembic。
+> 这是 Alembic 配套技术书的实现读本。章节以当前源码和可执行验证为权威，账本与需求文档用于定位历史意图和待核问题。
 
 在线阅读：[docs.gaoxuefeng.com](https://docs.gaoxuefeng.com)
 
@@ -14,16 +14,18 @@
 - `AlembicAgent`：`@alembic/agent`，AgentRuntime、AI providers、tool system、memory/context。
 - `AlembicDashboard`：独立 React/Vite Dashboard 前端。
 
-## 新章节结构
+## 阅读架构
 
 - Part I：系统地图
-- Part II：Core 内核
-- Part III：本地运行时
-- Part IV：Codex 插件
-- Part V：Agent 与 Dashboard
-- Part VI：知识生命周期
-- Part VII：发布与证据
-- Appendix：配置、public API、MCP tools、术语表
+- Part II：事实内核与结构证据
+- Part III：项目运行与知识生产
+- Part IV：宿主消费与交付
+- Part V：执行器、UI 与 Provider
+- Part VI：知识对象、新鲜度与治理
+- Part VII：验证、证据与维护
+- Appendix：当前实现快照、配置、public API、MCP tools、术语表
+
+全书采用两条交叉主轴：一条从 projectRoot 的结构事实走到 Candidate/Recipe，再走到 Search、Prime、Guard 和 Dashboard；另一条从源码锚点走到运行证据、漂移识别和书稿事实断言。仓库边界仍然保留，但不再替代真实调用链。
 
 ## 插图策略
 
@@ -42,11 +44,12 @@ npm run preview
 
 ~~~bash
 npm run build
+npm run verify:alembic -- --local ../Alembic
 npm run illustrations -- --list
 rg -n "diagram-placeholder|插图占位" docs
 ~~~
 
-第二条命令用于确认 prompt 清单里的目标图全部存在；第三条命令用于确认正文不再残留占位块。
+第二条命令会从五个源码仓读取锚点和关键实现计数，并核对正文中的 `alembic-fact` 断言；后两条命令分别确认插图清单和正文占位块。
 
 ## License
 

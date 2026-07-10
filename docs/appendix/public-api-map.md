@@ -90,6 +90,8 @@
 
 消费原则：Codex 或 Claude Code 通过 MCP 调用 Plugin；Plugin 再根据 route policy 消费 resident/project-scope capability、Core workflow contract 或 in-process host runtime。
 
+交付边界：Plugin 根包是 private 开发仓；Codex/Claude Code marketplace shell 固定获取公开 `alembic-runtime` 包，后者暴露 `alembic-codex-mcp` bin，并依赖 registry `@alembic/core`。源码锚点是 `AlembicPlugin/packages/alembic-runtime/package.json` 与两个 `AlembicPlugin/plugins/` shell manifest。
+
 ## Dashboard API
 
 Dashboard 前端统一通过 `/api/v1` API client 消费后端。它不直接拥有 Core runtime，也不应重新定义 Knowledge lifecycle、search ranking 或 Guard semantics。

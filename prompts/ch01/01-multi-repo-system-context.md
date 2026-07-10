@@ -1,7 +1,14 @@
-Title at top in concise Chinese: "Alembic 多仓库系统上下文".
+Title at top in concise Chinese: "Alembic 五仓库运行边界".
 
-Draw a local-first multi-repository system map. Put "用户项目" on the far left, "Alembic 本地运行时" in the center, and four supporting repositories around it: "Core 内核", "Codex 插件", "Agent Runtime", "Dashboard". Use arrows to show local source code flowing into analysis, knowledge, Guard, host-agent tools, and UI inspection.
+Create a readable left-to-right architecture map with five distinct repository cards. Keep only these primary labels:
+- "用户项目" with two separate roots: "projectRoot｜代码事实" and "dataRoot｜知识写入".
+- "Alembic｜CLI · daemon · HTTP" as the resident runtime.
+- "AlembicCore｜确定性内核" and "AlembicAgent｜AI / tool runtime" as two separate dependencies below Alembic.
+- "AlembicPlugin｜MCP host adapter" connected from "Codex / Claude Code".
+- "AlembicDashboard｜审阅 UI" connected through "/api/v1" to Alembic, never directly to Core.
 
-Bottom legend: "代码事实", "知识治理", "发布验证".
+Show Alembic consuming Core and Agent. Show Plugin consuming Core in-process, plus one dashed optional arrow from Plugin to "主 Alembic resident API". Put "AlembicWorkspace / Book｜协作与文档" in a small dashed box outside the product runtime.
 
-Avoid old chapter labels and avoid any cloud SaaS center.
+Bottom legend: "代码事实", "知识写入", "可选 resident".
+
+Avoid merging Agent and Dashboard. Do not place SQLite inside Core. Do not use `.alembic/`. Do not imply Workspace or Book participates in runtime execution. Keep all labels large; no paragraphs or tiny file lists.

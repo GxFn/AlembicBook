@@ -13,6 +13,7 @@
 | `.asd/` | 本地运行态目录 | daemon、SQLite、jobs、logs、vector index、settings/secrets |
 | `Alembic/` | 项目知识资产目录 | recipes、candidates、skills、wiki |
 | `.agents/skills/` | Codex runtime 可见 Skill 投影 | Codex host agent |
+| `.claude/skills/` | Claude Code runtime 可见 Skill 投影 | Claude Code host agent |
 
 Ghost 模式下，`projectRoot` 仍指向真实源码目录，`dataRoot` 通常位于 `~/.asd/workspaces/{projectId}/`。ProjectScope 模式下，一个 dataRoot 可以覆盖多个源码 folder。
 
@@ -48,7 +49,7 @@ AI provider 可以来自 workspace settings/secrets、环境变量、CLI 参数�
 - `Alembic/package.json`：CLI、daemon、main runtime、Dashboard server、release、local Core build。
 - `AlembicCore/package.json`：public exports、Core check、public API boundary、release readiness。
 - `AlembicAgent/package.json`：AgentRuntime、AI、tools、release staging。
-- `AlembicPlugin/package.json`：Codex plugin runtime、MCP、channel、portable runtime、session verification。
+- `AlembicPlugin/package.json`：Plugin 开发根、MCP、shell/runtime package、cross-shell 与 session verification。
 - `AlembicDashboard/package.json`：React/Vite frontend、contract test、typecheck、build。
 
 ## 配置排查顺序
